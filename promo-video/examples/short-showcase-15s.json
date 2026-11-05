@@ -1,0 +1,13 @@
+{
+  "items": [
+    {"module": "TitleCard", "bars": 1, "transition": "none", "props": {"index": "03", "title": "看得见的数学", "subtitle": "成果集锦"}},
+    {"module": "VizShowcase", "bars": 1, "props": {"viz": "newton", "index": "01", "total": "04"}},
+    {"module": "VizShowcase", "bars": 1, "transition": "glitch", "props": {"viz": "taylor", "index": "02", "total": "04"}},
+    {"module": "VizShowcase", "bars": 1, "props": {"viz": "fourier", "index": "03", "total": "04"}},
+    {"module": "VizShowcase", "bars": 1, "transition": "glitch", "props": {"viz": "modCircle", "index": "04", "total": "04"}},
+    {"module": "ShowcaseGrid", "bars": 2, "transition": "punch"},
+    {"module": "Outro", "bars": 1}
+  ],
+  "music": true,
+  "musicFromBar": 18
+}

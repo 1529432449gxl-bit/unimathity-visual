@@ -1,0 +1,27 @@
+{
+  "name": "unimathity-promo-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Unimathity 模块化 motion 宣传片（Remotion）",
+  "scripts": {
+    "photos": "node scripts/scan-photos.mjs",
+    "music": "node scripts/make-music.mjs",
+    "studio": "node scripts/scan-photos.mjs && remotion studio",
+    "render": "node scripts/scan-photos.mjs && node scripts/render.mjs",
+    "list": "remotion compositions"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "katex": "0.16.22",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.535",
+    "@fontsource/noto-sans-sc": "5.3.0",
+    "@fontsource/space-grotesk": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "typescript": "5.6.3"
+  }
+}
