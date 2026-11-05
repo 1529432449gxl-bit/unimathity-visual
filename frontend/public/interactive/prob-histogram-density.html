@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>From histogram to density curve</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="The histogram approaches the density curve as samples grow and bins shrink"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const A = -3.2, B = 4.2, M = 240;
+const npdf = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+const pdf = x => .68 * npdf(x, 0, 1) + .32 * npdf(x, 1.9, .65);
+let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()) };
+const draw1 = () => rnd() < .68 ? gauss() : 1.9 + .65 * gauss();
+const TOTAL = 6000, DUR = 13;
+let xs = [], clock = 0, playing = true, shown = { h: new Array(M + 1).fill(0) };
+function round() { seed = 1 + Math.floor(Math.random() * 1e6); xs = []; for (let k = 0; k < TOTAL; k++) xs.push(draw1()); clock = 0 }
+round();
+// 样本量随时间先慢后快增长；组距随样本量逐级减半
+const countAt = t => Math.min(TOTAL, Math.floor(6 * Math.pow(TOTAL / 6, P.clamp(t / DUR, 0, 1) ** 1.15)));
+const binsFor = n => n < 60 ? 6 : n < 300 ? 12 : n < 1500 ? 24 : 48;
+const v = P.view([A, B, -0.02, .46], { l: 14, r: 14, t: 26, b: 22 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; if (playing) clock += dt;
+  if (clock > DUR + 3.2) round();
+  const n = countAt(clock), nb = binsFor(n), bw = (B - A) / nb, cnt = new Array(nb).fill(0);
+  for (let k = 0; k < n; k++) { const i = Math.floor((xs[k] - A) / bw); if (i >= 0 && i < nb) cnt[i]++ }
+  const target = []; for (let j = 0; j <= M; j++) { const x = A + (B - A) * j / M, i = Math.min(nb - 1, Math.floor((x - A) / bw)); target.push(cnt[i] / (n * bw)) }
+  const mv = P.approach(shown, 'h', target, dt, 7);
+  P.axes(ctx, v, { x: true });
+  const top = [], bot = [];
+  for (let j = 0; j <= M; j++) { const x = A + (B - A) * j / M; top.push([v.X(x), v.Y(shown.h[j])]); bot.push([v.X(x), v.Y(0)]) }
+  P.fill(ctx, top, bot, P.rgba(C.blue, .22));
+  // 组的分界：细竖线，组越细越淡
+  for (let i = 1; i < nb; i++) { const x = A + i * bw, j = Math.round((x - A) / (B - A) * M); P.path(ctx, [[v.X(x), v.Y(0)], [v.X(x), v.Y(Math.min(shown.h[j], shown.h[Math.max(0, j - 1)]))]], { color: C.bg, width: 1, alpha: .9 }) }
+  const fin = P.seg(clock, DUR - 1, DUR + .6);
+  P.path(ctx, P.curve(v, pdf), { color: C.mute, width: 1.2, alpha: .75 - .45 * fin, dash: [4, 4] });
+  P.path(ctx, top, { color: C.accent, width: 1.4 + .8 * fin, alpha: .55 + .45 * fin, halo: 2 });
+  P.path(ctx, P.curve(v, pdf), { color: C.warm, width: 2.6, alpha: fin * (1 - P.seg(clock, DUR + 2.4, DUR + 3.2)), progress: P.ease.inOut(fin), halo: 3 });
+  // 刚落下的样本点：从上方落到横轴
+  const tNow = clock;
+  for (let k = Math.max(0, n - 60); k < n; k++) {
+    const born = DUR * Math.pow(Math.log(Math.max(k, 6) / 6) / Math.log(TOTAL / 6), 1 / 1.15), age = tNow - born; if (age > .7 || age < 0) continue;
+    const y = P.lerp(.44, 0, P.ease.inOut(P.seg(age, 0, .55)));
+    const land = P.seg(age, .5, .7); glow(ctx, v.X(xs[k]), v.Y(y), 3 + 9 * land, C.warm, .2 * (1 - land));
+    P.dot(ctx, v.X(xs[k]), v.Y(y), { r: 2.8, color: C.warm, ring: false, alpha: 1 - land });
+  }
+  return playing || mv;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { round(); cv.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

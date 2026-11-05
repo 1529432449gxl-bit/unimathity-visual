@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Joukowski map</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:340px;touch-action:none}@media(max-width:520px){canvas#cv{height:520px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the center of a circle through -1; the image changes from a segment to an arc to an airfoil"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const J = ([x, y]) => { const r2 = x * x + y * y; return [(x + x / r2) / 2, (y - y / r2) / 2] };
+// 巡游路线：原点 → 虚轴方向（圆弧）→ 再偏向左（翼型）→ 回到原点
+const TOUR = [[0, 0], [0, .22], [.1, .2], [.16, .1], [.1, 0], [0, 0]];
+const st = { c: [0, 0] }; let tgt = [0, 0], playing = true, clock = 0, grab = false, geo;
+const at = t => { const n = TOUR.length - 1, u = (t % 1) * n, i = Math.floor(u), f = P.ease.inOut(u - i); return [P.lerp(TOUR[i][0], TOUR[i + 1][0], f), P.lerp(TOUR[i][1], TOUR[i + 1][1], f)] };
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt / 14; tgt = at(clock) }
+  const mv = P.approach(st, 'c', tgt, dt, playing ? 30 : 12), c = st.c, R = Math.hypot(c[0] + 1, c[1]);
+  const stack = w < 520, Wp = stack ? w : w / 2, Hp = stack ? h / 2 : h;
+  const s1 = Math.min(Wp / 3.6, Hp / 3.3), o1 = [Wp / 2, Hp / 2], S1 = q => [o1[0] + q[0] * s1, o1[1] - q[1] * s1];
+  const ox = stack ? 0 : Wp, oy = stack ? Hp : 0, s2 = Math.min(Wp / 3, Hp / 2.2), S2 = q => [ox + Wp / 2 + q[0] * s2, oy + Hp / 2 - q[1] * s2 + (stack ? 0 : 0)];
+  geo = { S1, s1, o1 };
+  for (const [S, a, b] of [[S1, 1.7, 1.55], [S2, 1.45, 1]]) { P.path(ctx, [S([-a, 0]), S([a, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -b]), S([0, b])], { color: C.rule, width: 1 }) }
+  if (!stack) P.path(ctx, [[Wp, 16], [Wp, h - 16]], { color: C.faint, width: 1 });
+  const unit = [], circ = [], img = [];
+  for (let k = 0; k <= 360; k++) { const a = 2 * Math.PI * k / 360; unit.push(S1([Math.cos(a), Math.sin(a)])); const z = [c[0] + R * Math.cos(a), c[1] + R * Math.sin(a)]; circ.push(S1(z)); img.push(S2(J(z))) }
+  P.path(ctx, unit, { color: C.mute, width: 1, dash: [3, 4], alpha: .7 });
+  ctx.save(); ctx.beginPath(); circ.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.accent, .06); ctx.fill(); ctx.restore();
+  P.path(ctx, circ, { color: C.accent, width: 2.4, halo: 3 });
+  ctx.save(); ctx.beginPath(); img.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.warm, .12); ctx.fill(); ctx.restore();
+  P.path(ctx, img, { color: C.warm, width: 2.6, halo: 3 });
+  for (const x of [-1, 1]) { P.dot(ctx, ...S1([x, 0]), { r: 3.5, color: C.soft }); P.dot(ctx, ...S2([x, 0]), { r: 3.5, color: C.soft }) }
+  const q = S1(c); ctx.save(); ctx.beginPath(); ctx.arc(q[0], q[1], 13, 0, 7); ctx.fillStyle = P.rgba(C.accent, grab ? .18 : .1); ctx.fill(); ctx.restore();
+  P.dot(ctx, ...q, { r: 5.5, color: C.accent });
+  lab.set('m1', '-1', ...S1([-1, 0]), { color: C.soft, dx: -10, dy: 12, size: 12 }); lab.set('p1', '1', ...S1([1, 0]), { color: C.soft, dx: 8, dy: 12, size: 12 });
+  lab.set('z', 'z', 14, 14, { color: C.soft, size: 13 }); lab.set('w', 'w=\\tfrac12\\left(z+\\tfrac1z\\right)', ox + 64, oy + 16, { color: C.soft, size: 13 });
+  lab.end();
+  return playing || mv || grab;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+const toZ = e => { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left - geo.o1[0]) / geo.s1, -(e.clientY - r.top - geo.o1[1]) / geo.s1] };
+const place = e => { const q = toZ(e); q[0] = P.clamp(q[0], 0, .3); const L = Math.hypot(...q), k = L > .35 ? .35 / L : 1; tgt = [q[0] * k, q[1] * k]; cv.kick() };
+cvs.addEventListener('pointerdown', e => { const q = toZ(e); if (Math.hypot(q[0] - st.c[0], q[1] - st.c[1]) > .5) return; grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
+cvs.addEventListener('pointermove', e => { if (grab) place(e) });
+cvs.addEventListener('pointerup', () => { grab = false; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

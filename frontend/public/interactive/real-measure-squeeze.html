@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Open and closed sets squeezing a measurable set</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:260px}@media(max-width:520px){canvas#cv{height:240px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="le"></span><input id="e" type="range" min="0" max="1" step="0.001" value="0.25" aria-label="epsilon"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="An open set G outside and a closed set F inside close in on E as epsilon decreases"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('le'), '\\varepsilon');
+// E：三个区间加一列向 1 收缩的小区间
+const E = [[.04, .2], [.27, .36], [.43, .5]];
+for (let k = 0; k < 9; k++) { const a = 1 - .42 * Math.pow(.62, k), b = a + .5 * .42 * Math.pow(.62, k) * .62; E.push([a, b]) }
+const sl = document.getElementById('e'), st = { e: .25 }; let playing = true, clock = 0;
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; sl.value = (.5 + .5 * Math.cos(clock * .5)).toFixed(3) }
+  const mv = P.approach(st, 'e', +sl.value, dt, playing ? 30 : 9), eps = .002 + .1 * st.e ** 1.5;
+  const X = x => 20 + x * (w - 40), yE = h * .54, band = Math.min(18, h * .06);
+  P.path(ctx, [[X(0) - 8, yE], [X(1) + 8, yE]], { color: C.rule, width: 1 });
+  // G：每个区间向外扩 eps/2^(k+1)；F：前若干个区间各向内缩，并舍去测度很小的尾部
+  const G = E.map(([a, b], k) => [a - eps / 2 ** (k + 1), b + eps / 2 ** (k + 1)]);
+  const keep = E.filter(([a, b]) => b - a > eps * .9), F = keep.map(([a, b], k) => [a + eps / 2 ** (k + 2), b - eps / 2 ** (k + 2)]);
+  const bar = (iv, y0, y1, col, al) => { ctx.save(); ctx.fillStyle = P.rgba(col, al); for (const [a, b] of iv) ctx.fillRect(X(a), y0, Math.max(.6, X(b) - X(a)), y1 - y0); ctx.restore() };
+  bar(G, yE - band * 1.8, yE + band * 1.8, C.blue, .22);
+  // G \ F 的差：橙色
+  ctx.save(); ctx.fillStyle = P.rgba(C.warm, .75);
+  for (const [a, b] of G) { let cur = a; for (const [c, d] of F) { if (d <= a || c >= b) continue; if (c > cur) ctx.fillRect(X(cur), yE + band * 2.3, X(c) - X(cur), 5); cur = Math.max(cur, d) } if (b > cur) ctx.fillRect(X(cur), yE + band * 2.3, Math.max(.6, X(b) - X(cur)), 5) }
+  ctx.restore();
+  // E 单独画在上方一条细轨道上，便于和 G、F 对照
+  for (const [a, b] of E) P.path(ctx, [[X(a), yE - band * 3.1], [Math.max(X(a) + .8, X(b)), yE - band * 3.1]], { color: C.accent, width: 4 });
+  for (const [a, b] of E) for (const x of [a, b]) P.path(ctx, [[X(x), yE - band * 2.9], [X(x), yE - band * 1.8]], { color: C.accent, width: 1, alpha: .25, dash: [2, 3] });
+  bar(F, yE - band, yE + band, C.accent, .85);
+  lab.set('G', 'G', X(.235), yE - band * 2.45, { color: C.blue, size: 13 });
+  lab.set('F', 'F', X(.12), yE, { color: '#fff', size: 13 });
+  lab.set('E', 'E', X(.12), yE - band * 3.1 - 13, { color: C.accent, size: 13 });
+  lab.set('D', 'G\\setminus F', X(.75), yE + band * 2.3 + 18, { color: C.warm, size: 13 });
+  lab.end();
+  return playing || mv;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = Math.acos(P.clamp(2 * +sl.value - 1, -1, 1)) / .5; sync(); cv.kick() };
+sl.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

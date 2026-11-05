@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Geometry of complex multiplication</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:none}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag two complex numbers; moduli multiply and arguments add"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const z = [[1.25, .55], [.9, .75]];
+const st = { p: mul(z[0], z[1]) };
+let playing = true, grab = -1, S;
+const lab = P.labels(document.getElementById('stage'));
+function arc(ctx, r, a0, a1, color, alpha) { const pts = []; const n = 40; for (let k = 0; k <= n; k++) { const t = a0 + (a1 - a0) * k / n; pts.push(S([r * Math.cos(t), r * Math.sin(t)])) } P.path(ctx, pts, { color, width: 1.6, alpha }) }
+function tri(ctx, a, b, c, color, alpha) { ctx.save(); ctx.beginPath(); [a, b, c].map(S).forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.fillStyle = P.rgba(color, alpha); ctx.fill(); ctx.restore() }
+function arrow(ctx, a, b, color, width) { const p = S(a), q = S(b), dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy); if (L < 2) return; const ux = dx / L, uy = dy / L, hh = Math.min(10, L * .4);
+  P.path(ctx, [p, [q[0] - ux * hh * .6, q[1] - uy * hh * .6]], { color, width }); ctx.save(); ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] - ux * hh - uy * hh * .42, q[1] - uy * hh + ux * hh * .42); ctx.lineTo(q[0] - ux * hh + uy * hh * .42, q[1] - uy * hh - ux * hh * .42); ctx.closePath(); ctx.fill(); ctx.restore() }
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { const a = Math.atan2(z[1][1], z[1][0]) + dt * .35, r = Math.hypot(...z[1]); z[1] = [r * Math.cos(a), r * Math.sin(a)] }
+  const mv = P.approach(st, 'p', mul(z[0], z[1]), dt, playing ? 40 : 12);
+  const s = Math.min(w / 6.4, h / 4.8), ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s, oy - q[1] * s];
+  P.path(ctx, [S([-3.2, 0]), S([3.2, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.4]), S([0, 2.4])], { color: C.rule, width: 1 });
+  const p = st.p, O = [0, 0], one = [1, 0];
+  tri(ctx, O, one, z[0], C.accent, .1); tri(ctx, O, z[1], p, C.warm, .12);
+  const t1 = Math.atan2(z[0][1], z[0][0]), t2 = Math.atan2(z[1][1], z[1][0]);
+  arc(ctx, .32, 0, t1, C.accent, .9); arc(ctx, .48, 0, t2, C.blue, .9); arc(ctx, .66, 0, t1 + t2, C.warm, .9);
+  arrow(ctx, O, z[1], C.blue, 2); arrow(ctx, O, z[0], C.accent, 2.4); arrow(ctx, O, p, C.warm, 2.4);
+  P.path(ctx, [S(one), S(z[0])], { color: C.accent, width: 1, alpha: .5, dash: [3, 3] }); P.path(ctx, [S(z[1]), S(p)], { color: C.warm, width: 1, alpha: .5, dash: [3, 3] });
+  P.dot(ctx, ...S(one), { r: 3.5, color: C.mute });
+  P.dot(ctx, ...S(z[0]), { r: 6, color: C.accent }); P.dot(ctx, ...S(z[1]), { r: 6, color: C.blue });
+  const off = (q, k) => { const L = Math.hypot(...q) || 1; return [S(q)[0] + q[0] / L * k, S(q)[1] - q[1] / L * k] };
+  lab.set('1', '1', ...off(one, 0), { color: C.soft, dy: 14, size: 13 });
+  lab.set('z1', 'z_1', ...off(z[0], 18), { color: C.accent }); lab.set('z2', 'z_2', ...off(z[1], 18), { color: C.blue });
+  lab.set('p', 'z_1z_2', ...off(p, 22), { color: C.warm });
+  lab.end();
+  return playing || mv || grab >= 0;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+const toZ = e => { const r = cvs.getBoundingClientRect(), s = Math.min(r.width / 6.4, r.height / 4.8); return [(e.clientX - r.left - r.width / 2) / s, -(e.clientY - r.top - r.height / 2) / s] };
+cvs.addEventListener('pointerdown', e => { const q = toZ(e), d = z.map(a => Math.hypot(a[0] - q[0], a[1] - q[1])); grab = d[0] < d[1] ? 0 : 1; if (d[grab] > .45) { grab = -1; return } playing = false; sync(); cvs.setPointerCapture(e.pointerId); cv.kick() });
+cvs.addEventListener('pointermove', e => { if (grab < 0) return; const q = toZ(e), r = Math.hypot(...q), R = P.clamp(r, .35, 1.7); z[grab] = [q[0] / (r || 1) * R, q[1] / (r || 1) * R]; cv.kick() });
+cvs.addEventListener('pointerup', () => { grab = -1 });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

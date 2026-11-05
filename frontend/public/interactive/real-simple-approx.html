@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Simple functions approximating a measurable function</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Increasing simple functions rise toward f as the range is refined"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const f = x => 1.55 + .95 * Math.sin(2 * Math.PI * (1.15 * x + .1)) + .45 * Math.sin(2 * Math.PI * 3.1 * x);
+const M = 700, NMAX = 6, xs = Array.from({ length: M + 1 }, (_, j) => j / M);
+const phi = n => xs.map(x => { const v = f(x); return v >= n ? n : Math.floor(v * 2 ** n) / 2 ** n });
+const st = { y: phi(1) };
+const v = P.view([0, 1, -.05, 3.1], { l: 22, r: 14, t: 12, b: 18 });
+const lab = P.labels(document.getElementById('stage'));
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; const moving = player.tick(dt), n = player.i + 1, p = player.p;
+  const mv = P.approach(st, 'y', phi(n), dt, 6);
+  // 值域上的分点：只在纵轴上画短刻度；本层新增的分点先拉出一条橙色细线再淡去
+  for (let k = 1; k * 2 ** -n < 3.05; k++) { const y = k / 2 ** n, fresh = k % 2 === 1 && n > 1, a = n > 4 ? .5 : 1;
+    P.path(ctx, [[v.X(0) - 6, v.Y(y)], [v.X(0) + (fresh ? 6 : 3), v.Y(y)]], { color: fresh ? C.warm : C.mute, width: 1, alpha: a * (fresh ? P.seg(p, 0, .3) : .7) });
+    if (fresh) P.path(ctx, [[v.X(0), v.Y(y)], [v.X(1), v.Y(y)]], { color: C.warm, width: 1, alpha: .35 * a * (1 - P.seg(p, .45, 1)), progress: P.ease.out(P.seg(p, 0, .45)) }) }
+  P.axes(ctx, v, { x: true, y: true });
+  const top = xs.map((x, j) => [v.X(x), v.Y(st.y[j])]);
+  P.fill(ctx, top, xs.map(x => [v.X(x), v.Y(0)]), P.rgba(C.warm, .14));
+  P.path(ctx, top, { color: C.warm, width: 2.2, halo: 2 });
+  P.path(ctx, P.curve(v, f, 0, 1, 400), { color: C.accent, width: 2.4 });
+  lab.set('f', 'f', v.X(.03), v.Y(f(.03)) - 14, { color: C.accent });
+  lab.set('phi', '\\varphi_{' + n + '}', v.X(.97), v.Y(st.y[M - 20]) + 14, { color: C.warm });
+  lab.end();
+  return moving || mv;
+});
+player = P.stepper(document.getElementById('nav'), { count: NMAX, dur: 1.4, hold: .8, kick: cv.kick });
+player.playing = true; player.go(0, false); player.wait = .8; cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

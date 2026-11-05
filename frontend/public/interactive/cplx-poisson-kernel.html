@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Poisson kernel</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:none}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Poisson kernel weights on the circle for a point inside; they concentrate as the point nears the boundary"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const st = { z: [0, 0] }; let tgt = [0, 0], playing = true, clock = 0, grab = false, geo;
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; const r = .78 * Math.pow(Math.sin(clock * .33), 2), a = clock * .21 + .6; tgt = [r * Math.cos(a), r * Math.sin(a)] }
+  const mv = P.approach(st, 'z', tgt, dt, playing ? 20 : 12), z = st.z, r2 = z[0] * z[0] + z[1] * z[1];
+  const s = Math.min(w, h) / 4.1, o = [w / 2, h / 2], S = q => [o[0] + q[0] * s, o[1] - q[1] * s]; geo = { s, o };
+  const N = 360, ker = [], base = [];
+  for (let k = 0; k <= N; k++) { const t = 2 * Math.PI * k / N, c = Math.cos(t), sn = Math.sin(t), Pk = (1 - r2) / ((c - z[0]) ** 2 + (sn - z[1]) ** 2);
+    const R = 1 + .62 * (1 - Math.exp(-Pk / 2.6)); ker.push(S([R * c, R * sn])); base.push(S([c, sn])) }
+  ctx.save(); ctx.beginPath(); ker.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); for (let k = N; k >= 0; k--) ctx.lineTo(...base[k]); ctx.closePath(); ctx.fillStyle = P.rgba(C.blue, .2); ctx.fill(); ctx.restore();
+  P.path(ctx, ker, { color: C.blue, width: 2, halo: 2 });
+  ctx.save(); ctx.beginPath(); base.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.accent, .04); ctx.fill(); ctx.restore();
+  P.path(ctx, base, { color: C.accent, width: 2.4 });
+  // 从 z 指向最近边界点的细线
+  const L = Math.sqrt(r2); if (L > .05) P.path(ctx, [S(z), S([z[0] / L, z[1] / L])], { color: C.warm, width: 1.2, dash: [3, 3], alpha: P.clamp(L * 3, 0, 1) });
+  const q = S(z); ctx.save(); ctx.beginPath(); ctx.arc(q[0], q[1], 13, 0, 7); ctx.fillStyle = P.rgba(C.warm, grab ? .2 : .12); ctx.fill(); ctx.restore();
+  P.dot(ctx, ...q, { r: 5.5, color: C.warm });
+  P.dot(ctx, ...S([0, 0]), { r: 2.5, color: C.mute, ring: false });
+  lab.set('z', 'z', ...q, { color: C.warm, dx: 12, dy: -12 });
+  lab.end();
+  return playing || mv || grab;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = 0; sync(); cv.kick() };
+const place = e => { const r = cvs.getBoundingClientRect(), q = [(e.clientX - r.left - geo.o[0]) / geo.s, -(e.clientY - r.top - geo.o[1]) / geo.s], L = Math.hypot(...q), k = L > .9 ? .9 / L : 1; tgt = [q[0] * k, q[1] * k]; cv.kick() };
+cvs.addEventListener('pointerdown', e => { grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
+cvs.addEventListener('pointermove', e => { if (grab) place(e) });
+cvs.addEventListener('pointerup', () => { grab = false; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

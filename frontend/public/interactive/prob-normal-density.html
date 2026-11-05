@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Normal density curve</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lm"></span><input id="m" type="range" min="-2" max="2" step="0.01" value="0" aria-label="location parameter mu"></div>
+<div class="controls"><span class="n" id="ls"></span><input id="s" type="range" min="0.55" max="2" step="0.01" value="1" aria-label="scale parameter sigma"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="The normal density deforms continuously with its parameters"></canvas></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('lm'), '\\mu'); K(document.getElementById('ls'), '\\sigma');
+const sm = document.getElementById('m'), ss = document.getElementById('s');
+const phi = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+const st = { m: 0, s: 1 }; let intro = 0;
+const v = P.view([-4.6, 4.6, -0.02, 0.76], { l: 14, r: 14, t: 16, b: 30 });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; intro = Math.min(1, intro + dt / 1.4); const ip = P.ease.out(intro);
+  const mv = P.approach(st, 'm', +sm.value, dt, 8) | P.approach(st, 's', +ss.value, dt, 8);
+  const { m, s } = st, f = x => phi(x, m, s), base = x => [v.X(x), v.Y(0)];
+  P.axes(ctx, v, { x: true });
+  // 灰色参照：标准正态
+  P.path(ctx, P.curve(v, x => phi(x, 0, 1)), { color: C.mute, width: 1.2, alpha: .55, dash: [4, 4] });
+  // μ±σ 之间浅蓝填充
+  const a = m - s, b = m + s, top = P.curve(v, f, a, b, 160);
+  P.fill(ctx, top, [base(b), base(a)].reverse(), P.rgba(C.blue, .2 * P.seg(intro, .45, 1)));
+  // 对称轴
+  P.path(ctx, [base(m), [v.X(m), v.Y(f(m))]], { color: C.mute, width: 1, dash: [3, 4], alpha: .8 });
+  for (const x of [a, b]) P.path(ctx, [base(x), [v.X(x), v.Y(f(x))]], { color: C.blue, width: 1, alpha: .6 });
+  P.path(ctx, P.curve(v, f), { color: C.accent, width: 2.6, halo: 3, progress: ip });
+  const pop = P.ease.back(P.seg(intro, .55, 1));
+  for (const x of [a, b]) { glow(ctx, v.X(x), v.Y(f(x)), 12 * pop, C.warm, .15); P.dot(ctx, v.X(x), v.Y(f(x)), { r: 4.6, color: C.warm, scale: pop }) }
+  glow(ctx, v.X(m), v.Y(f(m)), 10 * pop, C.accent, .12); P.dot(ctx, v.X(m), v.Y(f(m)), { r: 4, color: C.accent, scale: pop });
+  const lo = v.Y(0) + 15;
+  lab.set('m', '\\mu', v.X(m), lo, { color: C.soft });
+  lab.set('a', '\\mu-\\sigma', v.X(a), lo, { color: C.warm, alpha: P.clamp((s - .6) / .25, 0, 1) * P.seg(intro, .6, 1) });
+  lab.set('b', '\\mu+\\sigma', v.X(b), lo, { color: C.warm, alpha: P.clamp((s - .6) / .25, 0, 1) * P.seg(intro, .6, 1) });
+  lab.end();
+  return mv || intro < 1;
+});
+for (const el of [sm, ss]) el.addEventListener('input', cv.kick);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

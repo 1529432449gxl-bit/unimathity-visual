@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Change of argument along a curve</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A point moves along a curve while the ray from the origin accumulates the turned angle"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const r2 = Math.SQRT2, q = Math.PI / 4;
+// 三条从 1-i 到 1+i 的曲线，以辐角 φ(t) 与模 ρ(t) 给出
+const CURVES = [
+  { tex: 'L_1', f: t => { const p = -q + 2 * q * t; return [r2 + .55 * Math.sin(Math.PI * t), p] } },
+  { tex: 'L_2', f: t => { const p = -q - 6 * q * t; return [r2 - .2 * Math.sin(Math.PI * t) + .25 * Math.sin(3 * Math.PI * t), p] } },
+  { tex: 'L_3', f: t => { const p = -q + (2 * q + 2 * Math.PI) * t; return [r2 + .9 * Math.sin(Math.PI * t) * Math.sin(Math.PI * t * 2.2) * .9 - .35 * Math.sin(Math.PI * t), p] } },
+];
+let mode = 0, t = 0, playing = true, hold = 0;
+const box = document.getElementById('modes');
+CURVES.forEach((c, i) => { const b = document.createElement('button'); b.type = 'button'; K(b, c.tex); b.setAttribute('aria-pressed', String(i === 0));
+  b.onclick = () => { mode = i; t = 0; hold = 0; playing = true; sync(); box.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); cv.kick() }; box.appendChild(b) });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { if (t < 1) t = Math.min(1, t + dt / 5.5); else { hold += dt; if (hold > 2) { hold = 0; mode = (mode + 1) % 3; t = 0; box.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', String(j === mode))) } } }
+  const s = Math.min(w / 5.6, h / 4.6), ox = w / 2 - s * .2, oy = h / 2, S = ([x, y]) => [ox + x * s, oy - y * s];
+  const pol = ([rho, phi]) => [rho * Math.cos(phi), rho * Math.sin(phi)];
+  P.path(ctx, [S([-2.4, 0]), S([2.9, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.2]), S([0, 2.2])], { color: C.rule, width: 1 });
+  const c = CURVES[mode], N = 300, all = [], done = [];
+  for (let k = 0; k <= N; k++) { const u = k / N, pt = S(pol(c.f(u))); all.push(pt); if (u <= t) done.push(pt) }
+  P.path(ctx, all, { color: C.accent, width: 1.4, alpha: .25 });
+  P.path(ctx, done, { color: C.accent, width: 2.4 });
+  // 累计的辐角：半径缓慢增大的螺旋弧，避免多圈重叠
+  const [, p0] = c.f(0), [rho, p] = c.f(t), sp = [];
+  for (let k = 0; k <= 160; k++) { const ph = p0 + (p - p0) * k / 160, rr = .36 + .09 * Math.abs(ph - p0) / Math.PI; sp.push(S([rr * Math.cos(ph), rr * Math.sin(ph)])) }
+  P.path(ctx, sp, { color: C.warm, width: 2 });
+  const end = pol([rho, p]);
+  P.path(ctx, [S([0, 0]), S(end)], { color: C.warm, width: 1.6, alpha: .85 });
+  P.path(ctx, [S([0, 0]), S(pol(c.f(0)))], { color: C.mute, width: 1, dash: [3, 4] });
+  P.dot(ctx, ...S(pol(c.f(0))), { r: 4, color: C.accent }); P.dot(ctx, ...S(pol(c.f(1))), { r: 4, color: C.accent });
+  P.dot(ctx, ...S(end), { r: 5.5, color: C.warm });
+  P.dot(ctx, ...S([0, 0]), { r: 3, color: C.soft, ring: false });
+  lab.set('a', '1-i', ...S(pol(c.f(0))), { color: C.accent, dx: 24, dy: 8, size: 13 });
+  lab.set('b', '1+i', ...S(pol(c.f(1))), { color: C.accent, dx: 24, dy: -8, size: 13 });
+  lab.set('o', '0', ...S([0, 0]), { color: C.soft, dx: -9, dy: 11, size: 12 });
+  lab.end();
+  return playing;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+function sync() { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) }
+pb.onclick = () => { playing = !playing; if (playing && t >= 1) t = 0; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { t = 0; hold = 0; cv.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

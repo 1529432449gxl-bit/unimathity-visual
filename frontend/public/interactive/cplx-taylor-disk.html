@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Disk of convergence of a Taylor series</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:none}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the center; the disk of convergence reaches the nearest singularity"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+katex.render('f(z)=\\dfrac{1}{1+z^2}', document.getElementById('fx').appendChild(document.createElement('div')), { throwOnError: false });
+const SING = [[0, 1], [0, -1]];
+const st = { c: [-1.2, .3], r: 0 }, tgt = { c: [-1.2, .3] };
+let playing = true, clock = 0, grab = false, S, s0;
+const lab = P.labels(document.getElementById('stage'));
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; const a = clock * .32; tgt.c = [1.5 * Math.cos(a), .45 * Math.sin(2 * a) - .05] }
+  const m1 = P.approach(st, 'c', tgt.c, dt, playing ? 6 : 14);
+  const ds = SING.map(p => dist(st.c, p)), R = Math.min(...ds), near = ds[0] <= ds[1] ? 0 : 1;
+  const m2 = P.approach(st, 'r', R, dt, 7);
+  s0 = Math.min(w / 6.2, h / 4.4); const ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s0, oy - q[1] * s0];
+  P.path(ctx, [S([-3.1, 0]), S([3.1, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.2]), S([0, 2.2])], { color: C.rule, width: 1 });
+  const circ = []; for (let k = 0; k <= 160; k++) { const a = 2 * Math.PI * k / 160; circ.push(S([st.c[0] + st.r * Math.cos(a), st.c[1] + st.r * Math.sin(a)])) }
+  ctx.save(); ctx.beginPath(); circ.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.blue, .14); ctx.fill(); ctx.restore();
+  P.path(ctx, circ, { color: C.blue, width: 2 });
+  SING.forEach((p, k) => P.path(ctx, [S(st.c), S(p)], { color: k === near ? C.warm : C.mute, width: k === near ? 1.6 : 1, dash: k === near ? null : [3, 4], alpha: k === near ? .9 : .6 }));
+  SING.forEach((p, k) => { ctx.save(); const q = S(p); ctx.beginPath(); ctx.arc(q[0], q[1], 5.5, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.stroke(); ctx.restore() });
+  P.dot(ctx, ...S(st.c), { r: 6, color: C.accent });
+  lab.set('z0', 'z_0', ...S(st.c), { color: C.accent, dy: 18 });
+  lab.set('i', 'i', ...S(SING[0]), { color: C.warm, dx: 14, dy: -10, size: 13 });
+  lab.set('mi', '-i', ...S(SING[1]), { color: C.warm, dx: 16, dy: 10, size: 13 });
+  lab.end();
+  return playing || m1 || m2 || grab;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = Math.acos(P.clamp(st.c[0] / 1.5, -1, 1)) / .32; sync(); cv.kick() };
+const toZ = e => { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left - r.width / 2) / s0, -(e.clientY - r.top - r.height / 2) / s0] };
+const place = e => { let q = toZ(e); q = [P.clamp(q[0], -2.8, 2.8), P.clamp(q[1], -1.9, 1.9)]; for (const p of SING) { const d = dist(q, p); if (d < .12) q = [p[0] + (q[0] - p[0]) / (d || 1) * .12, p[1] + (q[1] - p[1]) / (d || 1) * .12] } tgt.c = q; cv.kick() };
+cvs.addEventListener('pointerdown', e => { grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
+cvs.addEventListener('pointermove', e => { if (grab) place(e) });
+cvs.addEventListener('pointerup', () => { grab = false });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

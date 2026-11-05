@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Central limit theorem</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Density of the standardized sum approaching the standard normal density as n grows"></canvas></div>
+<div class="legend" id="leg"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const M = 300, A = -3.6, B = 3.6;
+const lgam = x => { if (x < 7) { let r = 0; while (x < 7) { r -= Math.log(x); x++ } return r + lgam(x) } return (x - .5) * Math.log(x) - x + .5 * Math.log(2 * Math.PI) + 1 / (12 * x) - 1 / (360 * x ** 3) };
+const binom = (n, k) => Math.exp(lgam(n + 1) - lgam(k + 1) - lgam(n - k + 1));
+// 均匀总体：欧文-霍尔密度；指数总体：伽马密度。都化为标准化和 Y_n^* 的密度
+const irwin = (n, s) => { if (s < 0 || s > n) return 0; if (n === 1) return 1; let t = 0; for (let k = 0; k <= Math.floor(s); k++) t += (k % 2 ? -1 : 1) * binom(n, k) * Math.pow(s - k, n - 1); return t / Math.exp(lgam(n)) };
+const MODES = [
+  { tex: 'U(0,1)', NS: [1, 2, 3, 4, 6, 8, 12], f: (n, y) => { const sd = Math.sqrt(n / 12); return irwin(n, n / 2 + y * sd) * sd } },
+  { tex: 'Exp(1)', NS: [1, 2, 3, 5, 8, 15, 30, 80], f: (n, y) => { const s = n + y * Math.sqrt(n); return s <= 0 ? 0 : Math.exp((n - 1) * Math.log(s) - s - lgam(n)) * Math.sqrt(n) } },
+];
+const phi = y => Math.exp(-y * y / 2) / Math.sqrt(2 * Math.PI);
+let mode = 0;
+const st = { y: new Array(M + 1).fill(0) };
+const xs = Array.from({ length: M + 1 }, (_, j) => A + (B - A) * j / M);
+const box = document.getElementById('modes');
+MODES.forEach((m, i) => { const b = document.createElement('button'); b.type = 'button'; K(b, m.tex); b.setAttribute('aria-pressed', String(i === 0));
+  b.onclick = () => { mode = i; box.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); player.reset(MODES[i].NS.length); autoplay() }; box.appendChild(b) });
+document.getElementById('leg').innerHTML = `<span class="key" style="--c:${C.accent}"></span><span id="k1"></span><span class="key dash" style="--c:${C.mute}"></span><span id="k2"></span>`;
+K(document.getElementById('k1'), 'Y_n^*'); K(document.getElementById('k2'), 'N(0,1)');
+const v = P.view([A, B, -.02, 1.05], { l: 14, r: 14, t: 14, b: 22 });
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; const moving = player.tick(dt), m = MODES[mode], n = m.NS[player.i];
+  const mv = P.approach(st, 'y', xs.map(y => Math.min(1.2, m.f(n, y))), dt, 6);
+  const top = Math.max(.42, ...st.y) * 1.12; v.aim([A, B, -top * .02, top]); const mc = v.step(dt, 3);
+  P.axes(ctx, v, { x: true });
+  const pts = xs.map((x, j) => [v.X(x), v.Y(st.y[j])]);
+  P.fill(ctx, pts, xs.map(x => [v.X(x), v.Y(0)]), P.rgba(C.blue, .14));
+  P.path(ctx, P.curve(v, phi), { color: C.mute, width: 1.4, dash: [5, 4] });
+  P.path(ctx, pts, { color: C.accent, width: 2.6, halo: 3 });
+  let jm = 0; st.y.forEach((y, j) => { if (y > st.y[jm]) jm = j }); glow(ctx, ...pts[jm], 12, C.accent, .14); P.dot(ctx, ...pts[jm], { r: 4.2, color: C.accent });
+  return moving || mv || mc;
+});
+player = P.stepper(document.getElementById('nav'), { count: MODES[0].NS.length, dur: 1.1, hold: .7, kick: cv.kick });
+const autoplay = () => { player.go(0, false); player.playing = true; player.go(0, false); player.wait = .9; cv.kick() };
+autoplay();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

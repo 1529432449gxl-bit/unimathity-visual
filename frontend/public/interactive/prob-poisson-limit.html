@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Poisson limit theorem</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="ll"></span><input id="lam" type="range" min="1" max="6" step="0.01" value="3" aria-label="lambda"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Binomial probabilities approach Poisson probabilities as n grows"></canvas></div>
+<div class="legend" id="leg"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('ll'), '\\lambda');
+document.getElementById('leg').innerHTML = `<span class="key" style="--c:${C.accent}"></span><span id="k1"></span><span style="display:inline-block;width:10px;height:10px;border:1.8px solid ${C.warm};border-radius:50%;margin:0 6px 0 4px"></span><span id="k2"></span>`;
+K(document.getElementById('k1'), 'b\\!\\left(n,\\tfrac{\\lambda}{n}\\right)'); K(document.getElementById('k2'), 'P(\\lambda)');
+const NS = [7, 8, 10, 12, 15, 20, 30, 50, 100, 400], KM = 15;
+const sl = document.getElementById('lam');
+const lgam = x => { // Stirling 级数，x>=1 足够精确
+  if (x < 7) { let r = 0; while (x < 7) { r -= Math.log(x); x++ } return r + lgam(x) }
+  return (x - .5) * Math.log(x) - x + .5 * Math.log(2 * Math.PI) + 1 / (12 * x) - 1 / (360 * x ** 3) };
+const binom = (n, p, k) => k > n ? 0 : Math.exp(lgam(n + 1) - lgam(k + 1) - lgam(n - k + 1) + k * Math.log(p) + (n - k) * Math.log1p(-p));
+const pois = (l, k) => Math.exp(-l + k * Math.log(l) - lgam(k + 1));
+const st = { b: new Array(KM + 1).fill(0), l: 3 };
+const v = P.view([-.8, KM + .8, -.015, .42], { l: 14, r: 14, t: 18, b: 26 });
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; const moving = player.tick(dt);
+  const ml = P.approach(st, 'l', +sl.value, dt, 8), n = NS[player.i];
+  const tgt = []; for (let k = 0; k <= KM; k++) tgt.push(binom(n, st.l / n, k));
+  const mb = P.approach(st, 'b', tgt, dt, 5);
+  P.axes(ctx, v, { x: true, ticks: [0, 5, 10, 15] });
+  for (let k = 0; k <= KM; k++) {
+    const x = v.X(k), y = v.Y(st.b[k]), yp = v.Y(pois(st.l, k));
+    // 竖线顶端与橙色圆越接近，光环越亮
+    const close = 1 - P.clamp(Math.abs(y - yp) / 14, 0, 1);
+    glow(ctx, x, yp, 13, C.warm, .16 * close);
+    P.path(ctx, [[x, v.Y(0)], [x, y]], { color: C.accent, width: Math.min(7, Math.max(3, w / 90)), halo: 2 });
+    ctx.save(); ctx.beginPath(); ctx.arc(x, yp, 4.8, 0, 7); ctx.fillStyle = P.rgba(C.bg, .85); ctx.fill(); ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+  }
+  return moving || ml || mb;
+});
+player = P.stepper(document.getElementById('nav'), { count: NS.length, dur: .9, hold: .55, kick: cv.kick });
+sl.addEventListener('input', cv.kick);
+player.playing = true; player.wait = .6; player.go(0, false); player.playing = true; player.wait = .8;
+document.querySelector('#nav .play').textContent = 'Pause'; document.querySelector('#nav .play').setAttribute('aria-pressed', 'true');
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

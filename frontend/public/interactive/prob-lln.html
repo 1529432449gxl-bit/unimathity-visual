@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bernoulli law of large numbers</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="le"></span><input id="e" type="range" min="0.03" max="0.2" step="0.001" value="0.08" aria-label="epsilon"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Frequency paths settle inside the band around p"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('le'), '\\varepsilon');
+const p = .4, NMAX = 6000, PATHS = 7, DUR = 9;
+let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+let paths = [], clock = 0, playing = true;
+const LG = Math.log10(NMAX), L0 = Math.log10(5);
+function round() { seed = 3 + Math.floor(Math.random() * 1e6); clock = 0; paths = [];
+  for (let k = 0; k < PATHS; k++) { const f = []; let s = 0; for (let n = 1; n <= NMAX; n++) { s += rnd() < p ? 1 : 0; f.push(s / n) } paths.push(f) } }
+round();
+// 对数横轴上的采样点
+const ns = []; for (let i = 0; i <= 420; i++) { const n = Math.round(Math.pow(10, L0 + (LG - L0) * i / 420)); if (!ns.length || n > ns[ns.length - 1]) ns.push(n) }
+const sl = document.getElementById('e'), st = { e: +sl.value };
+const v = P.view([L0, LG, 0, 1], { l: 26, r: 14, t: 12, b: 16 });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; if (playing) clock += dt; if (clock > DUR + 3) round();
+  const me = P.approach(st, 'e', +sl.value, dt, 9), e = st.e, prog = P.ease.out(P.seg(clock, 0, DUR)), fade = 1 - P.seg(clock, DUR + 2.2, DUR + 3);
+  P.fill(ctx, [[v.X(L0), v.Y(p + e)], [v.X(LG), v.Y(p + e)]], [[v.X(L0), v.Y(p - e)], [v.X(LG), v.Y(p - e)]], P.rgba(C.blue, .16));
+  P.path(ctx, [[v.X(L0), v.Y(p)], [v.X(LG), v.Y(p)]], { color: C.mute, width: 1, dash: [4, 4] });
+  P.path(ctx, [[v.X(L0), v.Y(0)], [v.X(LG), v.Y(0)]], { color: C.rule, width: 1 });
+  P.path(ctx, [[v.X(L0), v.Y(0)], [v.X(L0), v.Y(1)]], { color: C.rule, width: 1 });
+  const upto = prog * ns.length;
+  for (const f of paths) {
+    let run = [], inside = null;
+    const flush = () => { if (run.length > 1) P.path(ctx, run, { color: inside ? C.accent : C.warm, width: inside ? 1.6 : 1.8, alpha: fade * (inside ? .75 : .95) }) };
+    for (let i = 0; i < Math.min(ns.length, upto); i++) {
+      const n = ns[i], y = f[n - 1], pt = [v.X(Math.log10(n)), v.Y(y)], ins = Math.abs(y - p) <= e;
+      if (inside === null) inside = ins;
+      if (ins !== inside) { run.push(pt); flush(); run = [pt]; inside = ins } else run.push(pt);
+    }
+    flush();
+    const i = Math.min(ns.length - 1, Math.floor(upto)); if (upto >= 1 && prog < 1) glow(ctx, v.X(Math.log10(ns[i])), v.Y(f[ns[i] - 1]), 9, Math.abs(f[ns[i] - 1] - p) <= e ? C.accent : C.warm, .16 * fade); if (upto >= 1) P.dot(ctx, v.X(Math.log10(ns[i])), v.Y(f[ns[i] - 1]), { r: 3.6, color: Math.abs(f[ns[i] - 1] - p) <= e ? C.accent : C.warm, alpha: fade });
+  }
+  lab.set('p', 'p', v.X(L0) - 12, v.Y(p), { color: C.soft, size: 13 });
+  lab.set('n', 'n', v.X(LG) - 4, v.Y(0) - 10, { color: C.soft, size: 13 });
+  lab.set('pe', 'p+\\varepsilon', v.X(LG) - 26, v.Y(p + e) - 10, { color: C.blue, size: 12 });
+  lab.end();
+  return playing || me;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { round(); cv.kick() };
+sl.addEventListener('input', cv.kick);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

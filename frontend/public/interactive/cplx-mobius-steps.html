@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Decomposing a Mobius transformation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:320px}}</style></head>
+<body><main>
+<div class="fx" id="fx"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A Mobius transformation acts in four steps on circles and a line; each step keeps circles and lines"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 实例：w=(z+i)/(z-1)=1+(1+i)/(z-1)，按 平移、倒数、旋转伸缩、平移 四步
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const lam = [1, 1], la = Math.atan2(lam[1], lam[0]), lr = Math.hypot(...lam);
+const STEPS = [
+  { tex: 'z', go: (z, s) => z },
+  { tex: 'w_1=z+\\dfrac dc', go: (z, s) => [z[0] - s, z[1]] },
+  { tex: 'w_2=\\dfrac1{w_1}', go: (z, s) => { const r2 = z[0] * z[0] + z[1] * z[1]; if (s <= .5) { const g = Math.pow(r2, -2 * s); return [z[0] * g, z[1] * g] } const q = [z[0] / r2, z[1] / r2], u = (s - .5) * 2; return [q[0], q[1] * (1 - 2 * u)] } },
+  { tex: 'w_3=-\\dfrac{ad-bc}{c^2}\\,w_2', go: (z, s) => { const r = Math.pow(lr, s), a = la * s; return mul(z, [r * Math.cos(a), r * Math.sin(a)]) } },
+  { tex: 'w=\\dfrac ac+w_3', go: (z, s) => [z[0] + s, z[1]] },
+];
+// 对象：两个圆周与一条直线（参数化，直线取足够长）
+const OBJ = [
+  { col: '#223056', pts: Array.from({ length: 361 }, (_, k) => { const a = 2 * Math.PI * k / 360; return [.55 * Math.cos(a), .55 * Math.sin(a)] }) },
+  { col: '#3f6e8c', pts: Array.from({ length: 721 }, (_, k) => { const a = -Math.PI + 2 * Math.PI * k / 720; return [-.5 + 1.5 * Math.cos(a), 1.5 * Math.sin(a)] }) },
+  { col: '#ad6844', pts: Array.from({ length: 801 }, (_, k) => { const x = -60 + 120 * Math.sinh(4 * (k / 800 - .5)) / Math.sinh(2); return [x, .7] }) },
+];
+const fx = document.getElementById('fx');
+const formula = i => { fx.innerHTML = '<div></div>'; K(fx.children[0], STEPS[i].tex) };
+const image = (z, i, p) => { let q = z; for (let k = 1; k <= i; k++) q = STEPS[k].go(q, k < i ? 1 : p); return q };
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt), i = player.i, p = P.ease.inOut(player.p);
+  const s = Math.min(w / 7.4, h / 5), ox = w / 2, oy = h / 2, S = q => [ox + q[0] * s, oy - q[1] * s];
+  P.path(ctx, [S([-3.8, 0]), S([3.8, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.6]), S([0, 2.6])], { color: C.rule, width: 1 });
+  for (const o of OBJ) {
+    let run = [], prev = null;
+    const flush = () => { if (run.length > 1) P.path(ctx, run, { color: o.col, width: 2.2 }); run = [] };
+    for (const z of o.pts) { const q = image(z, i, p); if (!Number.isFinite(q[0]) || Math.hypot(...q) > 40) { flush(); prev = null; continue } const pt = S(q);
+      if (prev && Math.hypot(pt[0] - prev[0], pt[1] - prev[1]) > 160) flush(); run.push(pt); prev = pt }
+    flush();
+  }
+  return moving;
+});
+player = P.stepper(document.getElementById('nav'), { count: STEPS.length, dur: 1.8, hold: 1, kick: cv.kick, onChange: s => formula(s.i) });
+Steady.sweep([fx], STEPS.length, formula, () => formula(0));
+player.playing = true; player.go(0, false); player.wait = 1;
+P.reportHeight(document.querySelector('main'));
+</script>
+<script src="vendor/steady.js"></script></body></html>

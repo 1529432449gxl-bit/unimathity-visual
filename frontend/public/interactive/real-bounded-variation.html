@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bounded variation as a difference of increasing functions</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:320px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A sweep line draws f, its total variation function and their difference; both of the latter increase"></canvas></div>
+<div class="legend" id="leg"></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+document.getElementById('leg').innerHTML = [[C.accent, 'f'], [C.blue, '\\pi(x)'], [C.warm, '\\pi(x)-f(x)']].map(([c], i) => `<span class="key" style="--c:${c}"></span><span id="k${i}"></span>`).join('');
+[['f'], ['\\pi(x)'], ['\\pi(x)-f(x)']].forEach(([t], i) => K(document.getElementById('k' + i), t));
+const f = x => .55 * Math.sin(3.2 * Math.PI * x) + .5 * x;
+const M = 600, xs = [], F = [], Pi = [];
+let acc = 0; for (let j = 0; j <= M; j++) { const x = j / M; xs.push(x); F.push(f(x)); if (j) acc += Math.abs(F[j] - F[j - 1]); Pi.push(acc) }
+let t = 0, playing = true, hold = 0;
+const v = P.view([0, 1, -.75, Math.max(...Pi) + .15], { l: 16, r: 16, t: 12, b: 18 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; if (playing) { if (t < 1) t = Math.min(1, t + dt / 7); else { hold += dt; if (hold > 2) { hold = 0; t = 0 } } }
+  const k = Math.round(P.ease.inOut(t) * M);
+  P.axes(ctx, v, { x: true });
+  const line = (arr, col, wd) => { const all = xs.map((x, j) => [v.X(x), v.Y(arr[j])]); P.path(ctx, all, { color: col, width: 1.2, alpha: .14 }); P.path(ctx, all.slice(0, k + 1), { color: col, width: wd, halo: 2 }); return all[k] };
+  const rising = k > 0 && F[k] >= F[k - 1];
+  const a = line(F, C.accent, 2.4), b = line(Pi, C.blue, 2.2), c = line(Pi.map((p, j) => p - F[j]), C.warm, 2.2);
+  P.path(ctx, [[v.X(xs[k]), v.Y(v.b[2])], [v.X(xs[k]), v.Y(v.b[3])]], { color: C.mute, width: 1, dash: [3, 4] });
+  P.dot(ctx, ...a, { r: 4.5, color: C.accent }); P.dot(ctx, ...b, { r: rising ? 6 : 4, color: C.blue }); P.dot(ctx, ...c, { r: rising ? 4 : 6, color: C.warm });
+  return playing;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing && t >= 1) t = 0; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { t = 0; hold = 0; cv.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

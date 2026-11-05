@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Correlation coefficient</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:320px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lr"></span><input id="r" type="range" min="-1" max="1" step="0.005" value="0" aria-label="Correlation coefficient"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Scatter cloud and contour ellipses deform as the correlation coefficient changes"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('lr'), '\\rho');
+let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()) };
+const pts = Array.from({ length: 360 }, () => [gauss(), gauss()]);
+const sl = document.getElementById('r'), st = { r: 0 };
+let playing = true, clock = 0;
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; sl.value = (Math.sin(clock * .45) * 1).toFixed(3) }
+  const mv = P.approach(st, 'r', +sl.value, dt, playing ? 30 : 9), r = st.r, q = Math.sqrt(Math.max(0, 1 - r * r));
+  const s = Math.min(w, h) / 7, ox = w / 2, oy = h / 2, X = x => ox + x * s, Y = y => oy - y * s;
+  P.path(ctx, [[X(-3.6), Y(0)], [X(3.6), Y(0)]], { color: C.rule, width: 1 });
+  P.path(ctx, [[X(0), Y(-3.4)], [X(0), Y(3.4)]], { color: C.rule, width: 1 });
+  // 主轴 y=±x，长度与对应特征值的平方根成比例
+  const a1 = Math.sqrt(1 + r) * 2.6, a2 = Math.sqrt(Math.max(0, 1 - r)) * 2.6, c = Math.SQRT1_2;
+  P.path(ctx, [[X(-a1 * c), Y(-a1 * c)], [X(a1 * c), Y(a1 * c)]], { color: C.mute, width: 1, alpha: .8 });
+  P.path(ctx, [[X(-a2 * c), Y(a2 * c)], [X(a2 * c), Y(-a2 * c)]], { color: C.mute, width: 1, alpha: .8 });
+  for (const [u, v] of pts) { const yv = r * u + q * v, near = Math.exp(-(u * u - 2 * r * u * yv + yv * yv) / (2 * Math.max(.02, 1 - r * r))); P.dot(ctx, X(u), Y(yv), { r: 1.8 + .8 * near, color: C.blue, ring: false, alpha: .35 + .4 * near }) }
+  for (const lev of [1, 2]) {
+    const e = []; for (let k = 0; k <= 160; k++) { const t = 2 * Math.PI * k / 160, u = lev * Math.cos(t), v = lev * Math.sin(t); e.push([X(u), Y(r * u + q * v)]) }
+    P.path(ctx, e, { color: C.accent, width: lev === 1 ? 2.6 : 1.6, alpha: lev === 1 ? 1 : .6, halo: lev === 1 ? 3 : 0 });
+  }
+  lab.set('x', 'X', X(3.5), Y(0) + 13, { color: C.soft, size: 13 });
+  lab.set('y', 'Y', X(0) + 12, Y(3.3), { color: C.soft, size: 13 });
+  lab.end();
+  return playing || mv;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = Math.asin(P.clamp(+sl.value, -1, 1)) / .45; sync(); cv.kick() };
+sl.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

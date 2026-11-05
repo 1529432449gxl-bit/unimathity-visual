@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Density under a monotone transform</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px;touch-action:none}@media(max-width:520px){canvas#cv{height:360px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lx"></span><input id="x" type="range" min="-1.9" max="1.7" step="0.005" value="-0.6" aria-label="strip position"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A strip at x is carried by y = g(x) to a strip at y with the same probability"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('lx'), 'x');
+const k = .75, g = x => Math.exp(k * x), h = y => Math.log(y) / k;
+const pX = x => Math.exp(-x * x / (2 * .7 * .7)) / (Math.sqrt(2 * Math.PI) * .7);
+const pY = y => y > 0 ? pX(h(y)) / (k * y) : 0;
+const X0 = -2.3, X1 = 2.1, Y0 = 0, Y1 = g(X1) * 1.04, DX = .2;
+const sl = document.getElementById('x'), st = { x: +sl.value }; let playing = true, clock = 0;
+const lab = P.labels(document.getElementById('stage'));
+let geo;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h0, dt) => {
+  if (playing) { clock += dt; sl.value = (-.1 + 1.55 * Math.sin(clock * .42 - .4)).toFixed(3) }
+  const mv = P.approach(st, 'x', +sl.value, dt, playing ? 30 : 10);
+  // 版面：右上为曲线 y=g(x)，正下方为 p_X（向下），左侧为 p_Y（向左）
+  const L = Math.max(70, w * .24), B = Math.max(70, h0 * .26), T = 14, R = 16;
+  const X = x => L + 8 + (x - X0) / (X1 - X0) * (w - L - 8 - R), Y = y => T + (Y1 - y) / (Y1 - Y0) * (h0 - B - 8 - T);
+  const ax = Y(0), ay = X(X0) - 0;
+  const px = v => ax + 8 + v / .62 * (B - 16), py = v => L - v / .95 * (L - 18);
+  geo = { X, Y, L };
+  // 坐标轴
+  P.path(ctx, [[X(X0), ax], [X(X1), ax]], { color: C.rule, width: 1 });
+  P.path(ctx, [[ay, Y(0)], [ay, Y(Y1)]], { color: C.rule, width: 1 });
+  // p_X 向下画，p_Y 向左画
+  const cx = [], cy = [];
+  for (let i = 0; i <= 200; i++) { const x = X0 + (X1 - X0) * i / 200; cx.push([X(x), px(pX(x))]) }
+  for (let i = 1; i <= 220; i++) { const y = Y0 + (Y1 - Y0) * i / 220; cy.push([py(pY(y)), Y(y)]) }
+  const a = st.x, b = a + DX, ya = g(a), yb = g(b);
+  // x 窄条
+  const sx = []; for (let i = 0; i <= 12; i++) { const x = a + DX * i / 12; sx.push([X(x), px(pX(x))]) }
+  P.fill(ctx, sx, [[X(a), ax + 8], [X(b), ax + 8]], P.rgba(C.warm, .35));
+  const sy = []; for (let i = 0; i <= 12; i++) { const y = ya + (yb - ya) * i / 12; sy.push([py(pY(y)), Y(y)]) }
+  P.fill(ctx, sy, [[L, Y(ya)], [L, Y(yb)]], P.rgba(C.warm, .35));
+  // 折射线：竖直到曲线，再水平到 y 轴
+  for (const [x, y] of [[a, ya], [b, yb]]) {
+    P.path(ctx, [[X(x), ax + 8], [X(x), Y(y)], [L, Y(y)]], { color: C.warm, width: 1, alpha: .75, dash: [3, 3] });
+  }
+  // 曲线与条带在曲线上的一段
+  P.path(ctx, P.curve({ X, Y, b: [X0, X1], w }, g, X0, X1, 200), { color: C.accent, width: 2.6, halo: 3 });
+  P.path(ctx, cx, { color: C.accent, width: 2.2, halo: 2 });
+  P.path(ctx, cy, { color: C.blue, width: 2.2, halo: 2 });
+  const seg = []; for (let i = 0; i <= 10; i++) { const x = a + DX * i / 10; seg.push([X(x), Y(g(x))]) }
+  P.path(ctx, seg, { color: C.warm, width: 3.4 });
+  const mid = [X(a + DX / 2), Y(g(a + DX / 2))]; glow(ctx, ...mid, 14, C.warm, .15); P.dot(ctx, ...mid, { r: 4.5, color: C.warm });
+  lab.set('g', 'y=g(x)', X(1.55), Y(g(1.55)) - 4, { color: C.accent, dx: -46 });
+  lab.set('px', 'p_X(x)', X(X1) - 26, px(.08) + 14, { color: C.accent, size: 13 });
+  lab.set('py', 'p_Y(y)', py(.05) + 4, Y(Y1) + 12, { color: C.blue, size: 13, dx: 18 });
+  lab.set('x', 'x', X(a), ax - 12, { color: C.warm, size: 13, dx: -6 });
+  lab.set('y', 'y', L + 12, Y(ya) + 2, { color: C.warm, size: 13, dy: 8 });
+  lab.end();
+  return mv || playing;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = (Math.asin(P.clamp((+sl.value + .1) / 1.55, -1, 1)) + .4) / .42; sync(); cv.kick() };
+sl.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+// 在画布上横向拖动也能移动窄条
+const cvs = document.getElementById('cv'); let dragging = false;
+const setFrom = e => { const r = cvs.getBoundingClientRect(), x = e.clientX - r.left; const t = (x - geo.X(X0)) / (geo.X(X1) - geo.X(X0)); sl.value = P.clamp(X0 + t * (X1 - X0) - DX / 2, +sl.min, +sl.max); cv.kick() };
+cvs.addEventListener('pointerdown', e => { dragging = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); setFrom(e) });
+cvs.addEventListener('pointermove', e => { if (dragging) setFrom(e) });
+cvs.addEventListener('pointerup', () => dragging = false);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

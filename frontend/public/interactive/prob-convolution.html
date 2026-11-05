@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Convolution formula</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px;touch-action:none}@media(max-width:520px){canvas#cv{height:350px}}</style></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A flipped and shifted density sweeps across another; the overlap area traces the density of the sum"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const U = x => x >= 0 && x <= 1 ? 1 : 0, E = x => x >= 0 ? Math.exp(-x) : 0;
+const MODES = [
+  { tex: 'U(0,1)+U(0,1)', pX: U, pY: U, pZ: z => z < 0 ? 0 : z < 1 ? z : z < 2 ? 2 - z : 0, a: -1.2, b: 3.2, z0: -.4, z1: 2.6, ymax: 1.25 },
+  { tex: 'U(0,1)+Exp(1)', pX: U, pY: E, pZ: z => z < 0 ? 0 : z < 1 ? 1 - Math.exp(-z) : Math.exp(1 - z) - Math.exp(-z), a: -1.2, b: 4.6, z0: -.4, z1: 4.2, ymax: 1.25 },
+];
+let mode = 0, z = MODES[0].z0, playing = true, hold = 0, fadeIn = 0;
+const box = document.getElementById('modes');
+MODES.forEach((m, i) => { const b = document.createElement('button'); b.type = 'button'; K(b, m.tex); b.setAttribute('aria-pressed', String(i === 0));
+  b.onclick = () => { mode = i; z = MODES[i].z0; fadeIn = 0; box.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); cv.kick() }; box.appendChild(b) });
+const lab = P.labels(document.getElementById('stage'));
+let vt;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const m = MODES[mode];
+  if (playing) { if (z < m.z1) z = Math.min(m.z1, z + dt * .55); else { hold += dt; if (hold > 1.6) { hold = 0; z = m.z0 } } }
+  fadeIn = Math.min(1, fadeIn + dt / .6); ctx.globalAlpha = P.ease.out(fadeIn);
+  const gap = 18, h1 = (h - gap) * .52;
+  vt = P.view([m.a, m.b, -.06, m.ymax], { l: 14, r: 14, t: 10, b: 8 }); vt.w = w; vt.h = h1;
+  const vb = P.view([m.a, m.b, -.04, 1.15], { l: 14, r: 14, t: 6, b: 24 }); vb.w = w; vb.h = h - h1 - gap;
+  const off = h1 + gap;
+  const Xs = x => vt.X(x);
+  // 上图：p_X、p_Y(z-x)、乘积
+  P.axes(ctx, vt, { x: true });
+  const f = x => m.pX(x), g = x => m.pY(z - x), prod = x => f(x) * g(x);
+  const N = 500, top = [], bot = [];
+  for (let i = 0; i <= N; i++) { const x = m.a + (m.b - m.a) * i / N; top.push([Xs(x), vt.Y(prod(x))]); bot.push([Xs(x), vt.Y(0)]) }
+  P.fill(ctx, top, bot, P.rgba(C.blue, .3));
+  const line = fn => { const pts = []; for (let i = 0; i <= N; i++) { const x = m.a + (m.b - m.a) * i / N; pts.push([Xs(x), vt.Y(fn(x))]) } return pts };
+  P.path(ctx, line(f), { color: C.accent, width: 2.6, halo: 3 });
+  P.path(ctx, line(g), { color: C.warm, width: 2.4, alpha: .95, halo: 3 });
+  P.path(ctx, [[Xs(z), vt.Y(0)], [Xs(z), vt.Y(m.ymax * .95)]], { color: C.mute, width: 1, dash: [3, 4] });
+  lab.set('z', 'z', Xs(z), vt.Y(m.ymax * .95) - 2, { color: C.soft, size: 13, dx: 9 });
+  lab.set('f', 'p_X(x)', Xs(.5), vt.Y(1) - 13, { color: C.accent, size: 13, alpha: mode === 0 && Math.abs(z - .5) < .45 ? 0 : 1 });
+  lab.set('g', 'p_Y(z-x)', Xs(mode === 0 ? z - .5 : z - .35), vt.Y(mode === 0 ? 1 : .75) - 13, { color: C.warm, size: 13, alpha: mode === 0 && Math.abs(z - .5) < .45 ? 0 : 1 });
+  // 下图：p_Z(z) 逐段画出
+  ctx.save(); ctx.translate(0, off);
+  P.axes(ctx, vb, { x: true });
+  P.path(ctx, P.curve(vb, m.pZ, m.a, m.b, 400), { color: C.faint, width: 1.6 });
+  const done = P.curve(vb, m.pZ, m.z0, Math.max(m.z0 + 1e-3, z), 300);
+  P.path(ctx, done, { color: C.accent, width: 2.6, halo: 3 });
+  glow(ctx, vb.X(z), vb.Y(m.pZ(z)), 13, C.blue, .16); P.dot(ctx, vb.X(z), vb.Y(m.pZ(z)), { r: 5, color: C.blue });
+  P.path(ctx, [[vb.X(z), vb.Y(0)], [vb.X(z), vb.Y(m.pZ(z))]], { color: C.blue, width: 1, alpha: .6 });
+  ctx.restore();
+  lab.set('pz', 'p_Z(z)', vb.X(mode === 0 ? 1 : 1.6), off + vb.Y(mode === 0 ? 1 : .7) - 14, { color: C.accent, size: 13 });
+  lab.end();
+  ctx.globalAlpha = 1;
+  return playing || fadeIn < 1;
+});
+const cvs = document.getElementById('cv'), nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing && z >= MODES[mode].z1) z = MODES[mode].z0; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { z = MODES[mode].z0; hold = 0; cv.kick() };
+let drag = false;
+const setZ = e => { const r = cvs.getBoundingClientRect(), m = MODES[mode]; const t = (e.clientX - r.left - vt.pad.l) / (r.width - vt.pad.l - vt.pad.r); z = P.clamp(m.a + t * (m.b - m.a), m.z0, m.z1); cv.kick() };
+cvs.addEventListener('pointerdown', e => { drag = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); setZ(e) });
+cvs.addEventListener('pointermove', e => { if (drag) setZ(e) });
+cvs.addEventListener('pointerup', () => drag = false);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

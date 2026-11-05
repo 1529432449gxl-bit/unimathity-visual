@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Countable union of countable sets</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:300px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Elements of countably many countable sets are enumerated along the anti-diagonals"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const R = 5, Q = 6, ORDER = [];
+for (let d = 2; d <= 6; d++) for (let i = 1; i < d; i++) { const j = d - i; if (i <= R && j <= Q) ORDER.push([i, j]) }
+const lab = P.labels(document.getElementById('stage'));
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt), n = player.i, p = P.ease.inOut(player.p);
+  const gx = Math.min(92, (w - 50) / (Q + .9)), gy = Math.min(60, (h - 26) / (R + .9)), x0 = (w - gx * (Q + .4)) / 2 + gx * .3, y0 = 26;
+  const pos = (i, j) => [x0 + (j - .5) * gx, y0 + (i - .5) * gy];
+  // 折线：已走过的段 + 正在画出的一段
+  const pts = ORDER.slice(0, n + 1).map(([i, j]) => pos(i, j));
+  // 每段两端各让出元素圆圈的半径，折线不压住记号
+  const trim = (a, b, r = 17) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [[a[0] + dx / L * r, a[1] + dy / L * r], [b[0] - dx / L * r, b[1] - dy / L * r]] };
+  for (let k = 1; k < pts.length; k++) { const last = k === pts.length - 1; P.path(ctx, trim(pts[k - 1], pts[k]), { color: C.warm, width: last ? 2.4 : 1.8, alpha: last ? 1 : .5, progress: last ? p : 1 }) }
+  for (let i = 1; i <= R; i++) for (let j = 1; j <= Q; j++) {
+    const k = ORDER.findIndex(([a, b]) => a === i && b === j), [x, y] = pos(i, j), done = k >= 0 && k < n, cur = k === n;
+    if (done || (cur && p > .7)) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, 17 * (cur ? P.ease.back(P.seg(p, .7, 1)) : 1), 0, 7); ctx.fillStyle = P.rgba(cur ? C.warm : C.accent, cur ? .16 : .08); ctx.fill(); ctx.restore() }
+    lab.set(`a${i}${j}`, `a_{${i}${j}}`, x, y, { color: cur && p > .7 ? C.warm : done ? C.accent : C.mute, size: w < 520 ? 13 : 16 });
+    if (k >= 0 && (done || (cur && p > .7))) lab.set(`n${i}${j}`, String(k + 1), x + 15, y - 14, { color: C.warm, size: 11, alpha: cur ? P.seg(p, .75, 1) : 1 });
+  }
+  for (let i = 1; i <= R; i++) lab.set(`r${i}`, '\\cdots', x0 + (Q + .1) * gx, pos(i, 1)[1], { color: C.mute, size: 13 });
+  for (let j = 1; j <= Q; j++) lab.set(`c${j}`, '\\vdots', pos(1, j)[0], y0 + (R + .05) * gy, { color: C.mute, size: 13 });
+  for (let i = 1; i <= R; i++) lab.set(`A${i}`, `A_{${i}}`, x0 - gx * .45, pos(i, 1)[1], { color: C.soft, size: 13 });
+  lab.end();
+  return moving;
+});
+player = P.stepper(document.getElementById('nav'), { count: ORDER.length, dur: .8, hold: .25, kick: cv.kick });
+player.playing = true; player.go(0, false); player.wait = .6; cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

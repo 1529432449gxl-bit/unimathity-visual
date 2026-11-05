@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confidence intervals by repeated sampling</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="la"></span><input id="a" type="range" min="0.5" max="0.99" step="0.001" value="0.9" aria-label="confidence level"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Intervals from repeated samples; most of them cover the true mean"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('la'), '1-\\alpha');
+let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()) };
+// 标准正态分位数（Acklam 近似）
+function qnorm(p) { const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572], c = [-.007784894002430293, -.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [.007784695709041462, .3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q = p < .02425 ? Math.sqrt(-2 * Math.log(p)) : p > .97575 ? Math.sqrt(-2 * Math.log(1 - p)) : null;
+  if (q !== null) { const x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); return p < .5 ? x : -x }
+  const r = p - .5, s = r * r; return (((((a[0] * s + a[1]) * s + a[2]) * s + a[3]) * s + a[4]) * s + a[5]) * r / (((((b[0] * s + b[1]) * s + b[2]) * s + b[3]) * s + b[4]) * s + 1) }
+const n = 10, sig = 1, ROWS = 34, GAP = .42;
+let items = [], clock = 0, playing = true, next = 0;
+const sl = document.getElementById('a'), st = { u: qnorm(1 - (1 - +sl.value) / 2) };
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; while (clock >= next) { let s = 0; for (let k = 0; k < n; k++) s += gauss(); items.unshift({ m: s / n, t: next }); next += GAP; if (items.length > ROWS + 4) items.pop() } }
+  const mv = P.approach(st, 'u', qnorm(1 - (1 - +sl.value) / 2), dt, 8), half = st.u * sig / Math.sqrt(n);
+  const cx = w / 2, sx = (w - 40) / 3.2, top = 22, row = (h - top - 10) / ROWS, X = x => cx + x * sx;
+  P.path(ctx, [[X(0), 8], [X(0), h - 4]], { color: C.mute, width: 1.2 });
+  items.forEach((it, k) => {
+    const age = clock - it.t, drop = P.ease.out(P.seg(age, 0, .35)), y = top + (k + drop - 1) * row + row / 2;
+    if (k >= ROWS) return; const cover = Math.abs(it.m) <= half, a = (1 - k / ROWS * .65) * P.seg(age, 0, .2);
+    const col = cover ? C.accent : C.warm;
+    if (k === 0) glow(ctx, X(it.m), y, 10 * P.ease.back(P.seg(age, .1, .45)), col, .18);
+    if (!cover) { ctx.save(); ctx.fillStyle = P.rgba(C.warm, .1 * a); ctx.fillRect(X(it.m - half), y - row * .42, 2 * half * sx, row * .84); ctx.restore() }
+    P.path(ctx, [[X(it.m - half), y], [X(it.m + half), y]], { color: col, width: cover ? 2.2 : 2.8, alpha: a, progress: P.ease.out(P.seg(age, 0, .4)) });
+    P.dot(ctx, X(it.m), y, { r: 2.4, color: col, ring: false, alpha: a });
+  });
+  lab.set('mu', '\\mu', X(0), 10, { color: C.soft, size: 13, dx: 12 });
+  lab.end();
+  return playing || mv;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { items = []; clock = 0; next = 0; cv.kick() };
+sl.addEventListener('input', cv.kick);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

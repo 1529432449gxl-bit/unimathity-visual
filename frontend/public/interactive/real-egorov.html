@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Egorov theorem</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="ld"></span><input id="d" type="range" min="0.04" max="0.4" step="0.001" value="0.15" aria-label="delta"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="x to the n converges uniformly once a small interval near 1 is removed"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('ld'), '\\delta');
+const EPS = .12, NM = 60, sl = document.getElementById('d'), st = { d: +sl.value };
+let clock = 0, playing = true;
+const nAt = t => Math.min(NM, Math.floor(Math.pow(NM, P.clamp(t / 9, 0, 1)) + .0001));
+const v = P.view([0, 1, -.04, 1.06], { l: 16, r: 16, t: 12, b: 20 });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; if (playing) { clock += dt; if (clock > 12.5) clock = 0 }
+  const md = P.approach(st, 'd', +sl.value, dt, 9), d = st.d, cut = 1 - d, n = nAt(clock), N = Math.ceil(Math.log(EPS) / Math.log(cut));
+  ctx.save(); ctx.fillStyle = P.rgba(C.mute, .12); ctx.fillRect(v.X(cut), v.Y(1.06), v.X(1) - v.X(cut), v.Y(-.04) - v.Y(1.06)); ctx.restore();
+  P.fill(ctx, [[v.X(0), v.Y(EPS)], [v.X(cut), v.Y(EPS)]], [[v.X(0), v.Y(0)], [v.X(cut), v.Y(0)]], P.rgba(C.blue, .2));
+  P.axes(ctx, v, { x: true, y: true });
+  for (let k = 1; k <= n; k++) {
+    const age = (n - k) / 8, a = Math.max(.08, 1 - age), inside = Math.pow(cut, k) <= EPS;
+    P.path(ctx, P.curve(v, x => Math.pow(x, k), 0, cut, 200), { color: inside ? C.accent : C.warm, width: k === n ? 2.6 : 1.3, alpha: k === n ? 1 : a * .7, halo: k === n ? 3 : 0 });
+    P.path(ctx, P.curve(v, x => Math.pow(x, k), cut, 1, 80), { color: C.mute, width: 1, alpha: (k === n ? .9 : a * .4) });
+  }
+  if (n >= N) { ctx.save(); ctx.beginPath(); ctx.arc(v.X(cut), v.Y(Math.pow(cut, n)), 11, 0, 7); ctx.fillStyle = P.rgba(C.accent, .12); ctx.fill(); ctx.restore(); P.dot(ctx, v.X(cut), v.Y(Math.pow(cut, n)), { r: 4.5, color: C.accent }) }
+  lab.set('e', '\\varepsilon', v.X(0) + 10, v.Y(EPS) - 9, { color: C.blue, size: 13 });
+  lab.set('d', '1-\\delta', v.X(cut), v.Y(0) + 13, { color: C.soft, size: 12 });
+  lab.set('one', '1', v.X(1), v.Y(0) + 13, { color: C.soft, size: 12 });
+  lab.end();
+  return playing || md;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { clock = 0; cv.kick() };
+sl.addEventListener('input', cv.kick);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

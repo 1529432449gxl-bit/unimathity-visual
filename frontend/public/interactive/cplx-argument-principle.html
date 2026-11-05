@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Argument principle</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:560px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lr"></span><input id="r" type="range" min="0.3" max="1.85" step="0.005" value="0.62" aria-label="contour radius"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="As z goes once around the circle, f(z) winds around the origin N minus P times"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('lr'), 'C');
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]], div = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d] }, sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const Z = [[.5, .15], [-.55, -.5]], Pl = [[-.25, 1.35]];
+const f = z => div(mul(sub(z, Z[0]), sub(z, Z[1])), sub(z, Pl[0]));
+const sl = document.getElementById('r'), st = { r: +sl.value, box: [-1.5, 1.5, -1.5, 1.5] };
+let t = 0, playing = true, hold = 0;
+const lab = P.labels(document.getElementById('stage'));
+const ring = (ctx, q, col, r = 5.5) => { ctx.save(); ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke(); ctx.restore() };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { if (t < 1) t = Math.min(1, t + dt / 4.5); else { hold += dt; if (hold > 1.4) { hold = 0; t = 0 } } }
+  const mr = P.approach(st, 'r', +sl.value, dt, 8), r = st.r;
+  const N = 600, img = [];
+  for (let k = 0; k <= N; k++) { const a = 2 * Math.PI * k / N; img.push(f([r * Math.cos(a), r * Math.sin(a)])) }
+  // 右侧镜头：框住像曲线（去掉极端值），缓动
+  const xs = img.map(p => p[0]).sort((a, b) => a - b), ys = img.map(p => p[1]).sort((a, b) => a - b), q = k => Math.floor(k * N);
+  let bx = [Math.min(xs[q(.02)], -.4), Math.max(xs[q(.98)], .4), Math.min(ys[q(.02)], -.4), Math.max(ys[q(.98)], .4)];
+  const mb = P.approach(st, 'box', bx, dt, 5); bx = st.box;
+  const stack = w < 520, Wp = stack ? w : w / 2, Hp = stack ? h / 2 : h;
+  // 左：z 平面
+  const s1 = Math.min(Wp / 4.6, Hp / 4.4), o1 = [Wp / 2, Hp / 2], S1 = p => [o1[0] + p[0] * s1, o1[1] - p[1] * s1];
+  P.path(ctx, [S1([-2.2, 0]), S1([2.2, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S1([0, -2.1]), S1([0, 2.1])], { color: C.rule, width: 1 });
+  const circ = []; for (let k = 0; k <= 160; k++) { const a = 2 * Math.PI * k / 160; circ.push(S1([r * Math.cos(a), r * Math.sin(a)])) }
+  ctx.save(); ctx.beginPath(); circ.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.blue, .08); ctx.fill(); ctx.restore();
+  P.path(ctx, circ, { color: C.accent, width: 2.4, halo: 3 });
+  for (const z of Z) P.dot(ctx, ...S1(z), { r: 5, color: Math.hypot(...z) < r ? C.accent : C.mute });
+  for (const p of Pl) ring(ctx, S1(p), Math.hypot(...p) < r ? C.warm : C.mute);
+  const a = 2 * Math.PI * t, zt = [r * Math.cos(a), r * Math.sin(a)];
+  P.dot(ctx, ...S1(zt), { r: 5, color: C.warm });
+  // 右：w 平面
+  const ox = stack ? 0 : Wp, oy = stack ? Hp : 0;
+  const cx = (bx[0] + bx[1]) / 2, cy = (bx[2] + bx[3]) / 2, s2 = Math.min((Wp - 30) / (bx[1] - bx[0]), (Hp - 30) / (bx[3] - bx[2])) * .92;
+  const S2 = p => [ox + Wp / 2 + (p[0] - cx) * s2, oy + Hp / 2 - (p[1] - cy) * s2];
+  ctx.save(); ctx.beginPath(); ctx.rect(ox + 4, oy + 4, Wp - 8, Hp - 8); ctx.clip();
+  if (!stack) P.path(ctx, [[Wp, 14], [Wp, h - 14]], { color: C.faint, width: 1 });
+  const O = S2([0, 0]); P.path(ctx, [[O[0] - 9, O[1]], [O[0] + 9, O[1]]], { color: C.soft, width: 1.4 }); P.path(ctx, [[O[0], O[1] - 9], [O[0], O[1] + 9]], { color: C.soft, width: 1.4 });
+  const pts = [], cut = Math.max(bx[1] - bx[0], bx[3] - bx[2]) * 3;
+  for (let k = 0; k <= N; k++) { const p = img[k]; pts.push(Math.hypot(p[0] - cx, p[1] - cy) > cut ? null : S2(p)) }
+  const drawn = Math.floor(t * N); let run = [];
+  const flush = (alpha, width) => { if (run.length > 1) P.path(ctx, run, { color: C.warm, width, alpha }); run = [] };
+  for (let k = 0; k <= N; k++) { if (!pts[k]) { flush(.22, 1.4); continue } run.push(pts[k]) } flush(.22, 1.4);
+  for (let k = 0; k <= drawn; k++) { if (!pts[k]) { flush(1, 2.6); continue } run.push(pts[k]) } flush(1, 2.6);
+  const wt = f(zt); if (pts[drawn]) { P.path(ctx, [O, S2(wt)], { color: C.warm, width: 1, alpha: .5, dash: [3, 4] }); P.dot(ctx, ...S2(wt), { r: 5, color: C.warm }) }
+  ctx.restore();
+  lab.set('z', 'z', 16, 14, { color: C.soft, size: 13 });
+  lab.set('w', 'w=f(z)', ox + 34, oy + 14, { color: C.soft, size: 13 });
+  lab.set('o', '0', O[0] - 8, O[1] + 12, { color: C.soft, size: 12, alpha: O[0] > ox + 10 && O[1] < oy + Hp - 10 ? 1 : 0 });
+  lab.end();
+  return playing || mr || mb;
+});
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing && t >= 1) t = 0; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { t = 0; hold = 0; cv.kick() };
+sl.addEventListener('input', () => { t = 0; hold = 0; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
