@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Permutation into cycles and transpositions</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:320px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Follow each element to its image; the arrows close up into disjoint cycles, and each cycle then splits into transpositions through one pivot"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// σ ∈ S_8：σ = (1 5 8 3)(2 7 4)(6)。先逐个追踪元素的像围成不相交轮换，再把每个轮换拆成共享支点的对换。
+const N = 8, sig = { 1: 5, 2: 7, 3: 1, 4: 2, 5: 8, 6: 6, 7: 4, 8: 3 };
+const cycles = []; { const seen = new Set(); for (let i = 1; i <= N; i++) { if (seen.has(i)) continue; const c = []; let x = i; do { c.push(x); seen.add(x); x = sig[x] } while (x !== i); cycles.push(c) } }
+const ctex = c => '(' + c.join('\\,') + ')';
+const nontriv = cycles.filter(c => c.length > 1);
+// ---------- 步骤脚本：每步记录累计状态与本步新增项 ----------
+const steps = [];
+const S = { arrows: [], nodes: cycles.map(() => 0), arcs: cycles.map(() => 0), chords: cycles.map(() => 0), found: [], phase: 'trace' };
+const push = (nw, lines) => steps.push({ arrows: S.arrows.slice(), nodes: S.nodes.slice(), arcs: S.arcs.slice(), chords: S.chords.slice(), phase: S.phase, nw, lines });
+const sigLine = () => '\\sigma=' + (S.found.length ? S.found.map(ctex).join('') : '\\ ?');
+push({}, ['\\sigma\\in S_n', '\\ ']);
+cycles.forEach((c, ci) => {
+  S.nodes[ci] = 1; push({ node: [ci, 0] }, [sigLine(), String(c[0])]);
+  for (let j = 1; j <= c.length; j++) {
+    const from = c[j - 1], closing = j === c.length;
+    S.arrows.push(from); S.arcs[ci] = j; if (!closing) S.nodes[ci] = j + 1;
+    if (closing) S.found.push(c);
+    const chain = c.slice(0, j + 1).concat(closing ? [c[0]] : []).slice(0, j + 1).join('\\mapsto ');
+    push({ arrow: from, arc: [ci, j - 1], node: closing ? null : [ci, j] }, [sigLine(), closing ? ctex(c) : chain]);
+  }
+});
+S.phase = 'dec';
+push({}, ['\\sigma=' + nontriv.map(ctex).join(''), '\\ ']);
+const done = [];
+cycles.forEach((c, ci) => {
+  if (c.length < 3) { if (c.length === 2) done.push(ctex(c)); return }
+  const parts = [];
+  for (let j = 1; j < c.length; j++) {
+    S.chords[ci] = j; parts.unshift(`(${c[0]}\\,${c[j]})`);
+    push({ chord: [ci, j] }, ['\\sigma=' + nontriv.map(ctex).join(''), ctex(c) + '=' + parts.join('')]);
+  }
+  done.push(parts.join(''));
+});
+push({ final: 1 }, ['\\sigma=' + nontriv.map(ctex).join(''), '\\sigma=' + done.join('')]);
+// ---------- 公式区：预排锁高 ----------
+const fx = document.getElementById('fx');
+const formula = i => { fx.innerHTML = ''; for (const s of steps[i].lines) { const d = document.createElement('div'); K(d, s); fx.appendChild(d) } };
+const lock = cur => { fx.style.minHeight = ''; let m = 0; for (let i = 0; i < steps.length; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } fx.style.minHeight = Math.ceil(m) + 'px'; formula(cur) };
+lock(0); document.fonts && document.fonts.ready.then(() => lock(st ? st.i : 0));
+const lab = P.labels(document.getElementById('stage'));
+let st, intro = 0; const D = { v: 0 };
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  const moving = st.tick(dt); let anim = intro < 1; intro = Math.min(1, intro + dt / 1.4);
+  const s = steps[st.i], p = st.p, nw = s.nw, I = P.ease.inOut(intro);
+  anim = P.spring(D, 'v', s.phase === 'dec' ? 1 : 0, dt, { k: 40, z: .85 }) | anim; const dec = D.v;
+  const sc = Math.min(1, w / 560), span = Math.min(w - 50, 520), x0 = (w - span) / 2;
+  const X = i => x0 + span * (i - 1) / (N - 1), yT = 26, yB = 26 + 86 * Math.max(.85, sc);
+  // 上下两行与箭头 i → σ(i)
+  const arrowPts = i => { const a = [X(i), yT + 11], b = [X(sig[i]), yB - 11], pts = []; for (let k = 0; k <= 24; k++) { const t = k / 24, u = 1 - t;
+      pts.push([u * u * u * a[0] + 3 * u * u * t * a[0] + 3 * u * t * t * b[0] + t * t * t * b[0], u * u * u * a[1] + 3 * u * u * t * (a[1] + 34) + 3 * u * t * t * (b[1] - 34) + t * t * t * b[1]]) } return pts };
+  const traced = new Set(s.arrows), rowFade = 1 - .55 * dec;
+  for (let i = 1; i <= N; i++) {
+    const isNew = nw.arrow === i, on = traced.has(i);
+    if (isNew) P.path(ctx, arrowPts(i), { color: C.warm, width: 2.2, progress: P.ease.inOut(P.seg(p, 0, .55)), alpha: rowFade });
+    else P.path(ctx, arrowPts(i), { color: on ? C.accent : C.mute, width: on ? 1.5 : 1, alpha: (on ? .55 : .28) * I * rowFade, progress: on ? 1 : P.seg(intro, .2 + i * .05, .6 + i * .05) });
+  }
+  for (let i = 1; i <= N; i++) {
+    const on = traced.has(i);
+    if (on || nw.arrow === i) { ctx.save(); ctx.globalAlpha = (nw.arrow === i ? P.seg(p, 0, .3) : 1) * rowFade; ctx.fillStyle = nw.arrow === i ? C.hlBg : C.pane; ctx.beginPath(); ctx.arc(X(i), yT, 11, 0, 7); ctx.fill(); ctx.restore() }
+    lab.set('t' + i, String(i), X(i), yT, { color: C.ink, alpha: I * rowFade, size: 14 });
+    lab.set('b' + i, String(i), X(i), yB, { color: C.ink, alpha: I * rowFade, size: 14 });
+  }
+  // 轮换圈：按长度分配位置
+  const Rof = c => c.length === 1 ? 0 : (c.length === 2 ? 26 : 22 + 7 * c.length) * Math.max(.78, sc);
+  const widths = cycles.map(c => 2 * Rof(c) + 44 * Math.max(.7, sc)), tot = widths.reduce((a, b) => a + b, 0);
+  let cx = (w - tot) / 2; const cyR = yB + (h - yB) / 2 + 6;
+  cycles.forEach((c, ci) => {
+    const R = Rof(c), ox = cx + widths[ci] / 2; cx += widths[ci];
+    const ang = j => 2 * Math.PI * j / c.length, pos = j => c.length === 1 ? [ox, cyR] : [ox + R * Math.sin(ang(j)), cyR - R * Math.cos(ang(j))];
+    // 圈上的有向弧
+    for (let j = 0; j < s.arcs[ci]; j++) {
+      const isNew = nw.arc && nw.arc[0] === ci && nw.arc[1] === j, pr = isNew ? P.ease.inOut(P.seg(p, .35, .95)) : 1;
+      const al = (1 - .7 * dec) * (isNew ? 1 : .8);
+      if (c.length === 1) { // 不动点：小自环
+        ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = isNew ? C.warm : C.accent; ctx.lineWidth = isNew ? 2.2 : 1.6; ctx.beginPath(); ctx.arc(ox, cyR - 20, 10, Math.PI * .75, Math.PI * .75 + Math.PI * 1.5 * pr); ctx.stroke(); ctx.restore(); continue }
+      const a0 = ang(j) + .32, a1 = ang(j + 1) - .32, am = P.lerp(a0, a1, pr), pts = [];
+      for (let k = 0; k <= 30; k++) { const a = P.lerp(a0, am, k / 30); pts.push([ox + R * Math.sin(a), cyR - R * Math.cos(a)]) }
+      P.path(ctx, pts, { color: isNew ? C.warm : C.accent, width: isNew ? 2.2 : 1.6, alpha: al });
+      if (pr > .95) { // 箭头
+        const e = pts[pts.length - 1], q = pts[pts.length - 4], d = Math.atan2(e[1] - q[1], e[0] - q[0]);
+        ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = isNew ? C.warm : C.accent; ctx.beginPath(); ctx.moveTo(e[0] + 6 * Math.cos(d), e[1] + 6 * Math.sin(d));
+        ctx.lineTo(e[0] - 4 * Math.cos(d) + 4 * Math.sin(d), e[1] - 4 * Math.sin(d) - 4 * Math.cos(d)); ctx.lineTo(e[0] - 4 * Math.cos(d) - 4 * Math.sin(d), e[1] - 4 * Math.sin(d) + 4 * Math.cos(d)); ctx.fill(); ctx.restore() }
+    }
+    // 对换：从支点出发的弦
+    for (let j = 1; j <= s.chords[ci]; j++) {
+      const isNew = nw.chord && nw.chord[0] === ci && nw.chord[1] === j;
+      P.path(ctx, [pos(0), pos(j)], { color: isNew ? C.warm : C.accent, width: isNew ? 2.4 : 1.8, progress: isNew ? P.ease.inOut(P.seg(p, 0, .7)) : 1, alpha: isNew ? 1 : .75 });
+    }
+    // 节点：从下行对应位置飞入
+    for (let j = 0; j < s.nodes[ci]; j++) {
+      const isNew = nw.node && nw.node[0] === ci && nw.node[1] === j, el = c[j];
+      let [x, y] = pos(j), sc2 = 1;
+      if (isNew) { const t = P.ease.inOut(P.seg(p, .2, .9)); x = P.lerp(X(el), x, t); y = P.lerp(yB, y, t); sc2 = P.lerp(.7, 1, t) }
+      const pivot = s.phase === 'dec' && j === 0 && c.length > 2;
+      ctx.save(); ctx.globalAlpha = isNew ? P.seg(p, .15, .35) : 1; ctx.beginPath(); ctx.arc(x, y, 12.5 * sc2, 0, 7); ctx.fillStyle = pivot ? C.hlBg : C.bg; ctx.fill();
+      ctx.lineWidth = pivot ? 2 : 1.6; ctx.strokeStyle = pivot ? C.hl : (isNew ? C.warm : C.accent); ctx.stroke(); ctx.restore();
+      lab.set(`n${ci}_${j}`, String(el), x, y, { color: C.ink, alpha: isNew ? P.seg(p, .2, .4) : 1, size: 13 });
+    }
+  });
+  lab.end();
+  return moving || anim;
+});
+st = P.stepper(document.getElementById('nav'), { count: steps.length, dur: 1.15, hold: .55, kick: cv.kick, onChange: s => formula(s.i) });
+let touched = false;
+document.getElementById('nav').addEventListener('click', () => { touched = true }, true);
+addEventListener('keydown', () => { touched = true }, true);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) document.querySelector('.play').click(), touched = false }, 1300) } else st.stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

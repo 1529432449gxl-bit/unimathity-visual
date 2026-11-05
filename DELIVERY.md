@@ -44,3 +44,24 @@
 ### 本地操作提醒
 
 复制回 `D:\MathAPP` 后运行“导入课程内容”和“渲染TikZ图”，并把交互页面同步到 `frontend\dist\interactive`。
+
+## 抽象代数（本会话“ODE,抽代”负责）
+
+新增交互页面（复制到 `D:\MathAPP\frontend\public\interactive\`，并同步到 `frontend\dist\interactive\`）：
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\alg-cyclic-steps.html` | 01+09 循环群生成元跳步与直积周期对齐 | 1.5 循环群（定理 1.5.4 之后）；2.4 群的直积（定理 2.4.2 之后，`?mode=1`） |
+| `D:\MathAPP\frontend\public\interactive\alg-permutation-cycles.html` | 02+03 置换拆成轮换再拆成对换 | 1.6 置换群与对称群（定理 1.6.5 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-dihedral.html` | 04 正多边形对称的复合 | 1.7 置换在对称变换群的应用（定义 1.7.1 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-orbit-stabilizer.html` | 10+12 轨道与稳定子 | 2.5 群在集合上的作用（定理 2.5.4 之后，`?mode=orbit`）；2.6 西罗定理（推论 3 之后，`?mode=sylow`） |
+| `D:\MathAPP\frontend\public\interactive\alg-burnside.html` | 11 伯恩赛德计数 | 2.5 群在集合上的作用（定理 2.5.6 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-finite-field.html` | 24 有限域的两套坐标 | 5.5 有限域（定理 5.5.3 之后） |
+
+修改的讲义（只插入引导句与模块）：`D:\MathAPP\content\library\knowledge\abstract-algebra\` 下 01-群理论\05、06、07，02-群的进一步讨论\04、05、06，05-域的扩张\05。
+
+需要站长定夺：
+- 置换模块用具体置换 σ=(1 5 8 3)(2 7 4)(6)∈S₈ 演示追踪过程（n 阶一般情形的规则针对矩阵与符号阵列，置换需要具体元素才能追踪）。
+- 二面体模块默认正五边形，可调 3 到 8 边；如需与讲义例 1 一致可改默认为正方形。
+- 轨道、伯恩赛德、有限域三个模块的公式区出现具体数字（如 8=4·2、g⁵=2+2α），用来点出结论；如要求只放符号可以去掉。
+- 有限域 GF(25) 要走 24 步，自动播放一遍约 36 秒；可只保留 GF(9) 或加速。

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Composing symmetries of a regular polygon</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:330px}@media(max-width:520px){canvas#cv{height:250px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .4s}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="n" type="range" min="3" max="8" step="1" value="5" aria-label="number of sides"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Left: rotate then reflect. Right: reflect then rotate. The two results differ"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d = true) => katex.render(s, el, { throwOnError: false, displayMode: d });
+// 正 n 边形：r 为逆时针转 2π/n，s 为关于过顶点 1 的竖直轴的反射。左边先 r 后 s（即 sr），右边先 s 后 r（即 rs）。
+const SEQ = [['r', 's'], ['s', 'r']];
+let n = 5, intro = 0, touched = false;
+const sl = document.getElementById('n'), nl = document.getElementById('lab');
+const fx = document.getElementById('fx');
+fx.innerHTML = '<div></div><div></div>';
+K(fx.children[0], 'r=\\text{rotate by }\\tfrac{2\\pi}{n},\\qquad s=\\text{reflect}');
+K(fx.children[1], 'sr=r^{-1}s\\ne rs');
+const formula = i => { fx.children[1].style.opacity = i >= 3 ? 1 : 0 };
+// 变换：作用在数学坐标（y 向上）上；t∈[0,1] 为动画进度
+const rot = (q, t) => { const a = t * 2 * Math.PI / n, c = Math.cos(a), s = Math.sin(a); return [c * q[0] - s * q[1], s * q[0] + c * q[1]] };
+const ref = (q, t) => [q[0] * Math.cos(Math.PI * t), q[1]];
+const ap = (k, q, t) => k === 'r' ? rot(q, t) : ref(q, t);
+const lab = P.labels(document.getElementById('stage'));
+let st;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  const moving = st.tick(dt); let anim = intro < 1; intro = Math.min(1, intro + dt / 1.2);
+  const I = P.ease.inOut(intro), i = st.i, p = P.ease.inOut(st.p);
+  const R = Math.min(w * .17, h * .3), cy = h / 2 + 4;
+  for (let side = 0; side < 2; side++) {
+    const cx = w * (side ? .73 : .27), seq = SEQ[side];
+    const S = q => [cx + q[0], cy - q[1]];
+    const base = j => [R * Math.cos(Math.PI / 2 + 2 * Math.PI * j / n), R * Math.sin(Math.PI / 2 + 2 * Math.PI * j / n)];
+    // 已完成的变换全程作用，当前一步按进度作用；step 3 只是对比，不再变换
+    const k1 = i >= 1 ? (i === 1 ? p : 1) : 0, k2 = i >= 2 ? (i === 2 ? p : 1) : 0;
+    const tf = q => ap(seq[1], ap(seq[0], q, k1), k2);
+    // 朝向：经过奇数次反射后翻到“背面”，填充转为浅橙
+    const fl = (seq[0] === 's' ? Math.cos(Math.PI * k1) : 1) * (seq[1] === 's' ? Math.cos(Math.PI * k2) : 1);
+    // 原位置的灰色虚线轮廓
+    const ghost = []; for (let j = 0; j <= n; j++) ghost.push(S(base(j % n)));
+    P.path(ctx, ghost, { color: C.mute, width: 1, dash: [4, 4], alpha: .55 * I });
+    // 反射轴与旋转示意
+    const sAct = (seq[0] === 's' && i === 1) || (seq[1] === 's' && i === 2), rAct = (seq[0] === 'r' && i === 1) || (seq[1] === 'r' && i === 2);
+    P.path(ctx, [S([0, R * 1.32]), S([0, -R * 1.32])], { color: C.mute, width: 1.2, dash: [5, 5], alpha: (sAct ? Math.sin(Math.PI * Math.min(1, st.p * 1.1)) * .9 + .1 : .12) * I });
+    if (rAct) {
+      const a1 = st.p * 2 * Math.PI / n, pts = []; for (let k = 0; k <= 30; k++) { const a = Math.PI / 2 + a1 * k / 30; pts.push(S([R * .36 * Math.cos(a), R * .36 * Math.sin(a)])) }
+      P.path(ctx, pts, { color: C.mute, width: 1.6, alpha: .8 });
+    }
+    const poly = []; for (let j = 0; j <= n; j++) poly.push(S(tf(base(j % n))));
+    const back = P.clamp(.5 - fl / 2, 0, 1);
+    ctx.save(); ctx.globalAlpha = I; ctx.beginPath(); poly.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
+    const g = ctx.createRadialGradient(cx, cy - R * .3, R * .1, cx, cy, R * 1.1);
+    const col = (a) => `rgba(${Math.round(P.lerp(63, 173, back))},${Math.round(P.lerp(110, 104, back))},${Math.round(P.lerp(140, 68, back))},${a})`;
+    g.addColorStop(0, col(.26)); g.addColorStop(1, col(.08)); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+    P.path(ctx, poly, { color: C.accent, width: 2, progress: P.seg(intro, 0, .8) });
+    for (let j = 0; j < n; j++) {
+      const v = tf(base(j)), [x, y] = S(v), o = S([v[0] * 1.24, v[1] * 1.24]), pop = P.ease.back(P.seg(intro, .4 + .3 * j / n, .6 + .3 * j / n));
+      if (j === 0 && i >= 3) { const u = (performance.now() / 1000) % 1.4 / 1.4; ctx.save(); ctx.globalAlpha = (1 - u) * .7; ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 7 + 16 * P.ease.out(u), 0, 7); ctx.stroke(); ctx.restore(); anim = true }
+      P.dot(ctx, x, y, { r: j === 0 ? 5.5 : 4, color: j === 0 ? C.warm : C.accent, scale: pop });
+      lab.set(`v${side}_${j}`, String(j + 1), o[0], o[1], { color: j === 0 ? C.warm : C.soft, size: 12, alpha: pop });
+    }
+    lab.set('cap' + side, side ? 's\\ \\text{then}\\ r' : 'r\\ \\text{then}\\ s', cx, 14, { color: C.soft, size: 13, alpha: I });
+    lab.set('res' + side, side ? 'rs' : 'sr', cx, h - 12, { color: C.warm, size: 15, alpha: i >= 3 ? P.seg(st.p, 0, .5) : 0 });
+  }
+  lab.end();
+  return moving || anim;
+});
+st = P.stepper(document.getElementById('nav'), { count: 4, dur: 1.5, hold: .8, kick: cv.kick, onChange: s => formula(s.i) });
+const setN = () => { n = +sl.value; K(nl, `n=${n}`, false); intro = .45; st.stop(); st.go(0, false); cv.kick() };
+sl.addEventListener('input', () => { touched = true; setN() });
+document.getElementById('nav').addEventListener('click', () => { touched = true }, true);
+addEventListener('keydown', () => { touched = true }, true);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) { document.querySelector('.play').click(); touched = false } }, 1300) } else st.stop() }, { threshold: .4 }).observe(cvEl);
+setN(); intro = 0; formula(0);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
