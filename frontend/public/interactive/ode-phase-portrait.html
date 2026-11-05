@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phase portraits and linearization</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:560px){canvas#cv{height:420px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}
+#pre{transition:opacity .3s}#pre .tg{padding:3px 9px}</style></head>
+<body><main>
+<div class="top" id="modes"><button type="button" class="tg" data-m="0" aria-pressed="true">Linear</button><button type="button" class="tg" data-m="1" aria-pressed="false">Linearization</button></div>
+<div class="top" id="pre"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Phase portrait with flowing trajectories"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// ---------- 线性系统的五种预设：A = P M P^{-1}，P 带一点剪切，让相图不是标准正交的样子 ----------
+const mul = (a, b) => [[a[0][0] * b[0][0] + a[0][1] * b[1][0], a[0][0] * b[0][1] + a[0][1] * b[1][1]], [a[1][0] * b[0][0] + a[1][1] * b[1][0], a[1][0] * b[0][1] + a[1][1] * b[1][1]]];
+const inv = a => { const d = a[0][0] * a[1][1] - a[0][1] * a[1][0]; return [[a[1][1] / d, -a[0][1] / d], [-a[1][0] / d, a[0][0] / d]] };
+const conj = (p, m) => mul(mul(p, m), inv(p));
+const ev = (t1, t2) => [[Math.cos(t1), Math.cos(t2)], [Math.sin(t1), Math.sin(t2)]];
+const PS = [[1, .35], [0, .85]];
+const PRE = [
+  { k: 'Node', A: conj(ev(.32, 1.95), [[-.42, 0], [0, -1.5]]), tex: '\\lambda_2<\\lambda_1<0' },
+  { k: 'Saddle', A: conj(ev(.32, 1.95), [[.75, 0], [0, -1.3]]), tex: '\\lambda_2<0<\\lambda_1' },
+  { k: 'Focus', A: conj(PS, [[-.24, -1.35], [1.35, -.24]]), tex: '\\lambda=\\alpha\\pm\\mathrm i\\beta,\\ \\alpha<0' },
+  { k: 'Center', A: conj(PS, [[0, -1.3], [1.3, 0]]), tex: '\\lambda=\\pm\\mathrm i\\beta' },
+  { k: 'Degenerate', A: conj(ev(.32, 1.95), [[-.75, 1.4], [0, -.75]]), tex: '\\lambda_1=\\lambda_2<0,\\ \\text{one eigendirection}' }];
+// ---------- 非线性：阻尼摆及其线性近似 ----------
+const pend = ([x, y]) => [y, -Math.sin(x) - .4 * y], lin = ([x, y]) => [y, -x - .4 * y];
+const st = { mode: 0, pre: 0, playing: false, touched: false, intro: 0, clock: 0 };
+const sh = { a: PRE[0].A.flat(), mix: 0, eig: 1 };   // sh.a 的四个分量各自弹簧跟随
+const curA = () => [[sh.a[0], sh.a[1]], [sh.a[2], sh.a[3]]];
+const fl = ([x, y]) => { const a = sh.a; return [a[0] * x + a[1] * y, a[2] * x + a[3] * y] };
+const rk = (f, x, h) => { const k1 = f(x), k2 = f([x[0] + h / 2 * k1[0], x[1] + h / 2 * k1[1]]), k3 = f([x[0] + h / 2 * k2[0], x[1] + h / 2 * k2[1]]), k4 = f([x[0] + h * k3[0], x[1] + h * k3[1]]);
+  return [x[0] + h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]), x[1] + h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])] };
+// ---------- 公式区：两行叠放交叉淡入，高度不跳 ----------
+const fx = document.getElementById('fx'); fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+const rows = [...PRE.map(p => `\\boldsymbol x'=A\\boldsymbol x,\\qquad ${p.tex}`), "\\boldsymbol x'=A\\boldsymbol x+\\boldsymbol g(\\boldsymbol x),\\quad \\boldsymbol g(\\boldsymbol x)=o(|\\boldsymbol x|)"];
+rows.forEach(s => { const d = document.createElement('div'); d.style.gridRow = d.style.gridColumn = '1'; K(d, s); fx.appendChild(d) });
+const formula = () => [...fx.children].forEach((d, i) => d.style.opacity = (st.mode ? i === 5 : i === st.pre) ? 1 : 0);
+const pre = document.getElementById('pre');
+PRE.forEach((p, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tg'; b.textContent = p.k; b.setAttribute('aria-pressed', String(i === 0)); b.onclick = () => { st.touched = true; setPre(i) }; pre.appendChild(b) });
+function setPre(i) { st.pre = i; [...pre.children].forEach((b, k) => b.setAttribute('aria-pressed', String(k === i))); formula(); if (!st.playing) play(); cv.kick() }
+function setMode(m) { st.mode = m; document.querySelectorAll('#modes .tg').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === m))); pre.style.opacity = m ? 0 : 1; pre.style.pointerEvents = m ? 'none' : ''; formula(); seed(true); if (!st.playing) play(); cv.kick() }
+document.querySelectorAll('#modes .tg').forEach(b => b.onclick = () => { st.touched = true; setMode(+b.dataset.m) });
+// ---------- 粒子：随流运动，拖尾按年龄淡出；离开视窗前淡出 ----------
+let parts = [], VB = [-2, 2, -2, 2];
+const rnd = (a, b) => a + Math.random() * (b - a);
+function spawn(p, fresh) { p.x = [rnd(VB[0], VB[1]), rnd(VB[2], VB[3])]; p.y = p.x.slice(); p.tr = []; p.age = fresh ? -rnd(0, 2.5) : 0; p.life = rnd(3.5, 6.5) }
+function seed(fresh) { const n = innerWidth < 560 ? 120 : 210; parts = Array.from({ length: n }, () => { const p = {}; spawn(p, fresh); return p }) }
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const panel = (ctx, ox, oy, pw, ph, B) => { const X = x => ox + (x - B[0]) / (B[1] - B[0]) * pw, Y = y => oy + (B[3] - y) / (B[3] - B[2]) * ph; return { X, Y } };
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.4);
+  const I = P.ease.inOut(st.intro);
+  PRE[st.pre].A.flat().forEach((v, i) => { anim = P.spring(sh.a, i, v, dt, { k: 22, z: .9 }) | anim });
+  anim = P.spring(sh, 'mix', st.mode, dt, { k: 30, z: .9 }) | anim;
+  const A = curA(), tr = A[0][0] + A[1][1], det = A[0][0] * A[1][1] - A[0][1] * A[1][0], disc = tr * tr - 4 * det;
+  anim = P.spring(sh, 'eig', disc > -.01 && st.mode === 0 ? 1 : 0, dt, { k: 60, z: .9 }) | anim;
+  const run = st.playing ? dt : 0; if (st.playing) anim = true;
+  const wide = w >= 560;
+  if (st.mode === 0) {
+    // 单个相平面
+    const ph = h - 8, pw = Math.min(w - 20, ph * 1.5), R = 2.1, ar = pw / ph; VB = [-R * ar, R * ar, -R, R];
+    const ox = (w - pw) / 2, oy = 4, { X, Y } = panel(ctx, ox, oy, pw, ph, VB);
+    refCurves(ctx, X, Y, fl, I, ox, oy, pw, ph);
+    drawField(ctx, X, Y, fl, run, I, ox, oy, pw, ph);
+    // 实特征方向：橙色直线
+    if (sh.eig > .01 && disc > -.01) for (const lam of disc > .01 ? [(tr + Math.sqrt(disc)) / 2, (tr - Math.sqrt(disc)) / 2] : [tr / 2]) {
+      let v = Math.abs(A[0][1]) > 1e-6 ? [A[0][1], lam - A[0][0]] : Math.abs(A[1][0]) > 1e-6 ? [lam - A[1][1], A[1][0]] : (Math.abs(lam - A[0][0]) < 1e-6 ? [1, 0] : [0, 1]);
+      const n = Math.hypot(...v); v = [v[0] / n * 6, v[1] / n * 6];
+      ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, pw, ph); ctx.clip();
+      P.path(ctx, [[X(-v[0]), Y(-v[1])], [X(v[0]), Y(v[1])]], { color: C.warm, width: 1.6, alpha: .75 * sh.eig * I }); ctx.restore();
+    }
+    P.dot(ctx, X(0), Y(0), { r: 4.5, color: C.accent, scale: I });
+    lab.set('l', '', 0, 0, { alpha: 0 }); lab.set('r', '', 0, 0, { alpha: 0 });
+  } else {
+    // 两个相平面并排（窄屏上下）：左为阻尼摆，右为线性近似；浅蓝圆为平衡点邻域
+    const gap = 16, pw = wide ? (w - gap - 12) / 2 : w - 12, ph = wide ? h - 8 : (h - gap - 8) / 2;
+    const RY = 2.9, RX = RY * pw / ph; VB = [-RX, RX, -RY, RY];
+    const pans = wide ? [[6, 4], [6 + pw + gap, 4]] : [[6, 4], [6, 4 + ph + gap]];
+    [[pend, pans[0]], [lin, pans[1]]].forEach(([f, [ox, oy]], k) => {
+      const { X, Y } = panel(ctx, ox, oy, pw, ph, VB);
+      const rr = X(.75) - X(0); ctx.save(); ctx.globalAlpha = I; ctx.fillStyle = P.rgba(C.blue, .13); ctx.beginPath(); ctx.ellipse(X(0), Y(0), rr, rr, 0, 0, 7); ctx.fill(); ctx.restore();
+      refCurves(ctx, X, Y, f, I, ox, oy, pw, ph);
+      drawField(ctx, X, Y, f, run, I, ox, oy, pw, ph, k);
+      if (k === 0) for (const s of [-Math.PI, Math.PI]) if (s > VB[0] && s < VB[1]) P.dot(ctx, X(s), Y(0), { r: 3.5, color: C.mute, scale: I });
+      P.dot(ctx, X(0), Y(0), { r: 4.5, color: C.accent, scale: I });
+      lab.set(k ? 'r' : 'l', k ? "x''=-x-0.4x'" : "x''=-\\sin x-0.4x'", ox + pw / 2, oy + 12, { color: C.soft, size: 13, alpha: I });
+    });
+  }
+  lab.end();
+  return anim;
+});
+// 参照轨线：环上若干初值向前、向后积分，深蓝淡线勾出相图骨架
+function refCurves(ctx, X, Y, f, I, ox, oy, pw, ph) {
+  ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, pw, ph); ctx.clip();
+  const R = Math.min(VB[1], VB[3]), M = 14;
+  for (let j = 0; j < M; j++) {
+    const a = 2 * Math.PI * (j + .5) / M, x0 = [Math.cos(a) * R * .62 * VB[1] / R, Math.sin(a) * R * .62];
+    for (const s of [1, -1]) {
+      const pts = []; let x = x0;
+      for (let k = 0; k < 260; k++) { pts.push([X(x[0]), Y(x[1])]); x = rk(q => { const v = f(q); return [s * v[0], s * v[1]] }, x, .03);
+        if (!(Math.abs(x[0]) < VB[1] * 1.1 && Math.abs(x[1]) < VB[3] * 1.1) || Math.hypot(...x) < .02 * R) break }
+      P.path(ctx, pts, { color: C.accent, width: 1, alpha: .2 * I });
+    }
+  }
+  ctx.restore();
+}
+// 粒子推进与绘制。k=1 时使用第二组状态（两侧用同一批初值，便于对照）
+function drawField(ctx, X, Y, f, run, I, ox, oy, pw, ph, k = 0) {
+  ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, pw, ph); ctx.clip();
+  const sub = 3, hstep = run / sub, R = Math.min(VB[1], VB[3]);
+  for (const p of parts) {
+    const key = k ? 'y' : 'x', trk = k ? 'tr2' : 'tr';
+    if (!p[trk]) p[trk] = [];
+    if (run > 0 && k === (st.mode ? 1 : 0)) p.age += run;            // 年龄每帧只加一次
+    if (run > 0 && p.age > 0) { let x = p[key]; for (let s = 0; s < sub; s++) x = rk(f, x, hstep); p[key] = x; p[trk].push(x); if (p[trk].length > 26) p[trk].shift() }
+    const x = p[key], out = x[0] < VB[0] * 1.02 || x[0] > VB[1] * 1.02 || x[1] < VB[2] * 1.02 || x[1] > VB[3] * 1.02;
+    const rr = Math.hypot(...x), done = p.age > p.life || out || rr < .07 * R;
+    if (done && k === (st.mode ? 1 : 0)) { spawn(p, false); p.tr2 = []; continue }
+    if (p.age <= 0 || p[trk].length < 2) continue;
+    const edge = Math.min(x[0] - VB[0], VB[1] - x[0], x[1] - VB[2], VB[3] - x[1]) / (.18 * R);
+    const a = I * P.clamp(p.age / .5, 0, 1) * P.clamp((p.life - p.age) / .8, 0, 1) * P.clamp(edge, 0, 1) * P.clamp((rr - .07 * R) / (.22 * R), 0, 1);
+    if (a <= .01) continue;
+    const t = p[trk], n = t.length, cut = [0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1];
+    for (let c = 0; c < 3; c++) { const seg = t.slice(cut[c], cut[c + 1] + 1).map(q => [X(q[0]), Y(q[1])]); P.path(ctx, seg, { color: C.accent, width: 1.5, alpha: a * [.12, .3, .62][c] }) }
+    P.dot(ctx, X(t[n - 1][0]), Y(t[n - 1][1]), { r: 1.9, color: C.accent, alpha: a * .9, ring: false });
+  }
+  ctx.restore();
+}
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 900) } else stop() }, { threshold: .4 }).observe(cvEl);
+const q = new URLSearchParams(location.search);
+seed(true);
+if (q.get('mode') === 'nl') { setMode(1); sh.mix = 1 }
+const pi = PRE.findIndex(p => p.k.toLowerCase() === (q.get('preset') || '').toLowerCase()); if (pi >= 0) { st.pre = pi; sh.a = PRE[pi].A.flat(); [...pre.children].forEach((b, k) => b.setAttribute('aria-pressed', String(k === pi))) }
+formula(); stop();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

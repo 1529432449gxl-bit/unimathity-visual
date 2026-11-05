@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local existence and extension</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:350px}@media(max-width:520px){canvas#cv{height:290px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A rectangle and slope bound give a local solution; restarting from its endpoint extends the solution step by step toward the boundary of the region"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 区域 G 为椭圆 (x/EA)²+(y/EB)²<1；方程 y' = 0.9cos(1.6x) + 0.2，解曲线波动着横穿 G，向右延拓直到逼近右侧边界，矩形依次缩小。
+const EA = 3.6, EB = 2.2, f = (x, y) => .9 * Math.cos(1.6 * x) + .2;
+const inG = (x, y) => (x / EA) ** 2 + (y / EB) ** 2 < 1;
+const rk = (x, y, h) => { const k1 = f(x, y), k2 = f(x + h / 2, y + h / 2 * k1), k3 = f(x + h / 2, y + h / 2 * k2), k4 = f(x + h, y + h * k3); return y + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4) };
+const solveTo = (x, y, x1) => { const out = [[x, y]], n = Math.max(8, Math.ceil(Math.abs(x1 - x) / .004)), h = (x1 - x) / n; for (let i = 0; i < n; i++) { y = rk(x, y, h); x += h; out.push([x, y]) } return out };
+// 逐段构造：在 (x_k, y_k) 取含于 G 的正方形 R_k（半边长 r_k），M_k = max|f|，h_k = min(a_k, b_k/M_k)
+const segs = []; {
+  let x = -2.6, y = .3;
+  for (let k = 0; k < 12; k++) {
+    let lo = 0, hi = 2; for (let it = 0; it < 40; it++) { const r = (lo + hi) / 2; ([[1, 1], [1, -1], [-1, 1], [-1, -1]].every(([s, t]) => inG(x + s * r, y + t * r)) ? lo = r : hi = r) }
+    const a = lo * .92, b = a; let M = 0; for (let i = 0; i <= 24; i++) for (let j = 0; j <= 24; j++) M = Math.max(M, Math.abs(f(x - a + 2 * a * i / 24, y - b + 2 * b * j / 24)));
+    const h = Math.min(a, b / M), back = k === 0 ? solveTo(x, y, x - h).reverse() : [[x, y]], fwd = solveTo(x, y, x + h);
+    segs.push({ x, y, a, b, M, h, curve: back.concat(fwd.slice(1)) });
+    const e = fwd[fwd.length - 1]; x = e[0]; y = e[1]; if (a < .012) break;
+  }
+}
+const NS = 3 + segs.length;              // 0:P0  1:R0  2:斜率范围与 h0  3:局部解  4..:逐段延拓
+const fx = document.getElementById('fx');
+const formula = i => { fx.innerHTML = '<div></div><div></div>';
+  const k = Math.max(0, i - 3);
+  if (i <= 3) { K(fx.children[0], 'R:\\ |x-x_0|\\le a,\\ |y-y_0|\\le b'); K(fx.children[1], i < 2 ? 'M=\\max_{R}|f(x,y)|' : 'h=\\min\\Bigl\\{a,\\ \\dfrac bM\\Bigr\\},\\qquad M=\\max_{R}|f(x,y)|') }
+  else { K(fx.children[0], `(x_{${k}},y_{${k}})=\\bigl(x_{${k - 1}}+h_{${k - 1}},\\ \\varphi(x_{${k - 1}}+h_{${k - 1}})\\bigr)`); K(fx.children[1], `h_{${k}}=\\min\\Bigl\\{a_{${k}},\\ \\dfrac{b_{${k}}}{M_{${k}}}\\Bigr\\}`) } };
+const FULL = [-4, 4, -2.45, 2.45];
+const v = P.view(FULL, { l: 10, r: 10, t: 10, b: 10 });
+// 保持等比例：按画布宽高比扩展视窗
+const fit = (b, w, h) => { const cx = (b[0] + b[1]) / 2, cy = (b[2] + b[3]) / 2, aw = (w - 20) / (h - 20); let W = b[1] - b[0], H = b[3] - b[2]; if (W / H < aw) W = H * aw; else H = W / aw; return [cx - W / 2, cx + W / 2, cy - H / 2, cy + H / 2] };
+let frameRaw = FULL, cw = 760, ch = 350;
+function frameFor(i) {
+  if (i < 6) return FULL;
+  const s = segs[Math.min(segs.length - 1, i - 3)]; if (s.a > .5) return FULL;
+  const span = s.a * 7; return [s.x + s.h * .5 - span * .55, s.x + s.h * .5 + span * .45, s.y - span * .32, s.y + span * .32];
+}
+const lab = P.labels(document.getElementById('stage'));
+let st, intro = 0, mapA = { a: 0 };
+const ell = (X, Y) => { const o = []; for (let t = 0; t <= 200; t++) { const a = t / 200 * 2 * Math.PI; o.push([X(EA * Math.cos(a)), Y(EB * Math.sin(a))]) } return o };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (w !== cw || h !== ch) { cw = w; ch = h; v.aim(fit(frameRaw, w, h), true) }
+  v.w = w; v.h = h; intro = Math.min(1, intro + dt / 1.2);
+  const moving = st.tick(dt), cam = v.step(dt, 2.4), i = st.i, p = st.p, X = v.X, Y = v.Y;
+  // 区域 G：浅灰渐变底与灰色虚线边界
+  const E = ell(X, Y);
+  ctx.save(); ctx.globalAlpha = intro; ctx.beginPath(); E.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+  ctx.fillStyle = P.vgrad(ctx, Y(EB), Y(-EB), C.mute, .07, .02); ctx.fill(); ctx.restore();
+  P.path(ctx, E, { color: C.mute, width: 1.4, dash: [6, 5], progress: P.ease.inOut(intro) });
+  const cur = i <= 3 ? 0 : i - 3, shown = i <= 2 ? -1 : cur;
+  const rectA = (k, a) => { const s = segs[k]; return { x0: X(s.x - s.a), y0: Y(s.y + s.b), w: X(s.x + s.a) - X(s.x - s.a), h: Y(s.y - s.b) - Y(s.y + s.b), a } };
+  // 已完成的矩形：淡化为细线
+  for (let k = 0; k < cur; k++) { const r = rectA(k); ctx.save(); ctx.globalAlpha = (v.b[1] - v.b[0]) < 5 ? .18 : .32; ctx.strokeStyle = C.blue; ctx.lineWidth = 1; ctx.strokeRect(r.x0, r.y0, r.w, r.h); ctx.restore() }
+  // 当前矩形：浅蓝渐变 + 深蓝边，淡入
+  const rA = i === 0 ? 0 : i === 1 || i >= 4 ? P.ease.out(P.seg(p, 0, i >= 4 ? .3 : .6)) : 1;
+  if (i >= 1) { const r = rectA(cur); ctx.save(); ctx.globalAlpha = rA; ctx.fillStyle = P.vgrad(ctx, r.y0, r.y0 + r.h, C.blue, .16, .07); ctx.fillRect(r.x0, r.y0, r.w, r.h);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4; ctx.strokeRect(r.x0, r.y0, r.w, r.h); ctx.restore() }
+  // 斜率范围：从当前点出发、斜率 ±M 的橙色楔形；灰色竖线标出 x_k ± h_k
+  const cA = i < 2 ? 0 : i === 2 ? P.ease.out(P.seg(p, 0, .6)) : i === 3 ? 1 - .5 * P.seg(p, .5, 1) : P.ease.out(P.seg(p, .2, .5)) * (1 - .5 * P.seg(p, .8, 1));
+  if (cA > .01) { const s = segs[cur], L = cur === 0 ? -s.h : 0;
+    ctx.save(); ctx.globalAlpha = cA; ctx.beginPath(); ctx.moveTo(X(s.x + L), Y(s.y - s.M * L)); ctx.lineTo(X(s.x), Y(s.y)); ctx.lineTo(X(s.x + L), Y(s.y + s.M * L)); ctx.closePath(); ctx.fillStyle = P.rgba(C.warm, .14); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(X(s.x + s.h), Y(s.y + s.M * s.h)); ctx.lineTo(X(s.x), Y(s.y)); ctx.lineTo(X(s.x + s.h), Y(s.y - s.M * s.h)); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = C.warm; ctx.lineWidth = 1.2; for (const sg of [1, -1]) { ctx.beginPath(); ctx.moveTo(X(s.x + L), Y(s.y + sg * s.M * L)); ctx.lineTo(X(s.x + s.h), Y(s.y + sg * s.M * s.h)); ctx.stroke() } ctx.restore();
+    for (const xx of cur === 0 ? [s.x - s.h, s.x + s.h] : [s.x + s.h]) P.path(ctx, [[X(xx), Y(s.y - s.b)], [X(xx), Y(s.y + s.b)]], { color: C.mute, width: 1.2, dash: [3, 4], alpha: cA }) }
+  // 解曲线：已延拓部分深蓝，本段逐段画出
+  for (let k = 0; k < shown; k++) P.path(ctx, segs[k].curve.map(([x, y]) => [X(x), Y(y)]), { color: C.accent, width: 2.4 });
+  if (shown >= 0) { const prog = i === 3 ? P.ease.inOut(P.seg(p, .1, .9)) : P.ease.inOut(P.seg(p, .45, .95));
+    P.path(ctx, segs[shown].curve.map(([x, y]) => [X(x), Y(y)]), { color: C.accent, width: 2.6, progress: prog, halo: 3 }) }
+  // 各段起点：初值点橙色，延拓点弹出
+  for (let k = 0; k <= Math.min(cur, segs.length - 1); k++) { const s = segs[k], sc = k === cur ? P.ease.back(i === 0 ? P.seg(p, 0, .5) : i >= 4 && k === cur ? P.seg(p, 0, .3) : 1) : 1;
+    P.dot(ctx, X(s.x), Y(s.y), { r: k === cur ? 5 : 3.2, color: k === cur ? C.warm : C.accent, scale: sc * Math.max(intro, .001) }) }
+  const s = segs[cur];
+  lab.set('G', 'G', X(-EA * .62), Y(EB * .86), { color: C.mute, alpha: intro });
+  lab.set('P', `(x_{${cur}},y_{${cur}})`, X(s.x) - 34, Y(s.y) - 14, { color: C.warm, size: 13, alpha: (cur < 3 || (v.b[1] - v.b[0]) < 3) ? 1 : 0 });
+  lab.set('R', cur ? `R_{${cur}}` : 'R', X(s.x - s.a) + 14, Y(s.y + s.b) + 12, { color: C.accent, size: 13, alpha: rA * (X(s.x + s.a) - X(s.x - s.a) > 46 ? 1 : 0) });
+  // 放大后的小地图
+  const zoomed = (v.b[1] - v.b[0]) < 5; P.approach(mapA, 'a', zoomed ? 1 : 0, dt, 5);
+  P.minimap(ctx, v, { B: fit(FULL, 160, 112), alpha: mapA.a, corner: 'tl', paint: (mx, my, c) => {
+    P.path(c, ell(mx, my), { color: C.mute, width: 1, dash: [3, 3] });
+    for (let k = 0; k <= Math.min(shown, segs.length - 1); k++) P.path(c, segs[k].curve.map(([x, y]) => [mx(x), my(y)]), { color: C.accent, width: 1.3 }) } });
+  lab.end();
+  return moving || cam || intro < 1 || (mapA.a > .01 && mapA.a < .99);
+});
+st = P.stepper(document.getElementById('nav'), { count: NS, dur: 1.9, hold: .8, kick: cv.kick, onChange: s => { frameRaw = frameFor(s.i); v.aim(fit(frameRaw, cw, ch)); formula(s.i) } });
+const lockFx = () => { const cur = st.i; let m = 0; fx.style.minHeight = ''; for (let i = 0; i < NS; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } fx.style.minHeight = Math.ceil(m) + 1 + 'px'; formula(cur) };
+lockFx(); document.fonts && document.fonts.ready.then(lockFx);
+st.go(0, true);
+let touched = false; document.getElementById('nav').addEventListener('pointerdown', () => touched = true, true); addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') touched = true });
+const playBtn = document.querySelector('#nav .play');
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) playBtn.click() }, 1300) } else if (st.playing) st.stop() }, { threshold: .4 }).observe(document.getElementById('cv'));
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -65,3 +65,14 @@
 - 二面体模块默认正五边形，可调 3 到 8 边；如需与讲义例 1 一致可改默认为正方形。
 - 轨道、伯恩赛德、有限域三个模块的公式区出现具体数字（如 8=4·2、g⁵=2+2α），用来点出结论；如要求只放符号可以去掉。
 - 有限域 GF(25) 要走 24 步，自动播放一遍约 36 秒；可只保留 GF(9) 或加速。
+
+## 常微分方程（本会话“ODE,抽代”负责）
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\ode-direction-field.html` | 01+04+12 方向场与解曲线 | 1.1.1（定义 2 后）；2.2.1（`?mode=1`）；3.4.1（`?mode=2`） |
+| `D:\MathAPP\frontend\public\interactive\ode-picard-steps.html` | 08 皮卡逐步逼近 | 3.1.2 |
+| `D:\MathAPP\frontend\public\interactive\ode-existence-extend.html` | 10+11 存在矩形与延拓 | 3.2.2（定理 1 后）；3.3.2 |
+| `D:\MathAPP\frontend\public\interactive\ode-liouville.html` | 19 刘维尔公式 | 5.3.1 |
+| `D:\MathAPP\frontend\public\interactive\ode-phase-portrait.html` | 22+24 相图与线性化 | 5.6.2；6.1.3（线性化模式） |
+| `D:\MathAPP\frontend\public\interactive\ode-lyapunov.html` | 23+25 稳定性与 V 函数 | 6.1.1；6.2.2 |

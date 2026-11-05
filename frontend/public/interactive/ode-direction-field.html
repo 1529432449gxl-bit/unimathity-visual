@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Direction field and solution curves</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:300px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="0" aria-pressed="true">Field</button><button type="button" class="tg" data-m="1" aria-pressed="false">Homogeneous</button><button type="button" class="tg" data-m="2" aria-pressed="false">Nearby starts</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the initial point; the solution curve follows the direction field through it"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 模式 0、2：y' = 1.4 sin(1.2x) + 0.3 sin(1.5y)，解曲线波浪起伏，y=0 附近分开、y≈±2 附近缓慢靠拢，彼此不相交；模式 1：齐次方程 y' = (y+ax)/(x-ay)，解为对数螺线，同一射线上斜率处处相同。
+const f0 = (x, y) => 1.4 * Math.sin(1.2 * x) + .3 * Math.sin(1.5 * y);
+const A = Math.tan(78 * Math.PI / 180);
+const XH = 4.6, YH = 2.8;
+const st = { m: 0, x0: -3.2, y0: .4, playing: false, t: 0, touched: false, drag: false, hov: false, intro: 0, trailT: 0 };
+const sh = { x0: -3.2, y0: .4, k0: 1, k1: 0, k2: 0, g: 1 };
+let trails = [];                                      // 播放时留下的历史解曲线，按年龄淡出
+const fx = document.getElementById('fx');
+const FX = [
+  ['\\dfrac{\\mathrm dy}{\\mathrm dx}=f(x,y),\\quad y(x_0)=y_0', 'f(x,y)=1.4\\sin 1.2x+0.3\\sin 1.5y'],
+  ['\\dfrac{\\mathrm dy}{\\mathrm dx}=g\\!\\left(\\dfrac yx\\right)', 'g(u)=\\dfrac{u+a}{1-au}'],
+  ['\\bigl|\\varphi(x,\\bar x_0,\\bar y_0)-\\varphi(x,x_0,y_0)\\bigr|<\\varepsilon', 'a\\le x\\le b'],
+];
+fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+FX.forEach((rows, m) => rows.forEach((s, r) => { const d = document.createElement('div'); d.dataset.m = m; d.style.gridRow = r + 1; d.style.gridColumn = 1; K(d, s); fx.appendChild(d) }));
+const formula = () => fx.querySelectorAll('div').forEach(d => d.style.opacity = +d.dataset.m === st.m ? 1 : 0);
+// 数值积分
+const rk = (F, x, y, h) => { const k1 = F(x, y), k2 = F(x + h / 2, y + h / 2 * k1), k3 = F(x + h / 2, y + h / 2 * k2), k4 = F(x + h, y + h * k3); return y + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4) };
+function solve(x0, y0, xa, xb, h = .02) {      // y(x) 两侧积分，返回 [[x,y],...]
+  const R = [], L = [];
+  for (let x = x0, y = y0; x <= xb + 1e-9; y = rk(f0, x, y, h), x += h) { R.push([x, y]); if (Math.abs(y) > YH * 3) break }
+  for (let x = x0, y = y0; x >= xa - 1e-9; y = rk(f0, x, y, -h), x -= h) { L.push([x, y]); if (Math.abs(y) > YH * 3) break }
+  return L.reverse().concat(R.slice(1));
+}
+function spiral(x0, y0) {                          // 齐次方程：沿方向 (x-ay, y+ax) 按弧长积分，避开原点
+  const dir = (x, y) => { const u = x - A * y, v = y + A * x, n = Math.hypot(u, v) || 1; return [u / n, v / n] };
+  const run = s => { const out = []; let x = x0, y = y0; for (let i = 0; i < 2600; i++) { out.push([x, y]); const r = Math.hypot(x, y); if (r < .1 || r > 9) break;
+      const h = s * Math.min(.03, .04 * r), [a1, b1] = dir(x, y), [a2, b2] = dir(x + h / 2 * a1, y + h / 2 * b1); x += h * a2; y += h * b2 } return out };
+  return run(-1).reverse().concat(run(1).slice(1));
+}
+const lab = P.labels(document.getElementById('stage'));
+let geo = null;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.6);
+  if (st.playing) {
+    st.t += dt; anim = true;
+    if (st.m === 0) { st.x0 = -3.6 + 1.2 * Math.sin(st.t * .23); st.y0 = 2.1 * Math.sin(st.t * .61) }
+    else if (st.m === 1) { const th = st.t * .35, r = 1.6 + .5 * Math.sin(st.t * .5); st.x0 = r * Math.cos(th); st.y0 = r * Math.sin(th) * .8 }
+    else { st.x0 = -3.4; st.y0 = 1.6 * Math.sin(st.t * .45) }
+    st.trailT += dt; if (st.m === 0 && st.trailT > .7) { st.trailT = 0; trails.push({ pts: solve(sh.x0, sh.y0, -XH * 1.6, XH * 1.6), age: 0 }) }
+  }
+  trails.forEach(t => t.age += dt); trails = trails.filter(t => t.age < 6 && st.m === 0);
+  const sp = st.drag ? { k: 420, z: .9 } : { k: 55, z: .8 };
+  anim = P.spring(sh, 'x0', st.x0, dt, sp) | P.spring(sh, 'y0', st.y0, dt, sp) | anim;
+  for (const m of [0, 1, 2]) anim = P.spring(sh, 'k' + m, st.m === m ? 1 : 0, dt, { k: 40, z: .9 }) | anim;
+  anim = P.spring(sh, 'g', st.hov || st.drag ? 1.35 : 1, dt, { k: 260, z: .55 }) | anim || trails.length > 0;
+  // 等比例坐标
+  const s = Math.min(w / (2 * XH), h / (2 * YH)), cx = w / 2, cy = h / 2, X = x => cx + x * s, Y = y => cy - y * s, xv = w / 2 / s, yv = h / 2 / s;
+  geo = { s, cx, cy };
+  const I = st.intro, fieldK = sh.k0 + sh.k2, homK = sh.k1;
+  // 方向场：短线段，入场时从左到右扫入
+  const gs = Math.max(26, Math.min(34, w / 22)), seg = gs * .42;
+  ctx.save(); ctx.lineCap = 'round';
+  const rayAng = Math.atan2(sh.y0, sh.x0);
+  for (let px = gs / 2; px < w; px += gs) for (let py = gs / 2; py < h; py += gs) {
+    const x = (px - cx) / s, y = (cy - py) / s, sweep = P.clamp(I * 1.6 - px / w * .6, 0, 1);
+    if (sweep <= 0) continue;
+    const draw = (dx, dy, col, a, lw) => { const n = Math.hypot(dx, dy) || 1, ux = dx / n * seg / 2, uy = dy / n * seg / 2;
+      ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(px - ux, py + uy); ctx.lineTo(px + ux, py - uy); ctx.stroke() };
+    if (fieldK > .01) draw(1, f0(x, y), C.mute, .55 * fieldK * sweep, 1.2);
+    if (homK > .01 && Math.hypot(x, y) > .25) {
+      const u = x - A * y, v = y + A * x, onRay = Math.abs(Math.atan2(Math.sin(Math.atan2(y, x) - rayAng), Math.cos(Math.atan2(y, x) - rayAng))) < gs / s / Math.hypot(x, y) * .55;
+      draw(u, v, onRay ? C.warm : C.mute, (onRay ? .95 : .5) * homK * sweep, onRay ? 2 : 1.2);
+    }
+  }
+  ctx.restore();
+  const toPx = pts => pts.map(([x, y]) => [X(x), Y(y)]);
+  // 历史解曲线族
+  for (const t of trails) P.path(ctx, toPx(t.pts), { color: C.blue, width: 1.4, alpha: .5 * (1 - t.age / 6) * sh.k0 });
+  // 模式 1：经过初值点的射线
+  if (homK > .01) { const r = Math.hypot(xv, yv) * 1.2; P.path(ctx, [[X(0), Y(0)], [X(r * Math.cos(rayAng)), Y(r * Math.sin(rayAng))]], { color: C.mute, width: 1.2, dash: [4, 5], alpha: .8 * homK }); P.dot(ctx, X(0), Y(0), { r: 3, color: C.mute, alpha: homK }) }
+  // 模式 2：初值邻域与解的管带
+  if (sh.k2 > .01) {
+    const d = .28, xa = sh.x0 - .02, xb = xv * .92, main = solve(sh.x0, sh.y0, sh.x0, xb, .03);
+    const fam = []; for (let j = -3; j <= 3; j++) if (j) fam.push(solve(sh.x0, sh.y0 + d * j / 3, sh.x0, xb, .03));
+    const lo = main.map(([x, y], i) => [x, Math.min(y, ...fam.map(c => c[i] ? c[i][1] : y)) - .06]), hi = main.map(([x, y], i) => [x, Math.max(y, ...fam.map(c => c[i] ? c[i][1] : y)) + .06]);
+    ctx.save(); ctx.globalAlpha = sh.k2; P.fill(ctx, toPx(hi), toPx(lo), P.rgba(C.blue, .14)); ctx.restore();
+    for (const c of fam) P.path(ctx, toPx(c), { color: C.blue, width: 1.3, alpha: .75 * sh.k2 });
+    ctx.save(); ctx.globalAlpha = sh.k2; ctx.fillStyle = P.rgba(C.blue, .16); ctx.strokeStyle = C.blue; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(X(sh.x0), Y(sh.y0), d * s, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+    for (const c of fam) P.dot(ctx, X(c[0][0]), Y(c[0][1]), { r: 2.6, color: C.blue, alpha: sh.k2, ring: false });
+    for (const [xx, id, tx] of [[sh.x0, 'la', 'a'], [xb, 'lb', 'b']]) { P.path(ctx, [[X(xx), 8], [X(xx), h - 18]], { color: C.mute, width: 1, dash: [3, 5], alpha: .7 * sh.k2 }); lab.set(id, tx, X(xx), h - 8, { color: C.mute, size: 13, alpha: sh.k2 }) }
+  }
+  // 主解曲线
+  const main = homK > .5 ? spiral(sh.x0, sh.y0) : sh.k2 > .5 ? solve(sh.x0, sh.y0, sh.x0, xv * .92) : solve(sh.x0, sh.y0, -xv * 1.05, xv * 1.05);
+  P.path(ctx, toPx(main), { color: C.accent, width: 2.4, halo: 3, progress: P.ease.inOut(P.seg(I, .35, 1)) });
+  // 初值点（可拖动）
+  const pA = P.seg(I, .55, 1);
+  ctx.save(); ctx.globalAlpha = .2 * pA * (sh.g - .6); ctx.fillStyle = C.warm; ctx.beginPath(); ctx.arc(X(sh.x0), Y(sh.y0), 13 * sh.g, 0, 7); ctx.fill(); ctx.restore();
+  P.dot(ctx, X(sh.x0), Y(sh.y0), { r: 6, color: C.warm, scale: sh.g * P.ease.back(pA) });
+  lab.set('p', '(x_0,y_0)', X(sh.x0) + (sh.x0 > xv * .6 ? -44 : 44), Y(sh.y0) - 18 - 10 * sh.k2, { color: C.warm, size: 13, alpha: pA * (1 - sh.k1) });
+  lab.set('o', 'O', X(0) - 12, Y(0) + 12, { color: C.mute, size: 13, alpha: homK });
+  lab.end();
+  return anim || st.drag;
+});
+// 拖动初值点：点到画面任意处即把初值移过去
+const toXY = e => { const r = cvEl.getBoundingClientRect(); return [(e.clientX - r.left - geo.cx) / geo.s, (geo.cy - (e.clientY - r.top)) / geo.s] };
+const clampP = (x, y) => { const xv = geo.cx / geo.s * .96, yv = geo.cy / geo.s * .94; x = P.clamp(x, -xv, xv); y = P.clamp(y, -yv, yv);
+  if (st.m === 1 && Math.hypot(x, y) < .4) { const r = Math.hypot(x, y) || 1; x = x / r * .4; y = y / r * .4 } return [x, y] };
+cvEl.addEventListener('pointerdown', e => { stop(); st.touched = true; st.drag = true; [st.x0, st.y0] = clampP(...toXY(e)); cvEl.setPointerCapture(e.pointerId); cvEl.style.cursor = 'grabbing'; e.preventDefault(); cv.kick() });
+cvEl.addEventListener('pointermove', e => {
+  const [x, y] = toXY(e);
+  if (!st.drag) { const near = Math.hypot(x - sh.x0, y - sh.y0) * geo.s < 18; if (near !== st.hov) { st.hov = near; cv.kick() } cvEl.style.cursor = near ? 'grab' : 'crosshair'; return }
+  [st.x0, st.y0] = clampP(x, y); cv.kick();
+});
+const up = () => { if (st.drag) { st.drag = false; cvEl.style.cursor = 'grab'; cv.kick() } };
+cvEl.addEventListener('pointerup', up); cvEl.addEventListener('pointercancel', up);
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.playing = true; st.t = 0; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1500) } else stop() }, { threshold: .4 }).observe(cvEl);
+const PRE = [[-3.2, .4], [1.5, .6], [-3.4, .5]];
+const setMode = m => { st.m = m; trails = []; document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.m === m))); formula();
+  if (!st.playing) [st.x0, st.y0] = PRE[m]; else st.t = 0; cv.kick() };
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { st.touched = true; setMode(+b.dataset.m) });
+const m0 = +(new URLSearchParams(location.search).get('mode') || 0);
+setMode([0, 1, 2].includes(m0) ? m0 : 0); st.touched = false;
+sh.x0 = st.x0; sh.y0 = st.y0; for (const m of [0, 1, 2]) sh['k' + m] = st.m === m ? 1 : 0;
+addEventListener('keydown', e => { const d = { ArrowUp: [0, .15], ArrowDown: [0, -.15], ArrowLeft: [-.15, 0], ArrowRight: [.15, 0] }[e.key]; if (!d) return; e.preventDefault(); stop(); st.touched = true; [st.x0, st.y0] = clampP(st.x0 + d[0], st.y0 + d[1]); cv.kick() });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
