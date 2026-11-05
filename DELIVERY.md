@@ -210,3 +210,18 @@
 | `D:\MathAPP\frontend\public\interactive\alg-quotient.html` | 06+07+08 正规子群、商群与同态 | 2.2 定义 2.2.1 后（`?mode=normal`）；2.2 定义 2.2.2 后（`?mode=quotient`）；2.3 定理 2.3.4 后（`?mode=hom`） |
 
 已知瑕疵：窄屏下同态模式隐藏元素名标签；个别内圈标签离圆环较近。
+
+常微分方程补充：
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\ode-duhamel.html` | 05+21 常数变易 | 2.3.2（定理 1 后）；5.4.2（`?mode=system`） |
+| `D:\MathAPP\frontend\public\interactive\ode-heun-steps.html` | 13 改进欧拉法 | 3.6.2 |
+| `D:\MathAPP\frontend\public\interactive\ode-power-series.html` | 17 幂级数解（艾里方程） | 4.7.1 |
+| `D:\MathAPP\frontend\public\interactive\ode-limit-cycle.html` | 26 极限环与捕获环域 | 6.4.2 |
+
+下线：2.3.2“解趋于同一条直线”、6.5“霍普夫分支中的径向速度”。
+
+需要站长定夺：极限环默认用讲义 6.4.2 例题 1 的环域（可拖 μ），范德波尔作为第二预设且不画环域（它的外侧吸引太快，画不出可见的捕获环域）。
+
+尚未完成：两门课的 TikZ 图（常微分方程 7 张、抽象代数 8 张）；常微分方程旧模块“双参数解族”“积分曲线族”“阻尼振动”“克莱罗切线族”“鞍结分支”仍在讲义中，待下线或改 TikZ。
