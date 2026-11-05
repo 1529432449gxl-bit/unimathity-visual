@@ -57,9 +57,11 @@ const PainPhoto: React.FC<PainPhotoProps> = ({photo, index, label, title, subtit
   const stagger = Math.min(3, (duration * 0.42) / Math.max(1, chars.length));
   const titleEnd = titleStart + chars.length * stagger + 8;
   const subStart = Math.min(titleEnd, duration * 0.62);
-  const titleSize = Math.min(132 * u, (tw * 0.98) / Math.max(1, chars.length * 1.04));
+  const pad = portrait ? 0 : width * 0.035;
+  const usable = tw - pad;
+  const titleSize = Math.min(132 * u, (usable * 0.97) / Math.max(1, chars.length * 1.04));
   const subChars = Array.from(subtitle).length;
-  const subSize = Math.min(46 * u, (tw * 0.96) / Math.max(1, subChars));
+  const subSize = Math.min(46 * u, (usable * 0.96) / Math.max(1, subChars));
   const mask = hiMask(title, highlight);
   const hits = chars.map((_, i) => titleStart + i * stagger + 4);
   const hit = impact(frame, hits, 2.4);
@@ -158,8 +160,8 @@ const PainPhoto: React.FC<PainPhotoProps> = ({photo, index, label, title, subtit
           textAlign: portrait ? 'center' : left ? 'left' : 'right',
           gap: 26 * u,
           transform: `translate(${shake}px, ${shake * 0.4}px)`,
-          paddingLeft: !portrait && left ? width * 0.035 : 0,
-          paddingRight: !portrait && !left ? width * 0.035 : 0,
+          paddingLeft: left ? pad : 0,
+          paddingRight: left ? 0 : pad,
           boxSizing: 'border-box',
         }}
       >

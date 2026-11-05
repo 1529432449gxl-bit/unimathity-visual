@@ -70,3 +70,15 @@ export const smooth = (x: number) => {
   const v = clamp(x);
   return v * v * (3 - 2 * v);
 };
+
+/** 矩形软边遮罩：内容在框边缘 m 像素内渐隐。用法：<defs><SoftRectMask .../></defs> + mask="url(#id)"。 */
+export const SoftRectMask: React.FC<{id: string; x: number; y: number; w: number; h: number; m: number}> = ({id, x, y, w, h, m}) => (
+  <>
+    <filter id={id + 'f'} filterUnits="userSpaceOnUse" x={x - m} y={y - m} width={w + 2 * m} height={h + 2 * m}>
+      <feGaussianBlur stdDeviation={m / 2.5} />
+    </filter>
+    <mask id={id} maskUnits="userSpaceOnUse" x={x - m} y={y - m} width={w + 2 * m} height={h + 2 * m}>
+      <rect x={x + m * 0.6} y={y + m * 0.6} width={Math.max(0, w - 1.2 * m)} height={Math.max(0, h - 1.2 * m)} fill="#fff" filter={`url(#${id}f)`} />
+    </mask>
+  </>
+);

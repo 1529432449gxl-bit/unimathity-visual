@@ -24,7 +24,7 @@ export const StatsRow: React.FC<StatsRowProps> = ({items, title}) => {
   const step = snapBeat(Math.min(1, (totalBeats - first - 1.5) / Math.max(1, n)));
 
   const colW = portrait ? width - 160 * u : Math.min(560 * u, (width - 200 * u) / n);
-  const numSize = (portrait ? 210 : 230) * u;
+  const numSize = (portrait ? 210 : 215) * u;
 
   return (
     <AbsoluteFill>
@@ -55,7 +55,7 @@ export const StatsRow: React.FC<StatsRowProps> = ({items, title}) => {
                     style={{
                       ...(portrait
                         ? {height: 2 * u, width: 360 * u * easeOutCubic(land), margin: `${30 * u}px 0`}
-                        : {width: 2 * u, height: 300 * u * easeOutCubic(land), margin: `0 ${20 * u}px`}),
+                        : {width: 2 * u, height: 300 * u * easeOutCubic(land), margin: `0 ${36 * u}px`}),
                       background: `linear-gradient(${portrait ? 90 : 180}deg, transparent, ${C.blue}, transparent)`,
                       opacity: 0.8,
                     }}
@@ -71,7 +71,7 @@ export const StatsRow: React.FC<StatsRowProps> = ({items, title}) => {
                       letterSpacing: '-0.03em',
                       color: C.ink,
                       fontVariantNumeric: 'tabular-nums',
-                      transform: `scale(${s})`,
+                      transform: `translateX(${it.suffix ? -numSize * 0.14 : 0}px) scale(${s})`,
                       filter: `blur(${(1 - easeOutCubic(land)) * 14}px)`,
                       textShadow: `0 0 ${(24 + 40 * hit) * u}px rgba(111,156,255,${glowAmt}), 0 0 ${80 * u * hit}px rgba(244,162,76,${0.6 * hit})`,
                       display: 'flex',
@@ -79,10 +79,14 @@ export const StatsRow: React.FC<StatsRowProps> = ({items, title}) => {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <span>{shown}</span>
+                    <span style={{position: 'relative'}}>
+                    {shown}
                     {it.suffix ? (
                       <span
                         style={{
+                          position: 'absolute',
+                          left: '100%',
+                          top: 0,
                           fontSize: numSize * 0.55,
                           color: C.orange,
                           marginLeft: 6 * u,
@@ -96,6 +100,7 @@ export const StatsRow: React.FC<StatsRowProps> = ({items, title}) => {
                         {it.suffix}
                       </span>
                     ) : null}
+                    </span>
                   </div>
                   <div
                     style={{

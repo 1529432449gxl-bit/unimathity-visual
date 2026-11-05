@@ -4,7 +4,7 @@ import {Backdrop} from '../../components/Backdrop';
 import {SlamText} from '../../components/SlamText';
 import {useBeat} from '../../core/beat';
 import {C, F} from '../../core/theme';
-import {clamp, easeInOutCubic, easeOutBack, easeOutCubic, easeOutExpo, lerp} from '../../core/time';
+import {clamp, easeInOutCubic, easeOutCubic, easeOutExpo, lerp} from '../../core/time';
 import {defineModule} from '../../core/types';
 import {GlowFilter, Stage, SweepText, hit, usePlan, useStage} from './util';
 
@@ -122,8 +122,8 @@ const LogoReveal: React.FC<Props> = ({name, tagline, highlight}) => {
           <ellipse cx={cx} cy={cy} rx={ringRx * 1.1} ry={ringRy * 1.1} fill="url(#lr-core)" opacity={0.6 + 0.4 * pulse} />
           <g transform={`translate(${cx} ${cy}) rotate(${tilt})`}>
             <ellipse
-              rx={ringRx}
-              ry={ringRy}
+              rx={ringRy}
+              ry={ringRx}
               fill="none"
               stroke={C.sky}
               strokeWidth={4 + 2 * pulse}
@@ -292,4 +292,3 @@ export const LogoRevealModule = defineModule<Props>({
   defaults: {name: 'Unimathity', tagline: '让大学数学看得见', highlight: '看得见'},
 });
 
-export {easeOutBack};

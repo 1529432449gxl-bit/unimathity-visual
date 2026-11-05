@@ -79,7 +79,7 @@ export const VizShowcase: React.FC<VizShowcaseProps> = ({viz, index, total, titl
             filter: `blur(${(1 - formulaIn) * 8}px)`,
             padding: `${10 * u}px ${20 * u}px`,
             borderLeft: `${4 * u}px solid ${C.blue}`,
-            background: 'linear-gradient(90deg, rgba(15,25,56,0.85), rgba(15,25,56,0))',
+            background: 'linear-gradient(90deg, rgba(10,18,48,0.92) 0%, rgba(10,18,48,0.7) 70%, rgba(10,18,48,0) 100%)',
           }}
         >
           <Formula tex={meta.formula} size={formulaSize} color={C.sky} />

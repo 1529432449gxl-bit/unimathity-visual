@@ -88,7 +88,7 @@ export const ShowcaseGrid: React.FC<ShowcaseGridProps> = ({vizList, cols = 3, ti
                 boxShadow: `0 ${18 * u}px ${50 * u}px rgba(0,0,0,0.5), 0 0 ${(10 + 50 * hi) * u}px rgba(244,162,76,${0.7 * hi})`,
                 transform: `rotateY(${rot}deg) scale(${0.82 + 0.18 * e})`,
                 opacity: clamp(p * 3),
-                filter: `blur(${(1 - easeOutCubic(p)) * 10}px) brightness(${1 + 0.6 * flash})`,
+                filter: `blur(${(1 - easeOutCubic(p)) * 10}px) brightness(${1 + 0.25 * flash})`,
               }}
             >
               <Viz id={id} w={cw} h={ch} speed={speed} offset={offset} />
@@ -114,7 +114,7 @@ export const ShowcaseGrid: React.FC<ShowcaseGridProps> = ({vizList, cols = 3, ti
                 <span style={{color: C.dim}}>·</span>
                 <span>{m.title}</span>
               </div>
-              <AbsoluteFill style={{background: C.white, opacity: 0.28 * flash + 0.5 * Math.pow(1 - p, 2) * (p > 0 ? 1 : 0), mixBlendMode: 'screen'}} />
+              <AbsoluteFill style={{background: C.white, opacity: 0.18 * flash + 0.5 * Math.pow(1 - p, 2) * (p > 0 ? 1 : 0), mixBlendMode: 'screen'}} />
             </div>
           );
         })}

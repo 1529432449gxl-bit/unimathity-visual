@@ -109,9 +109,9 @@ export const SweepText: React.FC<{text: string; p: number; style?: React.CSSProp
   );
 };
 
-/** 一次性 SVG 发光滤镜定义（id 需唯一）。 */
+/** 一次性 SVG 发光滤镜定义（id 需唯一）。用 userSpaceOnUse 大区域，水平/竖直直线（零高包围盒）也能发光。 */
 export const GlowFilter: React.FC<{id: string; std?: number}> = ({id, std = 6}) => (
-  <filter id={id} x="-50%" y="-50%" width="200%" height="200%">
+  <filter id={id} filterUnits="userSpaceOnUse" x={-4000} y={-4000} width={12000} height={12000}>
     <feGaussianBlur stdDeviation={std} result="b" />
     <feMerge>
       <feMergeNode in="b" />
