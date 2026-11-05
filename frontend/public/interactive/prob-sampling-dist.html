@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sampling distribution of the mean</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:420px}@media(max-width:520px){canvas#cv{height:360px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-p="0" aria-pressed="true">Normal</button><button type="button" class="tg" data-p="1" aria-pressed="false">Skewed</button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="n" type="range" min="1" max="25" step="1" value="5" aria-label="sample size n"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Samples of size n are drawn from the population; each sample mean drops into the histogram, which settles onto the sampling density"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d = true) => katex.render(s, el, { throwOnError: false, displayMode: d });
+// 两个总体，均值同为 MU：正态 N(MU, SN²)；右偏 Gamma(2, 尺度 TH)。样本均值的精确分布：N(MU, SN²/n)；Gamma(2n, 尺度 TH/n)。
+const MU = 1.6, SN = .9, TH = .8, SG = Math.sqrt(2) * TH, XR = [-.8, 5.2];
+const lgam = z => { const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, .1208650973866179e-2, -.5395239384953e-5];
+  let x = z, y = z, t = x + 5.5; t -= (x + .5) * Math.log(t); let s = 1.000000000190015; for (const v of c) s += v / ++y; return -t + Math.log(2.5066282746310005 * s / x) };
+const npdf = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+const gpdf = (x, k, th) => x <= 0 ? 0 : Math.exp((k - 1) * Math.log(x) - x / th - lgam(k) - k * Math.log(th));
+const pop = [x => npdf(x, MU, SN), x => gpdf(x, 2, TH)];
+const sd = [SN, SG];
+const exact = (pi, n) => pi ? x => gpdf(x, 2 * n, TH / n) : x => npdf(x, MU, SN / Math.sqrt(n));
+const gauss = () => { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random()) };
+const draw1 = pi => pi ? -TH * (Math.log(1 - Math.random()) + Math.log(1 - Math.random())) : MU + SN * gauss();
+const st = { pi: 0, n: 5, playing: false, touched: false, k: 0, clock: 0, next: 0, fly: [], hold: 0, intro: 0 };
+const sh = { pi: 0, n: 5, ymax: 1, top: .5 };
+let bins = [], bw = 1, b0 = 0, NB = 0, total = 0;
+function resetHist() {
+  const s = sd[st.pi] / Math.sqrt(st.n); NB = 34; bw = 8 * s / NB; b0 = MU - 4 * s + (st.pi ? s * .6 : 0);
+  bins = Array.from({ length: NB }, (_, i) => ({ c: 0, h: bins[i]?.h || 0 })); total = 0; st.k = 0; st.clock = 0; st.next = .3; st.fly = []; st.hold = 0;
+}
+// 节奏先慢后快：前几组样本慢放看清“抽样→求均值→落入直方图”，之后逐渐加速
+const durOf = k => P.lerp(2.3, .42, P.clamp(k / 10, 0, 1));
+const gapOf = k => k < 10 ? durOf(k) * .92 : Math.max(.012, .3 * Math.pow(.86, k - 10));
+const fx = document.getElementById('fx');
+fx.innerHTML = '<div></div><div></div><div></div>'; fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+K(fx.children[0], '\\bar X=\\frac1n\\sum_{i=1}^n X_i');
+K(fx.children[1], '\\bar X\\sim N\\!\\left(\\mu,\\ \\sigma^2/n\\right)');
+K(fx.children[2], '\\bar X\\ \\dot\\sim\\ N\\!\\left(\\mu,\\ \\sigma^2/n\\right)');
+fx.children[1].style.gridRow = fx.children[2].style.gridRow = '2'; fx.children[1].style.gridColumn = fx.children[2].style.gridColumn = '1';
+const formula = () => { fx.children[1].style.opacity = st.pi ? 0 : 1; fx.children[2].style.opacity = st.pi ? 1 : 0 };
+const nlab = document.getElementById('lab'), sl = document.getElementById('n');
+const lab = P.labels(document.getElementById('stage'));
+const T = P.view([XR[0], XR[1], 0, .62], { l: 16, r: 16, t: 26, b: 8 }), B = P.view([XR[0], XR[1], 0, 1], { l: 16, r: 16, t: 22, b: 14 });
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.4);
+  const I = P.ease.inOut(st.intro);
+  // 发射新样本、推进飞行中的样本
+  if (st.playing) {
+    anim = true; st.clock += dt;
+    if (total >= 1400) { st.hold += dt; if (st.hold > 3.2) resetHist() }
+    else while (st.clock >= st.next && st.fly.length < 60) {
+      const xs = Array.from({ length: st.n }, () => draw1(st.pi)), m = xs.reduce((a, b) => a + b, 0) / st.n;
+      st.fly.push({ xs, m, t: 0, d: durOf(st.k), fast: st.k >= 10 }); st.next += gapOf(st.k); st.k++;
+    }
+  }
+  for (const f of st.fly) { f.t += dt / f.d; if (f.t >= 1 && !f.done) { f.done = 1; const i = Math.floor((f.m - b0) / bw); if (i >= 0 && i < NB) bins[i].c++; total++ } }
+  st.fly = st.fly.filter(f => f.t < 1);
+  anim = P.spring(sh, 'pi', st.pi, dt, { k: 30, z: .85 }) | P.spring(sh, 'n', st.n, dt, { k: 30, z: .85 }) | anim || st.fly.length > 0;
+  const fexact = exact(st.pi, st.n), peak = fexact(st.pi ? MU * (2 * st.n - 1) / (2 * st.n) : MU);
+  anim = P.spring(sh, 'ymax', peak * 1.18, dt, { k: 40, z: .9 }) | anim;
+  const H1 = Math.round(h * .36); T.w = w; T.h = H1; B.w = w; B.h = h - H1; B.b[3] = sh.ymax;
+  const Yb = y => H1 + B.Y(y);
+  // 均值 μ：灰色细线贯穿上下两图
+  P.path(ctx, [[T.X(MU), T.Y(.6)], [B.X(MU), Yb(0)]], { color: C.mute, width: 1, dash: [3, 5], alpha: .6 * I });
+  // 上：总体密度（两个总体之间连续变形）
+  const fp = x => P.lerp(pop[0](x), pop[1](x), sh.pi);
+  P.axes(ctx, T, { x: true });
+  const pc = P.curve(T, fp);
+  ctx.save(); ctx.globalAlpha = I; P.fill(ctx, pc, [[T.X(XR[0]), T.Y(0)], [T.X(XR[1]), T.Y(0)]], P.vgrad(ctx, T.Y(.5), T.Y(0), C.accent, .14, .03)); ctx.restore();
+  P.path(ctx, pc, { color: C.accent, width: 2.4, progress: I });
+  // 下：直方图（按密度归一，柱高弹簧跟随）
+  ctx.save(); ctx.translate(0, H1); P.axes(ctx, B, { x: true }); ctx.restore();
+  const NN = Math.max(total, 1);
+  for (let i = 0; i < NB; i++) {
+    const tg = total ? bins[i].c / (NN * bw) : 0; anim = P.spring(bins[i], 'h', tg, dt, { k: 90, z: .6 }) | anim;
+    const hh = Math.max(0, bins[i].h); if (hh < 1e-4) continue;
+    const x0 = B.X(b0 + i * bw) + .8, x1 = B.X(b0 + (i + 1) * bw) - .8, y = Yb(Math.min(hh, sh.ymax * 1.05));
+    ctx.fillStyle = P.vgrad(ctx, y, Yb(0), C.blue, .5, .22); ctx.beginPath(); ctx.roundRect(x0, y, x1 - x0, Yb(0) - y, [2, 2, 0, 0]); ctx.fill();
+  }
+  // 抽样分布的精确密度：深蓝；右偏总体时正态近似为灰色虚线
+  P.path(ctx, P.curve(B, fexact).map(([x, y]) => [x, y + H1]), { color: C.accent, width: 2.4, progress: I, halo: 2 });
+  if (st.pi) P.path(ctx, P.curve(B, x => npdf(x, MU, SG / Math.sqrt(st.n))).map(([x, y]) => [x, y + H1]), { color: C.mute, width: 1.4, dash: [5, 4], alpha: .8 * sh.pi });
+  // 飞行中的样本：橙点落到总体轴上 → 汇聚到均值 → 均值点落入直方图
+  for (const f of st.fly) {
+    const u = f.t, aF = f.fast ? .55 : 1;
+    for (let j = 0; j < f.xs.length; j++) {
+      const x = f.xs[j]; if (x < XR[0] || x > XR[1]) continue;
+      const d0 = .25 * j / f.xs.length, pd = P.ease.out(P.seg(u, d0, d0 + .3)), pg = P.ease.inOut(P.seg(u, .48, .7));
+      if (pd <= 0) continue;
+      const px = P.lerp(T.X(x), T.X(f.m), pg), py = P.lerp(T.Y(.62) - 6, T.Y(0), pd);
+      P.dot(ctx, px, py, { r: 3.2, color: C.warm, alpha: aF * (1 - P.seg(u, .62, .72)), ring: false });
+    }
+    if (f.m < XR[0] || f.m > XR[1]) continue;
+    const pm = P.seg(u, .64, .74), pf = P.ease.inOut(P.seg(u, .72, 1));
+    if (pm > 0) {
+      const i = Math.floor((f.m - b0) / bw), land = i >= 0 && i < NB ? Math.min(bins[i].h, sh.ymax) : 0;
+      const y = P.lerp(T.Y(0), Yb(land), pf);
+      P.dot(ctx, T.X(f.m), y, { r: 4.6, color: C.hl, scale: P.ease.back(pm), alpha: f.fast ? .8 : 1 });
+      if (!f.fast && pf > 0 && pf < 1) P.path(ctx, [[T.X(f.m), T.Y(0)], [T.X(f.m), y]], { color: C.hl, width: 1.2, alpha: .35 * (1 - pf) });
+    }
+  }
+  lab.set('X', 'X', T.X(st.pi ? 3.6 : 3.3), T.Y(fp(st.pi ? 3.6 : 3.3)) - 14, { color: C.accent, alpha: I });
+  lab.set('Xb', '\\bar X', B.X(MU + 3 * sd[st.pi] / Math.sqrt(st.n)) + 14, H1 + B.Y(peak * .2), { color: C.accent, alpha: I });
+  lab.set('mu', '\\mu', T.X(MU), T.Y(.62) - 10, { color: C.mute, size: 13, alpha: I });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (total >= 1400) resetHist(); st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; resetHist(); play() };
+const setN = () => { st.n = +sl.value; K(nlab, `n=${st.n}`, false); resetHist(); cv.kick() };
+sl.addEventListener('input', () => { st.touched = true; setN() });
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { st.touched = true; st.pi = +b.dataset.p; document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(x === b))); formula(); resetHist(); if (!st.playing) play(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1200) } else stop() }, { threshold: .4 }).observe(cvEl);
+const q = new URLSearchParams(location.search);
+if (q.get('pop') === 'skewed') { st.pi = sh.pi = 1; document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.p === '1'))) }
+if (q.get('n')) sl.value = q.get('n');
+formula(); setN(); sh.n = st.n; sh.ymax = exact(st.pi, st.n)(MU) * 1.18;
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
