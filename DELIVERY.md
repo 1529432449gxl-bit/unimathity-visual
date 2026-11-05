@@ -202,3 +202,11 @@
 
 复制回 `D:\MathAPP` 后运行“导入课程内容”和“渲染TikZ图”，并把交互页面同步到 `frontend\dist\interactive`。
 
+抽象代数补充：
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\alg-cosets.html` | 05 陪集分解（D₆，可切换子群） | 2.1（定理 2.1.4 证明之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-quotient.html` | 06+07+08 正规子群、商群与同态 | 2.2 定义 2.2.1 后（`?mode=normal`）；2.2 定义 2.2.2 后（`?mode=quotient`）；2.3 定理 2.3.4 后（`?mode=hom`） |
+
+已知瑕疵：窄屏下同态模式隐藏元素名标签；个别内圈标签离圆环较近。
