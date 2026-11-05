@@ -15,7 +15,7 @@ import '@fontsource/jetbrains-mono/700.css';
 export const FontGate: React.FC<{text: string; children: React.ReactNode}> = ({text, children}) => {
   const [handle] = useState(() => delayRender('fonts'));
   useEffect(() => {
-    const sample = text + '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz·/+-%';
+    const sample = text + '照片位public/photos.jpg' + '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz·/+-%';
     const specs = [
       '400 40px "Noto Sans SC"',
       '700 40px "Noto Sans SC"',
