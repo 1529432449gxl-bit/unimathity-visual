@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Epsilon-N band</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>.controls button.tg{min-width:78px}.controls .n{min-width:96px}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="eps" type="range" min="20" max="500" step="5" value="100" aria-label="epsilon"><button class="tg" id="play" type="button" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="epsilon-N band for a convergent sequence"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const K = (el, s, d = false) => katex.render(s, el, { throwOnError: false, displayMode: d });
+
+// 数列 x_n = 1 + (-1)^n / n，极限为 1；|x_n - 1| = 1/n，故 N = floor(1/eps)。
+const A = 1, NMAX = 60, EPS_MIN = 0.02, EPS_MAX = 0.5;
+const xn = n => A + (n % 2 ? -1 : 1) / n;
+const Nof = e => Math.max(1, Math.floor(1 / e));
+
+const v = P.view([0, NMAX + 2, -0.1, 1.62], { l: 30, r: 20, t: 22, b: 32 });
+const lab = P.labels(document.getElementById('stage'));
+const sl = document.getElementById('eps'), play = document.getElementById('play'), fx = document.getElementById('fx');
+const S = { eps: 0.1, band: 0.1, pulse: 0, playing: false, prevN: Nof(0.1) };
+
+const setSlider = () => { sl.value = String(Math.round(S.eps * 1000)); };
+let lastF = '', lastL = '';
+function sliderLabel() {
+  const key = S.band.toFixed(3);
+  if (key === lastL) return;
+  lastL = key;
+  K(document.getElementById('lab'), `\\varepsilon=${key}`);
+}
+function formula() {
+  const e = S.band, N = Nof(e);
+  const key = e.toFixed(4) + '|' + N;
+  if (key === lastF) return;
+  lastF = key;
+  fx.innerHTML = '<div></div><div></div>';
+  K(fx.children[0], `\\varepsilon=${e.toFixed(3)},\\qquad N(\\varepsilon)=\\left\\lfloor\\dfrac{1}{\\varepsilon}\\right\\rfloor=${N}`, true);
+  K(fx.children[1], `n>N\\ \\Longrightarrow\\ |x_n-1|=\\dfrac{1}{n}<\\varepsilon`, true);
+}
+
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let moving = P.approach(S, 'band', S.eps, dt, 7);
+  if (S.playing) {
+    const next = S.eps - dt * 0.085;
+    if (next <= EPS_MIN + 1e-9) { S.eps = EPS_MIN; stop(); }
+    else { S.eps = next; setSlider(); }
+    moving = true;
+  }
+  const N = Nof(S.band);
+  if (N !== S.prevN) { S.pulse = 1; S.prevN = N; }
+  S.pulse = Math.max(0, S.pulse - dt * 1.5);
+  if (S.pulse > 0) moving = true;
+
+  formula();
+  sliderLabel();
+  // 坐标轴与少量刻度
+  P.axes(ctx, v, { x: true, y: true, ticks: [0, 20, 40, 60], yticks: [0, 0.5, 1, 1.5] });
+  const xr = NMAX + 2;
+  // ε 带
+  P.fill(ctx,
+    [[v.X(0), v.Y(A + S.band)], [v.X(xr), v.Y(A + S.band)]],
+    [[v.X(0), v.Y(A - S.band)], [v.X(xr), v.Y(A - S.band)]], C.pane, 0.92);
+  P.path(ctx, [[v.X(0), v.Y(A + S.band)], [v.X(xr), v.Y(A + S.band)]], { color: C.blue, width: 1.2, dash: [4, 4] });
+  P.path(ctx, [[v.X(0), v.Y(A - S.band)], [v.X(xr), v.Y(A - S.band)]], { color: C.blue, width: 1.2, dash: [4, 4] });
+  P.path(ctx, [[v.X(0), v.Y(A)], [v.X(xr), v.Y(A)]], { color: C.accent, width: 1.4, dash: [6, 5], alpha: 0.9 });
+
+  // n = N 分界
+  const sep = v.X(N + 0.5);
+  P.path(ctx, [[sep, v.pad.t], [sep, v.h - v.pad.b]], { color: C.mute, width: 1, dash: [3, 5], alpha: 0.85 });
+
+  // 数列的点：前 N 项在带外用浅蓝，带内各项用深蓝
+  for (let n = 1; n <= NMAX + 1; n += 1) {
+    const px = v.X(n), py = v.Y(xn(n));
+    if (n <= N) P.dot(ctx, px, py, { r: 2.6, color: C.blue, alpha: 0.5, ring: false });
+    else P.dot(ctx, px, py, { r: 3, color: C.accent, alpha: 0.92, ring: false });
+  }
+  // 第 N+1 项：橙色高亮，换 N 时脉冲一次
+  const first = N + 1, fp = v.Y(xn(first));
+  P.dot(ctx, v.X(first), fp, { r: 4.2, color: C.warm });
+  if (S.pulse > 0.02) {
+    ctx.save(); ctx.globalAlpha = 0.55 * S.pulse; ctx.strokeStyle = C.hl; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(v.X(first), fp, 7 + 7 * (1 - S.pulse), 0, 7); ctx.stroke(); ctx.restore();
+  }
+  lab.set('N', 'N', sep, v.h - 16, { color: C.mute, alpha: 0.95, size: 12 });
+  const ay = Math.max(v.pad.t + 10, v.Y(A + S.band) - 14);
+  lab.set('a', 'a=1', v.X(2), ay, { color: C.accent, size: 13 });
+  lab.end();
+  return moving || S.playing;
+});
+
+function stop() { S.playing = false; play.textContent = 'Play'; play.setAttribute('aria-pressed', 'false'); }
+sl.addEventListener('input', () => { stop(); S.eps = +sl.value / 1000; cv.kick(); });
+play.addEventListener('click', () => {
+  if (S.playing) { stop(); return; }
+  if (S.eps <= EPS_MIN + 1e-9) S.eps = EPS_MAX;
+  S.playing = true; play.textContent = 'Pause'; play.setAttribute('aria-pressed', 'true'); cv.kick();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+
+// 预排公式，锁定高度
+{ const h0 = fx.getBoundingClientRect().height; formula(); fx.style.minHeight = Math.ceil(Math.max(h0, fx.getBoundingClientRect().height)) + 'px'; }
+formula(); setSlider();
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+
+// 验收接口
+window.epsN = {
+  set(e) { S.eps = +e; setSlider(); S.band = +e; cv.kick(); },
+  state() { return { eps: S.band, N: Nof(S.band), playing: S.playing }; },
+  seq(n) { return xn(n); },
+};
+</script></body></html>

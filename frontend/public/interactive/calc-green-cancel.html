@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Green cancellation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Circulations of small cells cancel on shared edges, leaving the boundary"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const cv = document.getElementById('cv'); cv.style.height = '340px';
+
+/* 区域 D 与偏导差 g = Q_x - P_y */
+const R = th => 1 + .17 * Math.cos(3 * th - .4) + .09 * Math.sin(2 * th);
+const inside = (x, y) => Math.hypot(x, y) < R(Math.atan2(y, x));
+const g = (x, y) => 1 + .55 * x - .35 * y * y;
+const bnd = []; for (let k = 0; k <= 360; k++) { const th = k / 360 * 2 * Math.PI, r = R(th); bnd.push([r * Math.cos(th), r * Math.sin(th)]) }
+const B = 1.32;
+
+/* 各层网格中的内部边 */
+function level(n) {
+  const h = 2 * B / n, cells = [], edges = [];
+  const segIn = (x0, y0, x1, y1) => { for (let s = 0; s <= 8; s++) if (!inside(x0 + (x1 - x0) * s / 8, y0 + (y1 - y0) * s / 8)) return false; return true };
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x0 = -B + i * h, y0 = -B + j * h, c = [x0 + h / 2, y0 + h / 2];
+    let any = false; for (let a = 0; a <= 4 && !any; a++) for (let b = 0; b <= 4; b++) if (inside(x0 + h * a / 4, y0 + h * b / 4)) { any = true; break }
+    if (any) cells.push({ x0, y0, h, c });
+  }
+  /* 每条格线段只保留落在区域内的部分 */
+  const run = (x0, y0, x1, y1) => { let best = null, st = null; const M = 40;
+    for (let s = 0; s <= M; s++) { const ok = inside(x0 + (x1 - x0) * s / M, y0 + (y1 - y0) * s / M);
+      if (ok && st === null) st = s; if ((!ok || s === M) && st !== null) { const e = ok ? s : s - 1; if (!best || e - st > best[1] - best[0]) best = [st, e]; st = null } }
+    return best && (best[1] - best[0]) / M > .4 ? [best[0] / M, best[1] / M] : null };
+  for (let i = 1; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = -B + i * h, y0 = -B + j * h; let r = run(x, y0, x, y0 + h); if (r) edges.push({ v: true, x, y: y0 + r[0] * h, h: (r[1] - r[0]) * h, cell: h });
+    const y = -B + i * h, x0 = -B + j * h; r = run(x0, y, x0 + h, y); if (r) edges.push({ v: false, x: x0 + r[0] * h, y, h: (r[1] - r[0]) * h, cell: h });
+  }
+  return { n, h, cells, edges };
+}
+const LV = { 2: level(2), 4: level(4), 8: level(8), 16: level(16) };
+
+const STEPS = [
+  { lv: 0, ph: 'start', tex: ['\\oint_{\\partial D}P\\,\\mathrm dx+Q\\,\\mathrm dy'] },
+  { lv: 2, ph: 'show', tex: ['\\oint_{\\partial D}=\\sum_{i}\\oint_{\\partial D_i}'] },
+  { lv: 2, ph: 'cancel', tex: ['\\int_{e}+\\int_{-e}=0'] },
+  { lv: 4, ph: 'show', tex: ['\\oint_{\\partial D}=\\sum_{i}\\oint_{\\partial D_i}'] },
+  { lv: 4, ph: 'cancel', tex: ['\\int_{e}+\\int_{-e}=0'] },
+  { lv: 16, ph: 'curl', tex: ['\\oint_{\\partial D_i}P\\,\\mathrm dx+Q\\,\\mathrm dy\\approx\\left(\\dfrac{\\partial Q}{\\partial x}-\\dfrac{\\partial P}{\\partial y}\\right)\\Delta\\sigma_i'] },
+  { lv: 16, ph: 'final', tex: ['\\oint_{\\partial D}P\\,\\mathrm dx+Q\\,\\mathrm dy=\\iint_D\\left(\\dfrac{\\partial Q}{\\partial x}-\\dfrac{\\partial P}{\\partial y}\\right)\\mathrm dx\\,\\mathrm dy'] },
+];
+
+const v = P.view([-B, B, -B, B], { l: 10, r: 10, t: 10, b: 10 });
+function fit(w, h) { const s = Math.min((w - 20) / (2 * B + .2), (h - 20) / (2 * B + .2)); const hx = (w - 20) / 2 / s, hy = (h - 20) / 2 / s; v.b = [-hx, hx, -hy, hy]; v.target = v.b.slice(); v.w = w; v.h = h }
+function head(ctx, x, y, ux, uy, size, color, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath();
+  ctx.moveTo(x + ux * size, y + uy * size); ctx.lineTo(x - ux * size * .7 - uy * size * .6, y - uy * size * .7 + ux * size * .6); ctx.lineTo(x - ux * size * .7 + uy * size * .6, y - uy * size * .7 - ux * size * .6); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+/* 一条内部边两侧的一对反向小箭头：off 为离边的距离（0 时重合） */
+function pair(ctx, e, off, alpha, color) {
+  const L = e.h, px = v.X, py = v.Y, sz = Math.max(3, Math.min(6.5, (px(e.cell) - px(0)) * .09));
+  const mid = e.v ? [e.x, e.y + L / 2] : [e.x + L / 2, e.y], half = Math.min(L * .3, e.cell * .26);
+  for (const sgn of [1, -1]) {
+    /* 右侧（x 较大）的单元逆时针 → 在左边上向下；左侧单元 → 向上 */
+    let a, b;
+    if (e.v) { const x = e.x + sgn * off; a = [x, mid[1] + sgn * half]; b = [x, mid[1] - sgn * half] }
+    else { const y = e.y + sgn * off; a = [mid[0] - sgn * half, y]; b = [mid[0] + sgn * half, y] }
+    const A = [px(a[0]), py(a[1])], Bp = [px(b[0]), py(b[1])], ux = (Bp[0] - A[0]), uy = (Bp[1] - A[1]), l = Math.hypot(ux, uy);
+    P.path(ctx, [A, [Bp[0] - ux / l * sz * .5, Bp[1] - uy / l * sz * .5]], { color, width: 1.4, alpha });
+    head(ctx, Bp[0], Bp[1], ux / l, uy / l, sz, color, alpha);
+  }
+}
+function regionPath(ctx) { ctx.beginPath(); bnd.forEach((q, i) => i ? ctx.lineTo(v.X(q[0]), v.Y(q[1])) : ctx.moveTo(v.X(q[0]), v.Y(q[1]))); ctx.closePath() }
+function grid(ctx, L, alpha, prog = 1) {
+  if (alpha <= .01) return; ctx.save(); regionPath(ctx); ctx.clip(); ctx.strokeStyle = P.rgba(C.accent, .32 * alpha); ctx.lineWidth = L.n >= 16 ? .7 : 1;
+  for (const e of L.edges) { ctx.beginPath(); if (e.v) { ctx.moveTo(v.X(e.x), v.Y(e.y)); ctx.lineTo(v.X(e.x), v.Y(e.y + e.h * prog)) } else { ctx.moveTo(v.X(e.x), v.Y(e.y)); ctx.lineTo(v.X(e.x + e.h * prog), v.Y(e.y)) } ctx.stroke() }
+  /* 与边界相交的格线也画出 */
+  for (let i = 1; i < L.n; i++) { const t = -B + i * L.h; ctx.beginPath(); ctx.moveTo(v.X(t), v.Y(-B)); ctx.lineTo(v.X(t), v.Y(-B + 2 * B * prog)); ctx.moveTo(v.X(-B), v.Y(t)); ctx.lineTo(v.X(-B + 2 * B * prog), v.Y(t)); ctx.stroke() }
+  ctx.restore();
+}
+function shade(ctx, L, alpha, smooth) {
+  if (alpha <= .01) return; ctx.save(); regionPath(ctx); ctx.clip(); ctx.globalAlpha = alpha;
+  const cells = smooth ? LV[16].cells : L.cells;
+  for (const c of cells) { const val = P.clamp((g(...c.c) - .2) / 1.4, 0, 1); ctx.fillStyle = P.rgba(C.blue, .1 + .42 * val);
+    ctx.fillRect(v.X(c.x0) - .5, v.Y(c.y0 + c.h) - .5, v.X(c.x0 + c.h) - v.X(c.x0) + 1, v.Y(c.y0) - v.Y(c.y0 + c.h) + 1) }
+  ctx.restore();
+}
+function boundary(ctx, alpha = 1) {
+  P.path(ctx, bnd.map(q => [v.X(q[0]), v.Y(q[1])]), { color: C.accent, width: 2.4, alpha });
+  for (let k = 0; k < 6; k++) { const i = Math.round((k + .15) / 6 * 360), a = bnd[i], b = bnd[i + 1], ux = v.X(b[0]) - v.X(a[0]), uy = v.Y(b[1]) - v.Y(a[1]), l = Math.hypot(ux, uy);
+    head(ctx, v.X(a[0]), v.Y(a[1]), ux / l, uy / l, 7, C.accent, alpha) }
+}
+
+const fx = document.getElementById('fx');
+function texts(i) { fx.innerHTML = ''; for (const t of STEPS[i].tex) { const d = document.createElement('div'); K(d, t, true); fx.appendChild(d) } }
+
+let S;
+const m = P.mount(cv, (ctx, w, h, dt) => {
+  fit(w, h); const moving = S.tick(dt), i = S.i, p = P.ease.inOut(S.p), st = STEPS[i];
+  /* 已完成的较粗层只留格线 */
+  const prevLv = STEPS.slice(0, i).filter(s => s.ph === 'cancel').map(s => s.lv);
+  if (st.ph === 'curl' || st.ph === 'final') {
+    shade(ctx, LV[16], st.ph === 'curl' ? p : 1, st.ph === 'final');
+    for (const n of prevLv) grid(ctx, LV[n], st.ph === 'final' ? 1 - p : 1);
+    grid(ctx, LV[16], st.ph === 'curl' ? p : 1 - p, st.ph === 'curl' ? p : 1);
+  } else {
+    for (const n of prevLv) if (n !== st.lv) grid(ctx, LV[n], 1);
+    if (st.lv) {
+      const L = LV[st.lv], off = L.h * .11;
+      grid(ctx, L, 1, st.ph === 'show' ? p : 1);
+      if (st.ph === 'show') for (const e of L.edges) pair(ctx, e, off, p, C.accent);
+      else for (const e of L.edges) pair(ctx, e, off * (1 - p), 1 - P.seg(p, .55, 1), P.seg(p, 0, .2) > 0 ? C.warm : C.accent);
+    }
+  }
+  boundary(ctx);
+  return moving;
+});
+S = P.stepper(document.getElementById('nav'), { count: STEPS.length, dur: 1.5, hold: .9, onChange: s => texts(s.i), kick: () => m.kick() });
+texts(0);
+Steady.sweep([fx], STEPS.length, i => texts(i), () => texts(0));
+P.reportHeight(document.querySelector('main'));
+m.kick();
+</script></body></html>

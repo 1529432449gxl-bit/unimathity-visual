@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gram-Schmidt</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}@media(max-width:520px){.stage canvas{height:310px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Gram-Schmidt orthogonalization"></canvas></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+import * as T from './vendor/la3d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage);
+const L3 = (id, tex, p, color, dx = 12, dy = -10, alpha = 1) => { const q = cam.P(p); lab.set(id, tex, q[0], q[1], { dx, dy, color, alpha }) };
+const a1 = [1.25, 0.15, 0.1], a2 = [0.75, 1.1, 0.05], a3 = [0.55, 0.45, 1.15];
+const b1 = a1, p21 = T.proj(a2, b1), b2 = T.sub(a2, p21), p31 = T.proj(a3, b1), p32 = T.proj(a3, b2), b3 = T.sub(T.sub(a3, p31), p32);
+const e = [b1, b2, b3].map(T.unit);
+const F = [
+  '\\alpha_1,\\ \\alpha_2,\\ \\alpha_3\\ \\text{linearly independent}',
+  '\\beta_1=\\alpha_1',
+  '\\beta_2=\\alpha_2-\\dfrac{(\\alpha_2,\\beta_1)}{(\\beta_1,\\beta_1)}\\,\\beta_1',
+  '\\beta_3=\\alpha_3-\\dfrac{(\\alpha_3,\\beta_1)}{(\\beta_1,\\beta_1)}\\,\\beta_1-\\dfrac{(\\alpha_3,\\beta_2)}{(\\beta_2,\\beta_2)}\\,\\beta_2',
+  '\\eta_i=\\dfrac{\\beta_i}{|\\beta_i|},\\qquad \\beta_k=\\alpha_k-\\dfrac{(\\alpha_k,\\beta_1)}{(\\beta_1,\\beta_1)}\\,\\beta_1-\\cdots-\\dfrac{(\\alpha_k,\\beta_{k-1})}{(\\beta_{k-1},\\beta_{k-1})}\\,\\beta_{k-1}'];
+const eqEl = document.getElementById('eq'), eq = T.formulas(eqEl, F);
+T.legend(document.getElementById('lg'), [['\\alpha_i', C.mute], ['\\text{projections}', C.warm, 1], ['\\beta_i', C.accent], ['\\eta_i', C.blue]]);
+const cam = V.camera({ az: -0.62, el: 0.36 });
+const st = P.stepper(document.getElementById('nav'), { count: 5, dur: 1.8, hold: .9, onChange: s => eq(F[s.i]), kick: () => cv.kick() });
+eq(F[0]);
+const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => {} });
+const lerp3 = (a, b, t) => T.add(a, T.mul(t, T.sub(b, a)));
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.2, h / 3.3); cam.ox = w * 0.46; cam.oy = h * 0.68;
+  const moving = st.tick(dt), i = st.i, p = P.ease.inOut(st.p), O = [0, 0, 0];
+  V.axes(ctx, cam, [1.5, 1.5, 1.4], { alpha: .3 });
+  if (i >= 2) { V.paint(ctx, cam, [T.plane(O, b1, b2, C.blue, i === 3 ? .1 : .06, 1.15)]) }
+  // α 们
+  const ga = i >= 4 ? .25 : .6;
+  V.arrow(ctx, cam, O, a1, { color: C.mute, width: 1.8, alpha: i >= 1 ? .3 : ga }); V.arrow(ctx, cam, O, a2, { color: C.mute, width: 1.8, alpha: i >= 2 ? .3 : ga }); V.arrow(ctx, cam, O, a3, { color: C.mute, width: 1.8, alpha: i >= 3 ? .3 : ga });
+  const shown = [];
+  const unitT = i >= 4 ? p : 0;
+  const B = [b1, b2, b3].map((b, k) => i >= 4 ? lerp3(b, e[k], unitT) : b);
+  if (i === 2) { const q = lerp3(a2, b2, p); V.line(ctx, cam, [O, p21], { color: C.warm, width: 1.8, dash: [5, 4], alpha: .9 }); V.line(ctx, cam, [p21, a2], { color: C.warm, width: 1, dash: [3, 4], alpha: .6 }); V.arrow(ctx, cam, O, q, { color: C.accent, width: 2.6 }); if (p > .95) T.rightAngle(ctx, cam, O, b1, b2) }
+  if (i === 3) { const q = lerp3(a3, b3, p), r = T.add(p31, p32); V.line(ctx, cam, [O, p31], { color: C.warm, width: 1.8, dash: [5, 4], alpha: .9 }); V.line(ctx, cam, [p31, r], { color: C.warm, width: 1.8, dash: [5, 4], alpha: .9 }); V.line(ctx, cam, [r, a3], { color: C.warm, width: 1, dash: [3, 4], alpha: .6 }); V.arrow(ctx, cam, O, q, { color: C.accent, width: 2.6 }); if (p > .95) T.rightAngle(ctx, cam, r, T.sub(a3, r), b1, { alpha: .6 }) }
+  const col = i >= 4 ? C.blue : C.accent, nm = i >= 4 ? '\\eta' : '\\beta';
+  if (i >= 1) { V.arrow(ctx, cam, O, B[0], { color: col, width: 2.6, alpha: i === 1 ? p : 1 }); L3('b1', nm + '_1', B[0], col, 10, 12) } else lab.set('b1', '', 0, 0, { alpha: 0 });
+  if (i >= 3) { V.arrow(ctx, cam, O, B[1], { color: col, width: 2.6 }); }
+  if (i >= 2) L3('b2', nm + '_2', i === 2 ? lerp3(a2, b2, p) : B[1], col, -14, -6);
+  if (i >= 4) V.arrow(ctx, cam, O, B[2], { color: col, width: 2.6 });
+  if (i >= 3) L3('b3', nm + '_3', i === 3 ? lerp3(a3, b3, p) : B[2], col, 12, -8);
+  if (i >= 4) { T.rightAngle(ctx, cam, O, e[0], e[1]); T.rightAngle(ctx, cam, O, e[0], e[2], { alpha: .5 }); T.rightAngle(ctx, cam, O, e[1], e[2], { alpha: .5 }) }
+  if (i === 2) V.arrow(ctx, cam, O, p21, { color: C.warm, width: 3.2, alpha: .85, head: 8 });
+  if (i === 3) { V.arrow(ctx, cam, O, p31, { color: C.warm, width: 3.2, alpha: .85, head: 8 }); V.arrow(ctx, cam, p31, T.add(p31, p32), { color: C.warm, width: 3.2, alpha: .85, head: 8 }) }
+  if (i <= 1) { L3('a2', '\\alpha_2', a2, C.mute, -14, -6); L3('a3', '\\alpha_3', a3, C.mute, 12, -8) }
+  if (i === 0) L3('a1', '\\alpha_1', a1, C.mute, 10, 12);
+  lab.end();
+  return moving || dr.active;
+});
+cv.kick(); P.reportHeight(document.querySelector('main'));
+window.msteps = { n: () => 5, go: k => { st.go(k, false); cv.kick() } };
+</script></body></html>

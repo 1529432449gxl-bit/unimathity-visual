@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solution set of a nonhomogeneous system</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}@media(max-width:520px){.stage canvas{height:310px}}</style></head>
+<body><main>
+<div class="top" id="pick"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Solution set of a nonhomogeneous system"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+import * as T from './vendor/la3d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const L3 = (cam, id, tex, p, color, dx = 12, dy = -10, alpha = 1) => { const q = cam.P(p); lab.set(id, tex, q[0], q[1], { dx, dy, color, alpha }) };
+const u = [1, 0.15, -0.35], w = [0.1, 1, -0.3], n = T.unit(T.cross(u, w));
+const g0s = [T.add(T.mul(1.0, n), T.lin([0.35, u], [-0.25, w])), T.add(T.mul(1.0, n), T.lin([-0.4, u], [0.45, w]))];
+const S = { g: g0s[0], gT: g0s[0], k: 0, ph: 0, playing: false };
+const cam = V.camera({ az: -0.55, el: 0.32 });
+const set = T.playToggle(document.getElementById('play'), S, () => cv.kick());
+const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+T.segmented(document.getElementById('pick'), [[0, '\\gamma_0'], [1, '\\gamma_0^{\\ast}']], 0, i => { S.k = i; S.gT = g0s[i]; cv.kick() });
+T.legend(lg, [['W', C.blue], ['\\gamma_0+W', C.accent], ['\\gamma_0', C.warm], ['\\eta\\in W', C.blue], ['x', C.accent]]);
+const eq = T.formulas(document.getElementById('eq'), ['x=\\gamma_0+\\eta,\\quad \\eta\\in W,\\qquad x=\\gamma_0+k_1\\eta_1+\\cdots+k_{n-r}\\eta_{n-r}']);
+eq('x=\\gamma_0+\\eta,\\quad \\eta\\in W,\\qquad x=\\gamma_0+k_1\\eta_1+\\cdots+k_{n-r}\\eta_{n-r}');
+const base = T.mul(1.0, n);
+const cv = P.mount(canvas, (ctx, wd, ht, dt) => {
+  cam.sc = Math.min(wd / 4.4, ht / 3.4); cam.ox = wd / 2; cam.oy = ht * 0.6;
+  if (S.playing) S.ph += dt * 0.7;
+  const mv = P.approach(S, 'g', S.gT, dt, 6);
+  const x = T.add(base, T.lin([0.75 * Math.cos(S.ph + 0.8), u], [0.6 * Math.sin(S.ph + 0.8), w])), eta = T.sub(x, S.g);
+  V.axes(ctx, cam, [1.6, 1.6, 1.5], { alpha: .35 });
+  V.paint(ctx, cam, [T.plane([0, 0, 0], u, w, C.blue, .13, 1.35), T.plane(base, u, w, C.accent, .1, 1.35)]);
+  T.edge(ctx, cam, [0, 0, 0], u, w, { color: C.blue, s: 1.35 }); T.edge(ctx, cam, base, u, w, { color: C.accent, s: 1.35 });
+  V.line(ctx, cam, [[0, 0, 0], eta], { color: C.blue, width: 1.4, dash: [4, 4], alpha: .8 });
+  V.line(ctx, cam, [eta, x], { color: C.mute, width: 1, dash: [3, 4], alpha: .6 });
+  V.arrow(ctx, cam, [0, 0, 0], S.g, { color: C.warm, width: 2.4 });
+  V.arrow(ctx, cam, S.g, x, { color: C.blue, width: 2.4 });
+  V.arrow(ctx, cam, [0, 0, 0], x, { color: C.accent, width: 2.6 });
+  L3(cam, 'g', '\\gamma_0', S.g, C.warm, -16, -8); L3(cam, 'x', 'x', x, C.accent, 12, -10); L3(cam, 'e', '\\eta', eta, C.blue, 12, 10);
+  L3(cam, 'W', 'W', T.lin([1.3, T.unit(u)], [-1.1, T.unit(T.sub(w, T.proj(w, u)))]), C.blue, 0, 0); L3(cam, 'U', '\\gamma_0+W', T.add(base, T.lin([1.3, T.unit(u)], [-1.1, T.unit(T.sub(w, T.proj(w, u)))])), C.accent, 10, 0); lab.end();
+  return mv || S.playing || dr.active;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

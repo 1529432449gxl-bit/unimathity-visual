@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Singular integral</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}@media(max-width:520px){.stage canvas{height:290px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-p="0.5" aria-pressed="true"></button><button type="button" data-p="1" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="u" type="range" min="0" max="1000" step="1" value="0" aria-label="lower limit"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="area under 1/x^p from u to 1 as u tends to 0"></canvas></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const UMIN = 2e-4, U0 = 0.5;
+const sl = document.getElementById('u'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+const uOf = s => Math.exp(Math.log(U0) + (Math.log(UMIN) - Math.log(U0)) * s / 1000);
+const sOf = u => 1000 * (Math.log(u) - Math.log(U0)) / (Math.log(UMIN) - Math.log(U0));
+const S = { p: 0.5, u: U0, target: U0, playing: false, fade: 1 };
+const fp = x => Math.pow(x, -S.p), area = u => S.p === 1 ? -Math.log(u) : 2 - 2 * Math.sqrt(u);
+const lab = P.labels(stage);
+const btns = [...document.querySelectorAll('#mode button')];
+K(btns[0], 'f(x)=\\dfrac1{\\sqrt x}'); K(btns[1], 'f(x)=\\dfrac1{x}');
+const eq = () => K(document.getElementById('eq'), S.p === 1 ? '\\int_u^1\\frac{\\mathrm dx}{x}=-\\ln u\\ \\longrightarrow\\ +\\infty\\quad(u\\to0^+)' : '\\int_u^1\\frac{\\mathrm dx}{\\sqrt x}=2-2\\sqrt u\\ \\longrightarrow\\ 2\\quad(u\\to0^+)');
+eq();
+btns.forEach(bt => bt.addEventListener('click', () => { S.p = +bt.dataset.p; btns.forEach(o => o.setAttribute('aria-pressed', String(o === bt))); eq(); S.fade = 0; cv.kick() }));
+const v = P.view([-0.04, 1.12, -0.25, 4], { l: 14, r: 64, t: 14, b: 24 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target *= Math.exp(-0.9 * dt); if (S.target <= UMIN) { S.target = UMIN; setPlay(false) } sl.value = sOf(S.target); }
+  let moving = P.approach(S, 'u', S.target, dt, 8); moving = P.approach(S, 'fade', 1, dt, 5) || moving;
+  const u = S.u;
+  // 纵向镜头随瑕点附近的高度拉高（只拉到 f(u) 的高度）
+  const H = P.clamp(1.12 * fp(u), 4, 16);
+  v.aim([-0.04, 1.12, -0.06 * H, H]); moving = v.step(dt, 5) || moving;
+  K(document.getElementById('lab'), `u=${u >= 0.01 ? u.toFixed(2) : u.toExponential(0).replace('e', '\\times10^{') + '}'}`);
+  P.axes(ctx, v, { x: true, y: true });
+  const n = 320, topPts = [], base = [];
+  for (let i = 0; i <= n; i++) { const x = Math.exp(Math.log(u) + (0 - Math.log(u)) * i / n); topPts.push([v.X(x), v.Y(fp(x))]); base.push([v.X(x), v.Y(0)]) }
+  P.fill(ctx, topPts, base, C.warm, .26 * S.fade);
+  const cps = []; const xs0 = Math.max(1e-6, 1 / Math.pow(v.b[3] * 1.05, 1 / S.p));
+  for (let i = 0; i <= 300; i++) { const x = Math.exp(Math.log(xs0) + (Math.log(1.1) - Math.log(xs0)) * i / 300); cps.push([v.X(x), v.Y(fp(x))]) }
+  P.path(ctx, cps, { color: C.accent, width: 2.4, alpha: S.fade });
+  P.path(ctx, [[v.X(u), v.Y(0)], [v.X(u), v.Y(fp(u))]], { color: C.warm, width: 1.4 });
+  // 右侧量筒：已累积的面积（满刻度 7）
+  const gx = w - 34, gh = h - 38, gy0 = h - 24, scale = gh / 7;
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(gx - 9, gy0 - gh, 18, gh, 4); ctx.stroke();
+  const ah = Math.min(gh, area(u) * scale);
+  ctx.fillStyle = P.rgba(C.warm, .55 * S.fade); ctx.beginPath(); ctx.roundRect(gx - 7, gy0 - ah, 14, ah, 3); ctx.fill(); ctx.restore();
+  if (S.p !== 1) P.path(ctx, [[gx - 15, gy0 - 2 * scale], [gx + 15, gy0 - 2 * scale]], { color: C.accent, width: 1.6, dash: [4, 3] });
+  lab.set('two', '2', gx, gy0 - 2 * scale, { dx: 22, color: C.accent, size: 13, alpha: S.p !== 1 ? 1 : 0 });
+  lab.set('1', '1', v.X(1), v.Y(0), { dy: 12, color: C.soft, size: 13 });
+  lab.set('0', '0', v.X(0), v.Y(0), { dx: -8, dy: 12, color: C.soft, size: 13 });
+  lab.end();
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target <= UMIN * 1.0001) { S.target = U0; S.u = U0; v.aim([-0.04, 1.12, -0.25, 4], true) } setPlay(true) });
+sl.addEventListener('input', () => { setPlay(false); S.target = uOf(+sl.value); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

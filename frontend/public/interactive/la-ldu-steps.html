@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LDU</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const R=['1','2','\\vdots','n'], C=['1','2','\\cdots','n'], ord=x=>({'1':1,'2':2,'n':9})[x];
+function W(k,fin){return gen(R,C,(r,c,i,j,m)=>{const ri=ord(r),cj=ord(c);
+  if(fin){ if(m==='v')return cj<=2?'0':null; if(m)return null; if(cj<ri)return '0'; if(cj===ri)return `d_{${r}}`; return ri===1?`a_${sub(r,c)}`:`a^{(${ri===9?'n-1':ri-1})}_${sub(r,c)}`}
+  if(m==='v')return cj<=k?'0':null; if(m)return null;
+  if(cj<=k&&ri>cj)return '0'; const s=Math.min(ri-1,k); return s?`a^{(${s})}_${sub(r,c)}`:`a_${sub(r,c)}`})}
+function L(k){return gen(R,C,(r,c,i,j,m)=>{const ri=ord(r),cj=ord(c);
+  if(m==='v')return cj<=k||k>=9?(cj===9?'0':(cj<=2?(k>=cj?'\\vdots':''):null)):(cj===9?'0':'');
+  if(m==='c')return ri===9?(k>=9?'\\cdots':''):(ri<9?'0':null);
+  if(ri===cj)return '1'; if(cj>ri)return '0'; return cj<=k?`l_${sub(r,c)}`:''})}
+function D(on){return gen(R,C,(r,c,i,j,m)=>{if(m==='v')return j===2?(on?'\\ddots':''):'0'; if(m==='c')return '0'; return r===c?(on?`d_{${r}}`:''):'0'})}
+function U(on){return gen(R,C,(r,c,i,j,m)=>{const ri=ord(r),cj=ord(c); if(m==='v')return cj<=2?'0':(on&&j===2?'\\ddots':(on?'\\vdots':'')); if(m==='c')return ri===9?'0':(on?'\\cdots':''); if(cj<ri)return '0'; if(cj===ri)return on?'1':''; return on?`u_${sub(r,c)}`:''})}
+D(false)[2][2]='';
+const set=(k,fin,d)=>{const l=L(k),dd=D(d),uu=U(d);dd[2][2]=d?'\\ddots':'';return [{key:'A',label:fin?'U_0':(k===0?'A':'A^{('+k+')}'),cells:W(k,fin)},{key:'br',br:true},{key:'L',label:'L',cells:l},{key:'D',label:'D',cells:dd},{key:'U',label:'U',cells:uu}]};
+const colT=(key,j,from,cls)=>[...Array(4)].map((_,i)=>i>=from?[key,i,j,cls]:null).filter(Boolean);
+const steps=[
+ {mats:set(0,false,false),hi:[],lines:['A=LDU,\\qquad |A_1|,\\,|A_2|,\\,\\cdots,\\,|A_n|\\neq0']},
+ {mats:set(1,false,false).map((m,i)=>i===0?{...m,cells:W(0),label:'A'}:m),hi:[['A',0,0,'s'],...colT('A',0,1,'t'),...colT('L',0,1,'t')],lines:['l_{i1}=\\dfrac{a_{i1}}{a_{11}}']},
+ {mats:set(1,false,false),hi:[...colT('A',0,1,'p'),...colT('L',0,1,'s')],lines:['r_i-l_{i1}\\,r_1']},
+ {mats:set(2,false,false).map((m,i)=>i===0?{...m,cells:W(1),label:'A^{(1)}'}:m),hi:[['A',1,1,'s'],...colT('A',1,2,'t'),...colT('L',1,2,'t')],lines:['l_{i2}=\\dfrac{a^{(1)}_{i2}}{a^{(1)}_{22}}']},
+ {mats:set(2,false,false),hi:[...colT('A',1,2,'p'),...colT('L',1,2,'s')],lines:['r_i-l_{i2}\\,r_2']},
+ {mats:set(9,true,false),hi:[['A',0,0,'s'],['A',1,1,'s'],['A',3,3,'s']],lines:['U_0=L^{-1}A,\\qquad d_k=a^{(k-1)}_{kk}=\\dfrac{|A_k|}{|A_{k-1}|}']},
+ {mats:set(9,true,true),hi:[['D',0,0,'t'],['D',1,1,'t'],['D',3,3,'t'],['U',0,1,'t'],['U',0,3,'t'],['U',1,3,'t']],lines:['u_{ij}=\\dfrac{a^{(i-1)}_{ij}}{d_i}\\quad(j>i)','A=LDU']},
+];
+LAS.run({steps,interval:1800});
+</script></body></html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Partial derivative</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="x" aria-pressed="true"></button><button type="button" data-m="y" aria-pressed="false"></button></div>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Partial derivative"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const f = (x, y) => 0.55 * Math.sin(1.2 * x) * Math.cos(0.9 * y) + 0.12 * x * y + 0.2;
+const fx = (x, y) => 0.66 * Math.cos(1.2 * x) * Math.cos(0.9 * y) + 0.12 * y, fy = (x, y) => -0.495 * Math.sin(1.2 * x) * Math.sin(0.9 * y) + 0.12 * x;
+const x0 = 0.35, y0 = 0.5;
+const btns = [...document.querySelectorAll('#mode button')]; K(btns[0], 'y=y_0'); K(btns[1], 'x=x_0');
+legend([['z=f(x,y)', C.accent], ['\\text{section}', C.warm], ['\\text{tangent}', C.blue]]);
+const T = { x: "f_x(x_0,y_0)=\\dfrac{\\mathrm d}{\\mathrm dx}f(x,y_0)\\Big|_{x=x_0}", y: "f_y(x_0,y_0)=\\dfrac{\\mathrm d}{\\mathrm dy}f(x_0,y)\\Big|_{y=y_0}" };
+lockEq(Object.values(T));
+const S = { m: 'x', a: 0 };
+const cam = V.camera({ az: -0.55, el: 0.42 }); const dr = V.drag(canvas, cam, () => cv.kick());
+const quads = V.mesh((x, y) => [x, y, f(x, y)], -1.5, 1.5, -1.5, 1.5, 22, 22);
+const setM = m => { S.m = m; btns.forEach(o => o.setAttribute('aria-pressed', String(o.dataset.m === m))); K(eqEl, T[m], 1); S.a = 0; cv.kick() };
+btns.forEach(b => b.addEventListener('click', () => setM(b.dataset.m)));
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.6, h / 3.6); cam.ox = w / 2; cam.oy = h * 0.6;
+  const mv = P.approach(S, 'a', 1, dt, 3);
+  const X = S.m === 'x', pl = X ? V.poly([[-1.7, y0, -0.9], [1.7, y0, -0.9], [1.7, y0, 1.3], [-1.7, y0, 1.3]], C.blue, .12 * S.a) : V.poly([[x0, -1.7, -0.9], [x0, 1.7, -0.9], [x0, 1.7, 1.3], [x0, -1.7, 1.3]], C.blue, .12 * S.a);
+  V.axes(ctx, cam, [1.9, 1.9, 1.4], { alpha: .4 });
+  V.paint(ctx, cam, [{ quads, color: C.accent, alpha: .22, edge: .1 }, pl]);
+  const sec = []; for (let i = 0; i <= 80; i++) { const s = -1.5 + 3 * i / 80; sec.push(X ? [s, y0, f(s, y0)] : [x0, s, f(x0, s)]) }
+  V.line(ctx, cam, sec, { color: C.warm, width: 2.6, alpha: S.a });
+  const z0 = f(x0, y0), k = X ? fx(x0, y0) : fy(x0, y0), e = 0.75 * S.a;
+  V.line(ctx, cam, X ? [[x0 - e, y0, z0 - k * e], [x0 + e, y0, z0 + k * e]] : [[x0, y0 - e, z0 - k * e], [x0, y0 + e, z0 + k * e]], { color: C.blue, width: 2.2 });
+  V.line(ctx, cam, [[x0, y0, 0], [x0, y0, z0]], { color: C.mute, width: 1, dash: [3, 4] });
+  const p = cam.P([x0, y0, z0]); P.dot(ctx, p[0], p[1], { r: 4.8, color: C.warm });
+  const q = cam.P([x0, y0, 0]); P.dot(ctx, q[0], q[1], { r: 3, color: C.soft });
+  lab.set('p', '(x_0,y_0)', q[0], q[1], { dy: 14, color: C.soft, size: 12 }); lab.end();
+  return mv || dr.active;
+});
+setM('x');
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

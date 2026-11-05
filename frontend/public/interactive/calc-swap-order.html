@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Changing the order</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:320px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Changing the order"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+legend([['\\text{region }D', C.accent], ['\\text{old strips}', C.blue], ['\\text{new strips}', C.warm]]);
+const T = ['\\int_0^1\\mathrm dy\\int_{y}^{1}f(x,y)\\,\\mathrm dx', 'D:\\ 0\\leqslant y\\leqslant1,\\ y\\leqslant x\\leqslant1', 'D:\\ 0\\leqslant y\\leqslant x\\leqslant 1', '\\int_0^1\\mathrm dx\\int_{0}^{x}f(x,y)\\,\\mathrm dy'];
+lockEq(T); K(eqEl, T[0], 1);
+const B = [-0.15, 1.2, -0.12, 1.12], v = P.view(B);
+const S = { reg: 0, old: 1, nw: 0 };
+let st;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (!st) return false;
+  const s = Math.min(w / (B[1] - B[0]), h / (B[3] - B[2])), cx = (B[0] + B[1]) / 2, cy = (B[2] + B[3]) / 2;
+  v.b = [cx - w / s / 2, cx + w / s / 2, cy - h / s / 2, cy + h / s / 2]; v.w = w; v.h = h; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  const anim = st.tick(dt), i = st.i, p = P.ease.inOut(st.p);
+  let mv = P.approach(S, 'reg', i >= 1 ? 1 : 0, dt, 5); mv = P.approach(S, 'old', i <= 1 ? 1 : 0.0, dt, 5) || mv; mv = P.approach(S, 'nw', i >= 2 ? 1 : 0, dt, 5) || mv;
+  P.axes(ctx, v, { x: true, y: true });
+  P.fill(ctx, [[v.X(0), v.Y(0)], [v.X(1), v.Y(1)]], [[v.X(0), v.Y(0)], [v.X(1), v.Y(0)]], C.accent, .14 * S.reg);
+  P.path(ctx, [[v.X(0), v.Y(0)], [v.X(1), v.Y(1)], [v.X(1), v.Y(0)], [v.X(0), v.Y(0)]], { color: C.accent, width: 2, alpha: .3 + .7 * S.reg });
+  // 原次序：水平条，x 从 y 到 1
+  for (let k = 1; k < 10; k++) { const y = k / 10; P.path(ctx, [[v.X(y), v.Y(y)], [v.X(1), v.Y(y)]], { color: C.blue, width: 2.2, alpha: .75 * S.old, progress: i === 0 ? P.clamp(p * 10 - k * .8 + 1, 0, 1) : 1 }) }
+  // 新次序：竖直条，y 从 0 到 x
+  for (let k = 1; k < 10; k++) { const x = k / 10; P.path(ctx, [[v.X(x), v.Y(0)], [v.X(x), v.Y(x)]], { color: C.warm, width: 2.2, alpha: .8 * S.nw, progress: i === 2 ? P.clamp(p * 10 - k * .8 + 1, 0, 1) : 1 }) }
+  lab.set('l', 'y=x', v.X(.55), v.Y(.55), { dx: -20, dy: -12, color: C.accent, size: 13 });
+  lab.set('r', 'x=1', v.X(1), v.Y(.5), { dx: 20, color: C.soft, size: 13 });
+  lab.end(); return anim || mv;
+});
+st = P.stepper(document.getElementById('nav'), { count: T.length, dur: 1.2, hold: 1.2, kick: cv.kick, onChange: s => K(eqEl, T[s.i], 1) });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

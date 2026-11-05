@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>行列式计算逐步演示</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}
+main{padding:10px 2px 6px}
+.mats{display:flex;flex-wrap:wrap;gap:18px 26px;justify-content:center;align-items:flex-start;min-height:210px}
+.mat{display:flex;flex-direction:column;align-items:center;gap:4px}
+.mat .lab{font-size:15px;min-height:26px}
+.grid{display:grid;gap:3px;padding:4px 6px;position:relative}
+.grid:before,.grid:after{content:"";position:absolute;top:0;bottom:0;width:7px;border:1.6px solid #4f525b}
+.grid:before{left:0;border-right:0}.grid:after{right:0;border-left:0}
+.cell{width:46px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:5px;font-size:14px;transition:background .25s,box-shadow .25s,color .25s}
+.cell.sep{margin-left:10px;position:relative}.cell.sep:before{content:"";position:absolute;left:-8px;top:2px;bottom:2px;border-left:1.4px dashed #9a9da5}
+.cell.e{color:#c9cbd1}.cell.z{color:#b3b5bc}
+.cell.s{box-shadow:inset 0 0 0 2px #223056;background:#eeeff4}
+.cell.t{background:#f3e3d2;box-shadow:inset 0 0 0 2px #b5763a;color:#161820;font-weight:600}
+.cell.p{background:#eeeff4}
+.cell.d{color:#c9cbd1;background:#f4f4f2}
+.grid.det:before,.grid.det:after{width:0;border:0;border-left:1.6px solid #4f525b}
+.fx{margin:14px auto 0;max-width:760px;min-height:96px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:16px}
+.fx .katex-display{margin:0}.fx .l{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:3px 4px}
+.nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px}
+.nav button{width:44px;height:36px;border:1px solid #223056;border-radius:6px;background:transparent;color:#223056;font-size:18px;cursor:pointer;line-height:1}
+.nav button:disabled{opacity:.3;cursor:default}.nav button.play{width:auto;padding:0 14px;font-size:14px}.nav button.play[aria-pressed="true"]{background:#223056;color:#fff}
+.nav .ct{min-width:64px;text-align:center;color:#4f525b;font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid #223056;outline-offset:2px}
+@media(max-width:480px){.cell{width:38px;height:32px;font-size:12px}.mats{gap:12px 14px}.fx{font-size:14px}}
+</style></head>
+<body><main>
+<div class="mats" id="mats"></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button id="first" type="button" aria-label="回到开始">↺</button><button id="prev" type="button" aria-label="上一步">◀</button><span class="ct" id="ct"></span><button id="next" type="button" aria-label="下一步">▶</button><button id="play" class="play" type="button" aria-pressed="false">Play</button></div>
+</main>
+<script>
+/* ---------- 分数 ---------- */
+const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b]}return a||1};
+class Q{constructor(n,d=1){if(d<0){n=-n;d=-d}const g=gcd(n,d);this.n=n/g;this.d=d/g}
+ add(o){return new Q(this.n*o.d+o.n*this.d,this.d*o.d)}sub(o){return new Q(this.n*o.d-o.n*this.d,this.d*o.d)}
+ mul(o){return new Q(this.n*o.n,this.d*o.d)}div(o){return new Q(this.n*o.d,this.d*o.n)}
+ abs(){return new Q(Math.abs(this.n),this.d)}cmp(o){return this.n*o.d-o.n*this.d}isZero(){return this.n===0}
+ sqrt(){const a=Math.round(Math.sqrt(this.n)),b=Math.round(Math.sqrt(this.d));return new Q(a,b)}
+ tex(){const s=this.n<0?'-':'',a=Math.abs(this.n);return this.d===1?s+a:s+'\\tfrac{'+a+'}{'+this.d+'}'}
+ ptex(){return this.n<0?'('+this.tex()+')':this.tex()}}
+const q=x=>x instanceof Q?x:new Q(x);
+const M=(rows)=>rows.map(r=>r.map(q));
+const mul=(A,B)=>A.map((r,i)=>B[0].map((_,j)=>r.reduce((s,_,k)=>s.add(A[i][k].mul(B[k][j])),q(0))));
+const T=(A)=>A[0].map((_,j)=>A.map(r=>r[j]));
+/* ---------- 快照 ---------- */
+let mats,steps;
+function mk(key,label,cells,aug=-1){return{key,label,cells,aug}}
+function snap(hi,lines,labels){steps.push({mats:mats.map(m=>({key:m.key,label:(labels&&labels[m.key])||m.label,aug:m.aug,cells:m.cells.map(r=>r.map(c=>c&&c.v!==undefined?{...c}:c))})),hi:hi||[],lines})}
+const C=(v,z)=>({v,z:!!z});           // 已知元素
+const E=()=>({v:null});                // 待算元素
+const S=(name,i,j)=>`${name}_{${i+1}${j+1}}`;
+function sumTerms(pairs){return pairs.map(([a,b])=>a+b).join('+')}
+function numTerms(pairs){return pairs.map(([a,b])=>a.ptex()+'\\times'+b.ptex()).join('+')}
+
+/* ---------- 工具 ---------- */
+function det(A){const n=A.length;if(n===1)return A[0][0];let s=q(0);for(let j=0;j<n;j++){const m=A.slice(1).map(r=>r.filter((_,k)=>k!==j));const t=A[0][j].mul(det(m));s=j%2?s.sub(t):s.add(t)}return s}
+const vm=A=>'\\begin{vmatrix}'+A.map(r=>r.map(v=>v.tex()).join('&')).join('\\\\')+'\\end{vmatrix}';
+const sg=k=>k%2?'-':'+';
+/* ---------- 排列定义 ---------- */
+function perm(){
+ const A=M([[2,1,3],[1,4,2],[3,0,1]]),n=3;
+ mats=[mk('A','A',A.map(r=>r.map(v=>C(v))))];
+ const P=[[1,2,3],[1,3,2],[2,1,3],[2,3,1],[3,1,2],[3,2,1]];
+ snap([],['|A|=\\sum(-1)^{\\tau(j_1j_2j_3)}a_{1j_1}a_{2j_2}a_{3j_3}']);
+ let s=q(0);const done=[];
+ for(const p of P){
+  const inv=[];for(let a=0;a<n;a++)for(let b=a+1;b<n;b++)if(p[a]>p[b])inv.push(`(${p[a]},${p[b]})`);
+  const t=inv.length;let v=q(t%2?-1:1);p.forEach((j,i)=>v=v.mul(A[i][j-1]));s=s.add(v);
+  const hi=p.map((j,i)=>['A',i,j-1,'t']);
+  done.push((t%2?'-':'+')+p.map((j,i)=>A[i][j-1].ptex()).join('\\cdot'));
+  snap(hi,[`j_1j_2j_3=${p.join('')},\\quad \\tau=${t}${inv.length?'\\ \\ '+inv.join('\\,'):''}`,
+   `(-1)^{${t}}a_{1${p[0]}}a_{2${p[1]}}a_{3${p[2]}}=${t%2?'-':'+'}${p.map((j,i)=>A[i][j-1].ptex()).join('\\times')}=${v.tex()}`]);
+ }
+ snap([],[`|A|=${done.join('')}`,`=${s.tex()}`]);
+}
+/* ---------- 按第一行展开 ---------- */
+function expand(){
+ const A=M([[2,1,3],[1,4,2],[3,0,1]]),n=3;
+ const Mn=[[E(),E()],[E(),E()]];
+ mats=[mk('A','A',A.map(r=>r.map(v=>C(v)))),mk('M','M_{1j}',Mn)];
+ snap([],['|A|=a_{11}A_{11}+a_{12}A_{12}+a_{13}A_{13}']);
+ let s=q(0);const parts=[];
+ for(let j=0;j<n;j++){
+  const m=A.slice(1).map(r=>r.filter((_,k)=>k!==j));
+  mats[1].cells=m.map(r=>r.map(v=>C(v)));
+  const hi=[];for(let i=0;i<n;i++)for(let k=0;k<n;k++){if(i===0&&k===j)hi.push(['A',i,k,'t']);else if(i===0||k===j)hi.push(['A',i,k,'d']);else hi.push(['A',i,k,'s'])}
+  m.forEach((r,i)=>r.forEach((_,k)=>hi.push(['M',i,k,'s'])));
+  const mv=det(m),cof=j%2?mv.mul(q(-1)):mv,t=A[0][j].mul(cof);s=s.add(t);parts.push(A[0][j].ptex()+'\\times'+cof.ptex());
+  snap(hi,[`M_{1${j+1}}=${vm(m)}=${mv.tex()}`,`A_{1${j+1}}=(-1)^{1+${j+1}}M_{1${j+1}}=${cof.tex()},\\quad a_{1${j+1}}A_{1${j+1}}=${t.tex()}`],{M:`M_{1${j+1}}`});
+ }
+ mats[1].cells=[[E(),E()],[E(),E()]];
+ snap([],[`|A|=${parts.join('+')}`,`=${s.tex()}`]);
+}
+/* ---------- 化三角形 ---------- */
+function tri(){
+ const L0=M([[1,0,0,0],[2,1,0,0],[-1,3,1,0],[3,-1,2,1]]),U0=M([[1,2,-1,3],[0,2,1,-1],[0,0,-1,2],[0,0,0,3]]);
+ const A=mul(L0,U0),n=4;const W=A.map(r=>r.map(v=>C(v)));
+ mats=[mk('A','A',W)];
+ snap([],['\\text{row operations}\\ \\longrightarrow\\ \\text{upper triangular}']);
+ for(let k=0;k<n-1;k++){
+  for(let i=k+1;i<n;i++){
+   const m=W[i][k].v.div(W[k][k].v);if(m.isZero())continue;
+   const am=m.abs(),op=`r_{${i+1}}${m.n<0?'+':'-'}${am.tex()==='1'?'':am.tex()}\\,r_{${k+1}}\\ \\longrightarrow\\ r_{${i+1}}`;const hiS=[...Array(n)].map((_,j)=>['A',k,j,'s']),hiT=[...Array(n)].map((_,j)=>['A',i,j,'t']);
+   snap([...hiS,...hiT.map(h=>[h[0],h[1],h[2],'p'])],[op]);
+   for(let j=0;j<n;j++){const nv=W[i][j].v.sub(m.mul(W[k][j].v));W[i][j]=C(nv,j===k)}
+   snap([...hiS,...hiT],[op,'|A|\\ \\text{unchanged}']);
+  }
+ }
+ const d=[...Array(n)].map((_,i)=>W[i][i].v);let p=q(1);d.forEach(v=>p=p.mul(v));
+ snap(d.map((_,i)=>['A',i,i,'t']),[`|A|=${d.map(v=>v.ptex()).join('\\times')}=${p.tex()}`]);
+}
+/* ---------- 克拉默法则 ---------- */
+function cramer(){
+ const A=M([[2,1,-1],[1,3,2],[1,-1,1]]),x0=[1,2,-1].map(q),n=3;
+ const b=A.map(r=>r.reduce((s,v,j)=>s.add(v.mul(x0[j])),q(0)));
+ const W=A.map((r,i)=>[...r.map(v=>C(v)),C(b[i])]);
+ const Dj=[...Array(n)].map(()=>[...Array(n)].map(()=>E())),X=[...Array(n)].map(()=>[E()]);
+ mats=[mk('A','[A\\mid b]',W,n),mk('D','D_j',Dj),mk('x','x',X)];
+ snap([],['x_j=\\dfrac{D_j}{D}']);
+ const D=det(A);
+ mats[1].cells=A.map(r=>r.map(v=>C(v)));
+ const all=[];for(let i=0;i<n;i++)for(let j=0;j<n;j++){all.push(['A',i,j,'s'],['D',i,j,'s'])}
+ snap(all,[`D=|A|=${vm(A)}=${D.tex()}`],{D:'D'});
+ for(let j=0;j<n;j++){
+  const B=A.map((r,i)=>r.map((v,k)=>k===j?b[i]:v));
+  mats[1].cells=B.map(r=>r.map(v=>C(v)));
+  const hi=[];for(let i=0;i<n;i++){hi.push(['A',i,n,'s'],['D',i,j,'t'],['A',i,j,'d'])}
+  snap(hi,[`D_{${j+1}}=${vm(B)}=${det(B).tex()}`],{D:`D_{${j+1}}`});
+  const v=det(B).div(D);X[j]=[C(v)];
+  snap([...hi,['x',j,0,'t']],[`x_{${j+1}}=\\dfrac{D_{${j+1}}}{D}=\\dfrac{${det(B).tex()}}{${D.tex()}}=${v.tex()}`],{D:`D_{${j+1}}`});
+ }
+}
+/* ---------- 渲染 ---------- */
+const ALGOS={perm,expand,tri,cramer};
+const algo=new URLSearchParams(location.search).get('algo')||'perm';
+steps=[];(ALGOS[algo]||perm)();
+const K=(el,s,disp)=>katex.render(s,el,{throwOnError:false,displayMode:!!disp});
+let cur=0;const matsEl=document.getElementById('mats'),fx=document.getElementById('fx'),ct=document.getElementById('ct');
+function render(){const st=steps[cur];matsEl.innerHTML='';
+ const hmap={};st.hi.forEach(([k,i,j,c])=>{hmap[k+','+i+','+j]=c});
+ st.mats.forEach(m=>{const box=document.createElement('div');box.className='mat';const lab=document.createElement('div');lab.className='lab';K(lab,m.label);
+  const g=document.createElement('div');g.className='grid'+(/^(M|D)$/.test(m.key)?' det':'');g.style.gridTemplateColumns=`repeat(${m.cells[0].length},auto)`;
+  m.cells.forEach((r,i)=>r.forEach((c,j)=>{const d=document.createElement('div');let cls='cell';if(j===m.aug)cls+=' sep';
+   if(!c||c.v===null){cls+=' e';d.textContent='·'}else{if(c.z)cls+=' z';K(d,c.v.tex())}
+   const h=hmap[m.key+','+i+','+j];if(h)cls+=' '+h;d.className=cls;g.appendChild(d)}));
+  box.append(lab,g);matsEl.appendChild(box)});
+ fx.innerHTML='';st.lines.forEach(s=>{const d=document.createElement('div');d.className='l';K(d,s,true);fx.appendChild(d)});
+ ct.textContent=`${cur} / ${steps.length-1}`;document.getElementById('prev').disabled=cur===0;document.getElementById('first').disabled=cur===0;document.getElementById('next').disabled=cur===steps.length-1}
+const go=v=>{cur=Math.max(0,Math.min(steps.length-1,v));render()};
+let timer=null;const playBtn=document.getElementById('play');
+function stopPlay(){clearInterval(timer);timer=null;playBtn.textContent='Play';playBtn.setAttribute('aria-pressed','false')}
+playBtn.onclick=()=>{if(timer){stopPlay();return}if(cur>=steps.length-1)go(0);playBtn.textContent='Pause';playBtn.setAttribute('aria-pressed','true');timer=setInterval(()=>{if(cur>=steps.length-1){stopPlay();return}go(cur+1);if(cur>=steps.length-1)stopPlay()},1300)};
+document.getElementById('next').onclick=()=>{stopPlay();go(cur+1)};document.getElementById('prev').onclick=()=>{stopPlay();go(cur-1)};document.getElementById('first').onclick=()=>{stopPlay();go(0)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay()});
+addEventListener('keydown',e=>{if(e.key==='ArrowRight'){stopPlay();go(cur+1)}if(e.key==='ArrowLeft'){stopPlay();go(cur-1)}});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+render();window.msteps={n:()=>steps.length,go,last:()=>steps[steps.length-1]};
+Steady.sweep([document.getElementById('fx'),matsEl],steps.length,i=>{cur=i;render()},()=>{cur=0;render()});Steady.hold(document.getElementById('fx'),matsEl);
+</script></body></html>

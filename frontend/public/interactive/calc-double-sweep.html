@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Iterated integral limits</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="x" aria-pressed="true"></button><button type="button" data-m="y" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="550" aria-label="sweep position"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Iterated integral limits"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+// D：介于 y=x^2 与 y=x 之间，0≤x≤1
+const btns = [...document.querySelectorAll('#mode button')]; K(btns[0], 'x\\text{-type}'); K(btns[1], 'y\\text{-type}');
+legend([['y=x', C.accent], ['y=x^2', C.blue], ['\\text{entry / exit}', C.warm]]);
+const T = { x: '\\int_0^1\\mathrm dx\\int_{x^2}^{x}f(x,y)\\,\\mathrm dy', y: '\\int_0^1\\mathrm dy\\int_{y}^{\\sqrt y}f(x,y)\\,\\mathrm dx' };
+lockEq(Object.values(T)); K(eqEl, T.x, 1);
+const sl = document.getElementById('s'), btn = document.getElementById('play');
+const S = { m: 'x', s: 0.55, target: 0.55, playing: true, dir: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+btns.forEach(b => b.addEventListener('click', () => { S.m = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); K(eqEl, T[S.m], 1); cv.kick() }));
+const B = [-0.18, 1.25, -0.15, 1.15], v = P.view(B);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  const s = Math.min(w / (B[1] - B[0]), h / (B[3] - B[2])), cx = (B[0] + B[1]) / 2, cy = (B[2] + B[3]) / 2;
+  v.b = [cx - w / s / 2, cx + w / s / 2, cy - h / s / 2, cy + h / s / 2]; v.w = w; v.h = h; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  if (S.playing) { S.target += S.dir * 0.35 * dt; if (S.target > .96) { S.target = .96; S.dir = -1 } if (S.target < .04) { S.target = .04; S.dir = 1 } sl.value = S.target * 1000 }
+  const mv = P.approach(S, 's', S.target, dt, 10), c = S.s;
+  K(document.getElementById('lab'), S.m === 'x' ? `x=${c.toFixed(2)}` : `y=${c.toFixed(2)}`);
+  P.axes(ctx, v, { x: true, y: true });
+  const top = [], bot = []; for (let i = 0; i <= 100; i++) { const x = i / 100; top.push([v.X(x), v.Y(x)]); bot.push([v.X(x), v.Y(x * x)]) }
+  P.fill(ctx, top, bot, C.accent, .1);
+  P.path(ctx, top, { color: C.accent, width: 2.2 }); P.path(ctx, bot, { color: C.blue, width: 2.2 });
+  let a, b;
+  if (S.m === 'x') { a = [c, c * c]; b = [c, c];
+    P.path(ctx, [[v.X(c), v.Y(-0.1)], [v.X(c), v.Y(1.12)]], { color: C.mute, width: 1, dash: [4, 4] }); }
+  else { a = [c, c]; b = [Math.sqrt(c), c];
+    P.path(ctx, [[v.X(-0.1), v.Y(c)], [v.X(1.2), v.Y(c)]], { color: C.mute, width: 1, dash: [4, 4] }); }
+  P.path(ctx, [[v.X(a[0]), v.Y(a[1])], [v.X(b[0]), v.Y(b[1])]], { color: C.warm, width: 3 });
+  P.dot(ctx, v.X(a[0]), v.Y(a[1]), { r: 4.6, color: C.warm }); P.dot(ctx, v.X(b[0]), v.Y(b[1]), { r: 4.6, color: C.warm });
+  if (S.m === 'x') { lab.set('a', 'y=x^2', v.X(a[0]), v.Y(a[1]), { dx: 30, dy: 8, color: C.blue, size: 13 }); lab.set('b', 'y=x', v.X(b[0]), v.Y(b[1]), { dx: -26, dy: -8, color: C.accent, size: 13 }) }
+  else { lab.set('a', 'x=y', v.X(a[0]), v.Y(a[1]), { dx: -24, dy: -10, color: C.accent, size: 13 }); lab.set('b', 'x=\\sqrt y', v.X(b[0]), v.Y(b[1]), { dx: 30, dy: 8, color: C.blue, size: 13 }) }
+  lab.end(); return mv || S.playing;
+});
+sl.addEventListener('input', () => { set(false); S.target = P.clamp(+sl.value / 1000, .04, .96); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

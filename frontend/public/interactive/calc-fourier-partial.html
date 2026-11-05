@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fourier partial sums</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}@media(max-width:520px){.stage canvas{height:290px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Fourier partial sums of a sawtooth wave"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const PI = Math.PI;
+// 锯齿波 f(x)=x (−π<x<π)，以 2π 为周期；傅里叶级数 2Σ(−1)^{k+1} sin kx / k
+const saw = x => { const y = ((x + PI) % (2 * PI) + 2 * PI) % (2 * PI) - PI; return y; };
+const term = (k, x) => 2 * (k % 2 ? 1 : -1) * Math.sin(k * x) / k;
+const SN = (n, x) => { let s = 0; for (let k = 1; k <= n; k++) s += term(k, x); return s; };
+const NS = [1, 2, 3, 4, 5, 6, 8, 11, 15, 22, 32];
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+for (const [t, c] of [['f(x)', C.accent], ['S_n(x)', C.warm], ['\\text{new term}', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), 'x=2\\sum_{k=1}^{\\infty}\\dfrac{(-1)^{k+1}}{k}\\sin kx\\quad(-\\pi<x<\\pi)');
+const B = [-1.55 * PI, 1.55 * PI, -4.2, 4.2];
+const v = P.view(B, { l: 12, r: 12, t: 12, b: 22 });
+const S = { ys: null, intro: 0 };
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (!st) return false; v.w = w; v.h = h;
+  const anim = st.tick(dt), intro = P.approach(S, 'intro', 1, dt, 4);
+  const n = NS[st.i], k = Math.max(400, Math.round(2 * w)), xs = []; for (let i = 0; i <= k; i++) xs.push(B[0] + (B[1] - B[0]) * i / k);
+  const tgt = xs.map(x => SN(n, x));
+  if (!S.ys) S.ys = tgt.slice();
+  const mv = P.approach(S, 'ys', tgt, dt, 6);
+  P.axes(ctx, v, { x: true, y: true });
+  // 目标函数：分段画，跳跃处断开
+  for (let j = -2; j <= 1; j++) { const a = Math.max(B[0], (2 * j - 1) * PI), b = Math.min(B[1], (2 * j + 1) * PI); if (b > a) P.path(ctx, P.curve(v, saw, a + 1e-4, b - 1e-4), { color: C.accent, width: 2, alpha: .75 }) }
+  // 刚加入的一项（只在新增一项时有意义）
+  const prevN = st.i > 0 ? NS[st.i - 1] : 0;
+  if (n - prevN === 1) P.path(ctx, xs.map(x => [v.X(x), v.Y(term(n, x))]), { color: C.blue, width: 1.4, alpha: .55 * (1 - P.ease.out(st.p) * .4) });
+  P.path(ctx, xs.map((x, i) => [v.X(x), v.Y(S.ys[i])]), { color: C.warm, width: 2.4, alpha: S.intro });
+  // 跳跃点：级数收敛到左右极限的平均值 0
+  for (const s of [-1, 1]) P.dot(ctx, v.X(s * PI), v.Y(0), { r: 4.4, color: C.warm });
+  lab.set('pi', '\\pi', v.X(PI), v.Y(0), { dx: 10, dy: 13, color: C.soft, size: 13 });
+  lab.set('mpi', '-\\pi', v.X(-PI), v.Y(0), { dx: -12, dy: 13, color: C.soft, size: 13 });
+  lab.end();
+  return anim || intro || mv;
+});
+st = P.stepper(document.getElementById('nav'), { count: NS.length, dur: .9, hold: .8, kick: cv.kick });
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) st.stop() }); off.observe(document.querySelector('main'));
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cauchy MVT</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="xi" type="range" min="0" max="1000" step="1" value="80" aria-label="xi"></div>
+<div class="legend" id="legend"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Cauchy mean value theorem on a parametric curve"></canvas></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const A = -2.0, B = 2.7;
+const g = t => t - 1.6 * Math.sin(t), f = t => -1.6 * Math.cos(t) + 0.25 * t;
+const dg = t => 1 - 1.6 * Math.cos(t), df = t => 1.6 * Math.sin(t) + 0.25;
+const GB = g(B) - g(A), FB = f(B) - f(A), CL = Math.hypot(GB, FB), k = FB / GB;
+const sl = document.getElementById('xi'), stage = document.getElementById('stage');
+const tOf = s => A + (B - A) * (0.02 + 0.96 * s / 1000);
+const S = { t: tOf(+sl.value) };
+const v = P.view([-1.05, 2.45, -2.0, 2.45], { l: 16, r: 16, t: 14, b: 64 });
+const lab = P.labels(stage);
+for (const [t, c, d] of [['(g(t),f(t))', C.accent], ['AB', C.warm], ['\\text{tangent at }M', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), "f'(\\xi)\\,[g(b)-g(a)]=g'(\\xi)\\,[f(b)-f(a)]");
+const pt = t => [v.X(g(t)), v.Y(f(t))];
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  const moving = P.approach(S, 't', tOf(+sl.value), dt, 10), t = S.t;
+  K(document.getElementById('lab'), `\\xi=${t.toFixed(2)}`);
+  const pa = pt(A), pb = pt(B), pm = pt(t);
+  // 与弦平行、过 M 的参照线（虚线）：切线与它重合时即为所求的 ξ
+  const ext = 1.2, ux = g(t), uy = f(t), cx = GB / CL, cy = FB / CL;
+  P.path(ctx, [[v.X(ux - ext * cx), v.Y(uy - ext * cy)], [v.X(ux + ext * cx), v.Y(uy + ext * cy)]], { color: C.warm, width: 1.4, dash: [5, 5], alpha: .55 });
+  P.path(ctx, [pa, pb], { color: C.warm, width: 2 });
+  const ts = []; for (let i = 0; i <= 400; i++) ts.push(A + (B - A) * i / 400);
+  P.path(ctx, ts.map(pt), { color: C.accent, width: 2.4 });
+  // M 处切线，方向 (g'(ξ), f'(ξ))
+  // 用方向向量画切线，竖直切线（g'=0）时也成立
+  const dl = Math.hypot(dg(t), df(t)), tx0 = dg(t) / dl, ty0 = df(t) / dl, e2 = 0.95;
+  const par = Math.abs(tx0 * cy - ty0 * cx) < 0.012;
+  P.path(ctx, [[v.X(ux - e2 * tx0), v.Y(uy - e2 * ty0)], [v.X(ux + e2 * tx0), v.Y(uy + e2 * ty0)]], { color: C.blue, width: par ? 2.6 : 2, halo: par ? 5 : 0 });
+  P.dot(ctx, ...pa, { r: 4.2, color: C.warm }); P.dot(ctx, ...pb, { r: 4.2, color: C.warm });
+  P.dot(ctx, ...pm, { r: 5, color: C.blue });
+  lab.set('A', 'A', pa[0], pa[1], { dx: -6, dy: 16, color: C.warm });
+  lab.set('B', 'B', pb[0], pb[1], { dx: 6, dy: 16, color: C.warm });
+  lab.set('M', 'M', pm[0], pm[1], { dy: -16, color: C.blue });
+  // 下方参数轴 t：同一个 ξ 同时作用于 f 与 g
+  const ty = h - 26, tx = s => w * 0.12 + w * 0.76 * (s - A) / (B - A);
+  P.path(ctx, [[tx(A), ty], [tx(B), ty]], { color: C.rule, width: 1.4 });
+  P.path(ctx, [[tx(A), ty], [tx(t), ty]], { color: C.blue, width: 2, alpha: .5 });
+  P.dot(ctx, tx(A), ty, { r: 3, color: C.mute }); P.dot(ctx, tx(B), ty, { r: 3, color: C.mute });
+  P.dot(ctx, tx(t), ty, { r: 4.6, color: C.blue });
+  P.path(ctx, [[pm[0], pm[1] + 7], [tx(t), ty - 7]], { color: C.blue, width: 1, dash: [2, 4], alpha: .35 });
+  lab.set('a', 'a', tx(A), ty, { dy: 15, color: C.mute, size: 13 });
+  lab.set('b', 'b', tx(B), ty, { dy: 15, color: C.mute, size: 13 });
+  lab.set('xi', '\\xi', tx(t), ty, { dy: 15, color: C.blue, size: 13 });
+  lab.set('t', 't', tx(B), ty, { dx: 22, color: C.mute, size: 13 });
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

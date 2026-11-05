@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Uniform convergence</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:330px}@media(max-width:520px){.stage canvas{height:280px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="u" aria-pressed="true"></button><button type="button" data-m="x" aria-pressed="false"></button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="functions f_n against an epsilon band around the limit"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const EPS = 0.16, NS = [1, 2, 3, 4, 5, 6, 8, 10, 13, 17, 22, 30];
+const MODES = {
+  u: { f: x => Math.sin(x), fn: (n, x) => Math.sin(x) + Math.sin(n * x + 1) / n, X: [0, 2 * Math.PI], B: [-0.15, 6.45, -1.6, 1.6],
+       btn: 'f_n=\\sin x+\\tfrac{\\sin(nx+1)}{n}', eq: '|f_n(x)-\\sin x|\\leqslant\\dfrac1n\\ \\ \\text{for all }x' },
+  x: { f: x => 0, fn: (n, x) => Math.pow(x, n), X: [0, 0.999], B: [-0.06, 1.08, -0.18, 1.1],
+       btn: 'f_n=x^n,\\ 0\\leqslant x<1', eq: '\\sup_{0\\leqslant x<1}|x^n-0|=1\\ \\ \\text{for every }n' } };
+let M = 'u';
+const btns = [...document.querySelectorAll('#mode button')];
+btns.forEach(b => K(b, MODES[b.dataset.m].btn));
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+for (const [t, c] of [['f', C.accent], ['f_n', C.warm], ['f\\pm\\varepsilon', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+const eq = () => K(document.getElementById('eq'), MODES[M].eq); eq();
+const v = P.view(MODES.u.B, { l: 12, r: 12, t: 12, b: 12 });
+const S = { n: 1, intro: 0, ys: null };
+let st;
+const sample = (mode, n, w) => { const m = MODES[mode], k = Math.max(200, Math.round(w)); const xs = [], ys = []; for (let i = 0; i <= k; i++) { const x = m.X[0] + (m.X[1] - m.X[0]) * i / k; xs.push(x); ys.push(m.fn(n, x)) } return { xs, ys }; };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (!st) return false; v.w = w; v.h = h;
+  const m = MODES[M], anim = st.tick(dt), intro = P.approach(S, 'intro', 1, dt, 4), cam = v.step(dt, 5);
+  const tgt = sample(M, NS[st.i], w);
+  if (!S.ys || S.ys.length !== tgt.ys.length) S.ys = tgt.ys.slice();
+  const mv = P.approach(S, 'ys', tgt.ys, dt, 7);
+  // ε 带
+  const up = [], dn = []; for (const x of tgt.xs) { up.push([v.X(x), v.Y(m.f(x) + EPS)]); dn.push([v.X(x), v.Y(m.f(x) - EPS)]) }
+  P.fill(ctx, up, dn, C.blue, .13);
+  P.path(ctx, up, { color: C.blue, width: 1, alpha: .6 }); P.path(ctx, dn, { color: C.blue, width: 1, alpha: .6 });
+  P.axes(ctx, v, { x: true, y: M === 'x' });
+  P.path(ctx, tgt.xs.map(x => [v.X(x), v.Y(m.f(x))]), { color: C.accent, width: 2, alpha: .8 });
+  const pts = tgt.xs.map((x, i) => [v.X(x), v.Y(S.ys[i])]);
+  // 带外的部分加粗标出
+  P.path(ctx, pts, { color: C.warm, width: 2.4, alpha: S.intro });
+  ctx.save(); ctx.lineCap = ctx.lineJoin = 'round'; ctx.strokeStyle = C.warm; ctx.lineWidth = 5; ctx.globalAlpha = .35; ctx.beginPath();
+  let on = false; tgt.xs.forEach((x, i) => { const out = Math.abs(S.ys[i] - m.f(x)) > EPS; if (out) { on ? ctx.lineTo(...pts[i]) : ctx.moveTo(...pts[i]); on = true } else on = false }); ctx.stroke(); ctx.restore();
+  if (M === 'x') { P.dot(ctx, v.X(1), v.Y(1), { r: 3.4, color: C.bg, ring: false }); ctx.save(); ctx.strokeStyle = C.warm; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(v.X(1), v.Y(1), 3.4, 0, 7); ctx.stroke(); ctx.restore(); }
+  lab.end();
+  return anim || intro || mv || cam;
+});
+st = P.stepper(document.getElementById('nav'), { count: NS.length, dur: .8, hold: .7, kick: cv.kick });
+btns.forEach(b => b.addEventListener('click', () => { M = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); v.aim(MODES[M].B); S.ys = null; S.intro = 0; eq(); st.stop(); st.go(0, false) }));
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) st.stop() }); off.observe(document.querySelector('main'));
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

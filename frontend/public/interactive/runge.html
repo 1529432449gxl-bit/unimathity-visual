@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>均匀节点与龙格现象</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}.runge{padding:8px 2px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}h2{font-size:18px;font-weight:400;margin:0}button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:4px 12px;background:transparent;cursor:pointer}button[aria-pressed="true"]{background:#223056;color:#fff}.controls .n{flex:none;min-width:100px}.controls{display:flex;align-items:center;gap:14px;margin-bottom:6px}.controls label{flex:none;font-size:13px}.controls{flex-wrap:wrap}.piece-selector{font:inherit;font-size:14px;border:1px solid #c9cbd1;border-radius:4px;background:transparent;color:#161820;padding:4px 8px}.controls input{flex:1;min-width:120px;width:100%;accent-color:#223056;min-height:32px}canvas{display:block;width:100%;height:330px}.legend{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:6px;align-items:center}.key:before{content:"";display:inline-block;width:20px;border-top:2.4px solid #223056;margin:0 6px 4px 0}.key.dot:before{width:7px;height:7px;border:0;border-radius:50%;background:#223056;margin:0 8px 2px 4px}.key.poly:before{border-color:#ad6844}.status{font-size:12px;color:#4f525b;min-height:22px;margin-top:8px;font-variant-numeric:tabular-nums}.hint{font-size:12px;color:#4f525b;margin:12px 0 0}button:focus-visible,input:focus-visible{outline:2px solid #223056;outline-offset:3px}@media(max-width:420px){canvas{height:300px}header{gap:6px}h2{font-size:16px}.controls{gap:10px}.controls label{min-width:72px}button{padding:6px 10px}}</style></head>
+<body><main class="runge"><div class="controls"><span class="n" id="nlab"></span><input id="count" aria-label="均匀节点数" type="range" min="5" max="21" step="2" value="5"><button id="play" type="button" aria-pressed="false">Play</button></div><canvas id="plot" role="img" aria-label="龙格函数与等距节点插值曲线，增加节点可观察端部振荡"></canvas><div class="legend"><span class="key" id="kf"></span><span class="key poly" id="approximation-label"></span><span class="key dot" id="kn"></span></div></main>
+<script>
+const canvas=document.getElementById('plot'),ctx=canvas.getContext('2d'),slider=document.getElementById('count'),T=(el,s)=>katex.render(s,el,{throwOnError:false}),nlab=document.getElementById('nlab'),play=document.getElementById('play');
+const points=1601,xgrid=Array.from({length:points},(_,i)=>-1+2*i/(points-1));
+const original=x=>1/(1+25*x*x),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let current=null,frame=0,timer=null,model=null;
+const requested=new URLSearchParams(location.search).get('method')||'polynomial';
+const mode=requested==='piecewise'?'linear':(['polynomial','linear','hermite','spline'].includes(requested)?requested:'polynomial');
+const titles={polynomial:'全局多项式插值',linear:'分段线性插值',hermite:'分段三次埃尔米特插值',spline:'自然三次样条插值'};
+document.title=titles[mode]+'与龙格函数';
+function interpolate(count){
+ const n=count-1,h=2/n,nodes=Array.from({length:count},(_,i)=>-1+i*h),ys=nodes.map(original);
+ const method=mode;
+ let at,second=null;
+ const interval=x=>Math.max(0,Math.min(n-1,Math.floor((x+1)/h)));
+ if(method==='polynomial'){
+  let coeff=1;const weights=nodes.map((_,i)=>{if(i)coeff=coeff*(n-i+1)/i;return(i%2?-1:1)*coeff});
+  at=x=>{let a=0,b=0;for(let i=0;i<=n;i++){const d=x-nodes[i];if(Math.abs(d)<1e-13)return ys[i];const w=weights[i]/d;a+=w*ys[i];b+=w}return a/b};
+ }else if(method==='linear'){
+  at=x=>{const i=interval(x),t=(x-nodes[i])/h;return(1-t)*ys[i]+t*ys[i+1]};
+ }else if(method==='hermite'){
+  const slopes=nodes.map(x=>-50*x/(1+25*x*x)**2);
+  at=x=>{const i=interval(x),t=(x-nodes[i])/h;return(ys[i]*(1+2*t)+h*slopes[i]*t)*(1-t)**2+(ys[i+1]*(3-2*t)+h*slopes[i+1]*(t-1))*t*t};
+ }else{
+  const size=count-2,diagonal=Array(size).fill(4),rhs=Array.from({length:size},(_,i)=>6*(ys[i+2]-2*ys[i+1]+ys[i])/(h*h));
+  for(let i=1;i<size;i++){const factor=1/diagonal[i-1];diagonal[i]-=factor;rhs[i]-=factor*rhs[i-1]}
+  const interior=Array(size).fill(0);interior[size-1]=rhs[size-1]/diagonal[size-1];for(let i=size-2;i>=0;i--)interior[i]=(rhs[i]-interior[i+1])/diagonal[i];
+  second=[0,...interior,0];
+  at=x=>{const i=interval(x),t=(x-nodes[i])/h;return h*h/6*(second[i]*(1-t)**3+second[i+1]*t**3)+(ys[i]-second[i]*h*h/6)*(1-t)+(ys[i+1]-second[i+1]*h*h/6)*t};
+ }
+ const samples=xgrid.map(at),maxError=Math.max(...samples.map((y,i)=>Math.abs(y-original(xgrid[i]))));
+ return{count,method,nodes,ys,samples,maxError,second,at};
+}
+function bounds(ys){const lo=Math.min(0,...ys),hi=Math.max(1,...ys),pad=(hi-lo)*.1;return [lo-pad,hi+pad]}
+function draw(ys,bound){const rect=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1,w=rect.width,h=rect.height;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const pad={l:48,r:14,t:28,b:40},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;const X=x=>pad.l+(x+1)*pw/2,Y=y=>pad.t+(bound[1]-y)*ph/(bound[1]-bound[0]);ctx.clearRect(0,0,w,h);ctx.font='12px "Microsoft YaHei",sans-serif';
+ ctx.fillStyle='rgba(173,104,68,.055)';ctx.fillRect(X(-1),pad.t,X(-.7)-X(-1),ph);ctx.fillRect(X(.7),pad.t,X(1)-X(.7),ph);
+ ctx.lineJoin=ctx.lineCap='round';ctx.strokeStyle='#d5d7dd';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.l,Y(0));ctx.lineTo(w-pad.r,Y(0));ctx.stroke();ctx.fillStyle='#7a7c84';ctx.textAlign='right';ctx.font='11px "Microsoft YaHei",sans-serif';for(const y of[0,1])ctx.fillText(String(y),pad.l-8,Y(y)+4)
+ ctx.textAlign='center';ctx.fillStyle='#7a7c84';for(const x of [-1,-.5,0,.5,1])ctx.fillText(String(x),X(x),h-18);ctx.textAlign='right';ctx.fillText('x',w-pad.r,h-2);
+ ctx.save();ctx.beginPath();ctx.rect(pad.l,pad.t,pw,ph);ctx.clip();function line(data,color,width){ctx.beginPath();data.forEach((y,i)=>i?ctx.lineTo(X(xgrid[i]),Y(y)):ctx.moveTo(X(xgrid[i]),Y(y)));ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke()};line(ys,'#ad6844',2);line(xgrid.map(original),'#223056',2.2);if(model)model.nodes.forEach((x,i)=>{ctx.beginPath();ctx.arc(X(x),Y(model.ys[i]),3,0,Math.PI*2);ctx.fillStyle='#223056';ctx.fill();ctx.strokeStyle='#fbfbfa';ctx.lineWidth=1;ctx.stroke()});ctx.restore()}
+function setCount(count,animate=true){cancelAnimationFrame(frame);model=interpolate(count);slider.value=count;T(nlab,`n+1=${count}`);T(document.getElementById('approximation-label'),{polynomial:'P_n(x)',linear:'P(x)',hermite:'H(x)',spline:'S(x)'}[model.method]);canvas.setAttribute('aria-label',`${count}个均匀节点，${titles[mode]}，采样最大绝对误差${model.maxError.toPrecision(4)}`);const target=model.samples,to=bounds(target);if(!current||!animate||reduced){current={ys:target,bound:to};draw(target,to);return}const from=current,start=performance.now();function step(now){const t=Math.min(1,(now-start)/650),a=1-(1-t)**3;const ys=target.map((y,i)=>from.ys[i]+(y-from.ys[i])*a),bound=to.map((y,i)=>from.bound[i]+(y-from.bound[i])*a);current={ys,bound};draw(ys,bound);if(t<1)frame=requestAnimationFrame(step)}frame=requestAnimationFrame(step)}
+function stop(){clearInterval(timer);timer=null;play.textContent='Play';play.setAttribute('aria-pressed','false')}
+slider.addEventListener('input',()=>{stop();setCount(Number(slider.value))});play.addEventListener('click',()=>{if(timer){stop();return}if(Number(slider.value)>=21)setCount(5,false);play.textContent='Pause';play.setAttribute('aria-pressed','true');timer=setInterval(()=>{const n=Number(slider.value)+2;if(n>21){stop();return}setCount(n);if(n===21)stop()},1200)});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(()=>{if(current)draw(current.ys,current.bound)}).observe(canvas);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});T(document.getElementById('kf'),'f(x)=\\dfrac{1}{1+25x^2}');T(document.getElementById('kn'),'(x_i,f(x_i))');setCount(5,false);window.rungeModel=()=>model;
+</script></body></html>

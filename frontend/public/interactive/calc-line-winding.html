@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Winding around a singularity</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="tl"></span><input id="ts" type="range" min="0" max="1000" step="1" value="0" aria-label="t"><button class="tg" id="play" type="button" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag a closed curve; the integral equals the angle swept around the origin"></canvas></div>
+<div class="fx" id="fx"><div id="f1"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const cv = document.getElementById('cv'); cv.style.height = '350px'; cv.style.cursor = 'grab'; cv.style.touchAction = 'none';
+const lab = P.labels(document.getElementById('stage'));
+
+/* 闭曲线：中心可拖动的光滑环 */
+const shape = th => .95 + .2 * Math.cos(3 * th + .5) + .1 * Math.sin(2 * th);
+const N = 720;
+const st = { cx: .35, cy: .1, tcx: .35, tcy: .1, t: 0, tt: 0, playing: false };
+function loop() { const out = []; for (let k = 0; k <= N; k++) { const th = k / N * 2 * Math.PI, r = shape(th); out.push([st.cx + r * Math.cos(th), st.cy + r * Math.sin(th)]) } return out }
+/* 累计角度 = 积分值 */
+function sweep(pts) { const a = [0]; for (let k = 1; k <= N; k++) { const p = pts[k - 1], q = pts[k]; let d = Math.atan2(q[1], q[0]) - Math.atan2(p[1], p[0]); if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; a.push(a[k - 1] + d) } return a }
+
+const v = P.view([-2.6, 2.6, -1.8, 1.8], { l: 10, r: 10, t: 10, b: 10 });
+function fit(w, h) { const s = Math.min((w - 20) / 5.2, (h - 20) / 3.6), hx = (w - 20) / 2 / s, hy = (h - 20) / 2 / s; v.b = [-hx, hx, -hy, hy]; v.target = v.b.slice(); v.w = w; v.h = h }
+const tl = document.getElementById('tl'), ts = document.getElementById('ts'), f1 = document.getElementById('f1'), playBtn = document.getElementById('play');
+let shown = '';
+const fr = a => { const q = a / Math.PI; if (Math.abs(q) < .005) return '0'; if (Math.abs(q - 2) < .005) return '2\\pi'; return (q).toFixed(2) + '\\pi' };
+function texts(val, done) {
+  const s = `${fr(val)}|${done}|${st.t.toFixed(2)}`; if (s === shown) return; shown = s;
+  K(tl, `t=${st.t.toFixed(2)}`);
+  K(f1, `${done ? '\\oint_L' : '\\int_{L(t)}'}\\frac{x\\,\\mathrm dy-y\\,\\mathrm dx}{x^2+y^2}=\\Delta\\theta=${fr(val)}`, true);
+}
+
+const m = P.mount(cv, (ctx, w, h, dt) => {
+  fit(w, h); let moving = false;
+  moving = P.approach(st, 'cx', st.tcx, dt, 16) || moving; moving = P.approach(st, 'cy', st.tcy, dt, 16) || moving;
+  if (st.playing) { st.tt = Math.min(1, st.tt + dt / 4.5); ts.value = Math.round(st.tt * 1000); if (st.tt >= 1) stopPlay(); moving = true }
+  moving = P.approach(st, 't', st.tt, dt, 14) || moving;
+  const pts = loop(), ang = sweep(pts), k = Math.round(st.t * N), val = ang[k], enclosed = Math.abs(ang[N]) > 1;
+  texts(val, k >= N);
+
+  /* 坐标轴 */
+  ctx.save(); ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(v.X(v.b[0]), v.Y(0)); ctx.lineTo(v.X(v.b[1]), v.Y(0)); ctx.moveTo(v.X(0), v.Y(v.b[2])); ctx.lineTo(v.X(0), v.Y(v.b[3])); ctx.stroke(); ctx.restore();
+  const sp = pts.map(q => [v.X(q[0]), v.Y(q[1])]);
+  P.fill(ctx, sp, [], P.rgba(C.accent, .05));
+  P.path(ctx, sp, { color: C.rule, width: 1.6 });
+  P.path(ctx, sp.slice(0, k + 1), { color: C.accent, width: 2.4 });
+
+  /* 原点为奇点；包围时画出可替换的小圆 */
+  if (enclosed) { const e = []; for (let j = 0; j <= 120; j++) { const a = j / 120 * 2 * Math.PI; e.push([v.X(.28 * Math.cos(a)), v.Y(.28 * Math.sin(a))]) } P.path(ctx, e, { color: C.blue, width: 1.4, dash: [4, 4], alpha: .8 }) }
+  /* 角度扫过的弧：半径随圈数略增，避免重叠 */
+  const q = pts[k], R0 = .5;
+  if (k > 0) { const arc = []; const a0 = Math.atan2(pts[0][1], pts[0][0]);
+    for (let j = 0; j <= 160; j++) { const a = a0 + val * j / 160, r = R0 + .05 * Math.abs(val * j / 160) / (2 * Math.PI); arc.push([v.X(r * Math.cos(a)), v.Y(r * Math.sin(a))]) }
+    P.path(ctx, arc, { color: C.warm, width: 2.2 }) }
+  ctx.save(); ctx.strokeStyle = P.rgba(C.warm, .55); ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(v.X(0), v.Y(0)); ctx.lineTo(v.X(q[0]), v.Y(q[1])); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(v.X(0), v.Y(0)); ctx.lineTo(v.X(pts[0][0]), v.Y(pts[0][1])); ctx.strokeStyle = P.rgba(C.mute, .5); ctx.stroke(); ctx.restore();
+  P.dot(ctx, v.X(0), v.Y(0), { r: 4.5, color: C.warm });
+  P.dot(ctx, v.X(q[0]), v.Y(q[1]), { r: 5, color: C.ink });
+  lab.set('O', 'O', v.X(0), v.Y(0), { dx: -12, dy: 12, color: C.soft });
+  lab.set('L', 'L', v.X(pts[Math.round(N * .2)][0]), v.Y(pts[Math.round(N * .2)][1]), { dx: 12, dy: -12, color: C.accent });
+  lab.end();
+  return moving;
+});
+
+/* 拖动曲线 */
+let drag = null;
+const toW = e => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; return [v.b[0] + (x - v.pad.l) / (v.w - v.pad.l - v.pad.r) * (v.b[1] - v.b[0]), v.b[3] - (y - v.pad.t) / (v.h - v.pad.t - v.pad.b) * (v.b[3] - v.b[2])] };
+cv.addEventListener('pointerdown', e => { const p = toW(e); drag = { p, cx: st.tcx, cy: st.tcy }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' });
+cv.addEventListener('pointermove', e => { if (!drag) return; const p = toW(e);
+  st.tcx = P.clamp(drag.cx + p[0] - drag.p[0], v.b[0] + 1.1, v.b[1] - 1.1); st.tcy = P.clamp(drag.cy + p[1] - drag.p[1], v.b[2] + 1.1, v.b[3] - 1.1);
+  if (Math.hypot(st.tcx, st.tcy) < 1e-3) st.tcx += .01; m.kick() });
+const end = () => { drag = null; cv.style.cursor = 'grab' }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+function stopPlay() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+ts.addEventListener('input', () => { stopPlay(); st.tt = ts.value / 1000; m.kick() });
+playBtn.onclick = () => { if (st.playing) { stopPlay(); return } if (st.tt >= 1) st.tt = st.t = 0; st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); m.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopPlay() });
+P.reportHeight(document.querySelector('main'));
+st.tt = st.t = 1; ts.value = 1000; m.kick();
+</script></body></html>

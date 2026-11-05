@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>正交多项式的图像与零点</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/morph.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}main{padding:8px 2px;display:flex;gap:16px;flex-wrap:wrap}.panel{flex:1 1 300px;min-width:0}.legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:4px}.legend .lg{cursor:pointer;padding:0 4px;border-radius:4px;user-select:none;border-bottom:3px solid var(--c);line-height:1.9}.legend .lg.dim{opacity:.35}canvas{display:block;width:100%;height:300px}@media(max-width:420px){canvas{height:260px}}</style></head>
+<body><main>
+<div class="panel"><div class="legend" id="lgL"></div><canvas id="cL" role="img" aria-label="勒让德多项式 P1 到 P6 的图像与零点"></canvas></div>
+<div class="panel"><div class="legend" id="lgT"></div><canvas id="cT" role="img" aria-label="切比雪夫多项式 T1 到 T6 的图像与零点"></canvas></div>
+</main>
+<script>
+const COL=['#223056','#b5763a','#3f6e8c','#a4493f','#6d5f8f','#8a8f3a'];
+const leg=(n,x)=>{let a=1,b=x;if(n===0)return 1;for(let k=1;k<n;k++){const c=((2*k+1)*x*b-k*a)/(k+1);a=b;b=c}return b};
+const che=(n,x)=>Math.cos(n*Math.acos(Math.max(-1,Math.min(1,x))));
+function legZeros(n){const z=[];for(let k=1;k<=n;k++){let x=Math.cos(Math.PI*(k-.25)/(n+.5));for(let it=0;it<60;it++){const p=leg(n,x),q=leg(n-1,x),d=n*(x*p-q)/(x*x-1),dx=p/d;x-=dx;if(Math.abs(dx)<1e-15)break}z.push(x)}return z}
+const cheZeros=n=>Array.from({length:n},(_,k)=>Math.cos((2*k+1)*Math.PI/(2*n)));
+const PX=Array.from({length:801},(_,i)=>-1+2*i/800);
+const P={L:{fn:leg,z:legZeros,s:'P',sel:-1},T:{fn:che,z:cheZeros,s:'T',sel:-1}};
+function draw(id){const o=P[id],cv=document.getElementById('c'+id),r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=Math.round(w*d);cv.height=Math.round(h*d);const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.lineJoin=c.lineCap='round';const prog=Morph.s('p'+id,1,2.4),np=Math.max(2,Math.round(PX.length*prog));
+ const B=[-1.15,1.15],pad={l:34,r:8,t:8,b:22},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,X=x=>pad.l+(x+1)*pw/2,Y=y=>pad.t+(B[1]-y)*ph/(B[1]-B[0]);
+ c.clearRect(0,0,w,h);c.font='11px "Microsoft YaHei",sans-serif';c.fillStyle='#7a7c84';c.textAlign='right';
+ for(const y of[-1,1]){c.fillText(String(y),pad.l-5,Y(y)+4)}c.strokeStyle='#e3e4e8';c.lineWidth=1;c.setLineDash([2,4]);for(const y of[-1,1]){c.beginPath();c.moveTo(pad.l,Y(y));c.lineTo(w-pad.r,Y(y));c.stroke()}c.setLineDash([]);
+ c.textAlign='center';for(const x of[-1,-.5,0,.5,1])c.fillText(String(x),X(x),h-6);
+ c.strokeStyle='#d5d7dd';c.lineWidth=1;c.beginPath();c.moveTo(X(-1),Y(0));c.lineTo(X(1),Y(0));c.stroke();
+ const order=[1,2,3,4,5,6].filter(n=>n-1!==o.sel);if(o.sel>=0)order.push(o.sel+1);
+ order.forEach(n=>{const on=o.sel<0||o.sel===n-1;c.globalAlpha=Morph.s('a'+id+n,on?1:.15,9);c.beginPath();for(let i=0;i<np;i++){const x=PX[i],y=o.fn(n,x);i?c.lineTo(X(x),Y(y)):c.moveTo(X(x),Y(y))}c.strokeStyle=COL[n-1];c.lineWidth=Morph.s('w'+id+n,o.sel===n-1?2.8:1.9,9);c.stroke();const xe=PX[np-1];
+  o.z(n).forEach(x=>{if(x>xe)return;c.beginPath();c.arc(X(x),Y(0),o.sel===n-1?4.6:3.4,0,7);c.fillStyle=COL[n-1];c.fill();c.strokeStyle='#fbfbfa';c.lineWidth=1;c.stroke()})});
+ c.globalAlpha=1}
+const both=()=>{draw('L');draw('T')},kick=Morph.bind(both);Morph.v('pL',[0]);Morph.v('pT',[0]);
+for(const id of['L','T']){const box=document.getElementById('lg'+id);for(let n=1;n<=6;n++){const s=document.createElement('span');s.style.setProperty('--c',COL[n-1]);katex.render(`${P[id].s}_{${n}}(x)`,s,{throwOnError:false});
+ const pick=()=>{P[id].sel=P[id].sel===n-1?-1:n-1;box.querySelectorAll('span.lg').forEach((e,k)=>e.classList.toggle('dim',P[id].sel>=0&&P[id].sel!==k));kick()};
+ s.className='lg';s.tabIndex=0;s.onclick=pick;s.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}};box.appendChild(s)}}
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(both).observe(document.querySelector('main'));
+new IntersectionObserver(es=>{if(es[0].isIntersecting)kick()}).observe(document.querySelector('main'));
+</script></body></html>

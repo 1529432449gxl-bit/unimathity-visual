@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数值积分逐步演示</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}
+main{padding:10px 2px 6px}
+.top{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:8px}
+.top button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:3px 12px;background:transparent;cursor:pointer}
+.top button[aria-pressed="true"]{background:#223056;color:#fff}
+.stage{display:flex;justify-content:center;min-height:200px}
+table.rt{border-collapse:separate;border-spacing:4px}
+table.rt td,table.rt th{min-width:92px;height:38px;text-align:center;border-radius:5px;font-variant-numeric:tabular-nums;font-weight:400}
+table.rt th{color:#4f525b;font-size:13px}
+table.rt td.e{color:#c9cbd1}
+.s{box-shadow:inset 0 0 0 2px #223056;background:#eeeff4}
+.t{background:#f3e3d2;box-shadow:inset 0 0 0 2px #b5763a;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+.chip{min-width:64px;padding:6px 10px;border-radius:6px;border:1px solid #dfe0e5;text-align:center;background:#fff}
+.chip.ok{border-color:#223056;background:#eeeff4}.chip.bad{border-color:#b5763a;background:#f3e3d2}
+.chip .mk{font-size:15px}
+canvas{display:block;width:100%;max-width:760px;height:260px}
+.fx{margin:12px auto 0;max-width:760px;min-height:92px;display:flex;flex-direction:column;align-items:center;gap:10px;font-size:16px}
+.fx .katex-display{margin:0}.fx .l{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:3px 4px}
+.nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
+.nav button{width:44px;height:36px;border:1px solid #223056;border-radius:6px;background:transparent;color:#223056;font-size:18px;cursor:pointer;line-height:1}
+.nav button:disabled{opacity:.3;cursor:default}.nav button.play{width:auto;padding:0 14px;font-size:14px}.nav button.play[aria-pressed="true"]{background:#223056;color:#fff}.nav .ct{min-width:64px;text-align:center;color:#4f525b;font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid #223056;outline-offset:2px}
+@media(max-width:520px){table.rt td,table.rt th{min-width:58px;font-size:11px;height:32px}.fx{font-size:13px}canvas{height:220px}}
+</style></head>
+<body><main>
+<div class="top" id="top"></div>
+<div class="stage" id="stage"></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button id="first" type="button" aria-label="回到开始">↺</button><button id="prev" type="button" aria-label="上一步">◀</button><span class="ct" id="ct"></span><button id="next" type="button" aria-label="下一步">▶</button><button id="play" class="play" type="button" aria-pressed="false">Play</button></div>
+</main>
+<script>
+const K=(el,s,d)=>katex.render(s,el,{throwOnError:false,displayMode:!!d});
+const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b]}return a||1};
+class Q{constructor(n,d=1){if(d<0){n=-n;d=-d}const g=gcd(n,d);this.n=n/g;this.d=d/g}add(o){return new Q(this.n*o.d+o.n*this.d,this.d*o.d)}mul(o){return new Q(this.n*o.n,this.d*o.d)}eq(o){return this.n===o.n&&this.d===o.d}tex(){const s=this.n<0?'-':'',a=Math.abs(this.n);return this.d===1?s+a:s+'\\tfrac{'+a+'}{'+this.d+'}'}}
+const algo=new URLSearchParams(location.search).get('algo')||'romberg';
+const stage=document.getElementById('stage'),fx=document.getElementById('fx'),top_=document.getElementById('top');
+let steps=[],cur=0,draw=null;
+const f7=v=>v.toFixed(7);
+/* ---------- 龙贝格 ---------- */
+function romberg(){
+ const f=x=>1/x,a=1,b=3,N=5,R=[...Array(N)].map(()=>Array(N).fill(null));
+ steps=[{R:R.map(r=>r.slice()),hi:[],lines:['\\int_1^3\\frac{1}{x}\\,\\mathrm dx=\\ln3\\approx1.0986123']}];
+ const push=(hi,lines)=>steps.push({R:R.map(r=>r.slice()),hi,lines});
+ R[0][0]=(b-a)/2*(f(a)+f(b));push([[0,0,'t']],['R_{0,0}=T_1=\\frac{b-a}{2}[f(1)+f(3)]',`=1\\times\\left(1+\\tfrac13\\right)=${f7(R[0][0])}`]);
+ for(let k=1;k<N;k++){const n=2**(k-1),h=(b-a)/n;let s=0;for(let i=0;i<n;i++)s+=f(a+(i+.5)*h);R[k][0]=R[k-1][0]/2+h/2*s;
+  push([[k,0,'t'],[k-1,0,'s']],[`R_{${k},0}=T_{${2*n}}=\\tfrac12T_{${n}}+\\tfrac{h}{2}\\sum_{i=0}^{${n-1}}f\\left(x_{i+1/2}\\right)`,`=\\tfrac12\\times${f7(R[k-1][0])}+${(h/2).toString()}\\times${s.toFixed(7)}=${f7(R[k][0])}`]);
+  for(let j=1;j<=k;j++){const c=4**j-1;R[k][j]=R[k][j-1]+(R[k][j-1]-R[k-1][j-1])/c;
+   const lines=[`R_{${k},${j}}=R_{${k},${j-1}}+\\dfrac{R_{${k},${j-1}}-R_{${k-1},${j-1}}}{${c}}`,`=${f7(R[k][j-1])}+\\dfrac{${f7(R[k][j-1])}-${f7(R[k-1][j-1])}}{${c}}=${f7(R[k][j])}`];
+   if(j===k)lines.push(`|R_{${k},${k}}-R_{${k-1},${k-1}}|=${Math.abs(R[k][k]-R[k-1][k-1]).toExponential(2).replace(/e([-+]\d+)/,'\\times10^{$1}').replace('+','')}`);
+   push([[k,j,'t'],[k,j-1,'s'],[k-1,j-1,'s']],lines)}}
+ draw=st=>{const hm={};st.hi.forEach(([i,j,c])=>hm[i+','+j]=c);let h='<table class="rt"><tr><th></th>';for(let j=0;j<N;j++)h+=`<th data-t="R_{k,${j}}"></th>`;h+='</tr>';
+  for(let i=0;i<N;i++){h+=`<tr><th data-t="k=${i}"></th>`;for(let j=0;j<N;j++){if(j>i){h+='<td></td>';continue}const v=st.R[i][j];h+=`<td class="${v===null?'e':''} ${hm[i+','+j]||''}">${v===null?'·':f7(v)}</td>`}h+='</tr>'}
+  stage.innerHTML=h+'</table>';stage.querySelectorAll('[data-t]').forEach(e=>K(e,e.dataset.t))};
+}
+/* ---------- 代数精度 ---------- */
+const RULES={
+ trap:{tex:'T',name:'Trapezoid',q:j=>new Q(1).mul(pw(-1,j)).add(pw(1,j)),def:'Q[f]=f(-1)+f(1)'},
+ simp:{tex:'S',name:'Simpson',q:j=>pw(-1,j).add(new Q(4).mul(pw(0,j))).add(pw(1,j)).mul(new Q(1,3)),def:'Q[f]=\\tfrac13\\left[f(-1)+4f(0)+f(1)\\right]'},
+ g2:{tex:'G_2',name:'Gauss-2',q:j=>j%2?new Q(0):new Q(2).mul(new Q(1,3**(j/2))),def:'Q[f]=f\\left(-\\tfrac{1}{\\sqrt3}\\right)+f\\left(\\tfrac{1}{\\sqrt3}\\right)'},
+ g3:{tex:'G_3',name:'Gauss-3',q:j=>j===0?new Q(2):j%2?new Q(0):new Q(10,9).mul(new Q(3**(j/2),5**(j/2))),def:'Q[f]=\\tfrac59f\\left(-\\sqrt{\\tfrac35}\\right)+\\tfrac89f(0)+\\tfrac59f\\left(\\sqrt{\\tfrac35}\\right)'}};
+function pw(x,j){return j===0?new Q(1):new Q(x**j)}
+let rule='simp';
+function degree(){
+ const r=RULES[rule];steps=[{chips:[],lines:[r.def,'\\text{test }f(x)=1,\\,x,\\,x^2,\\ldots']}];const chips=[];
+ for(let j=0;j<12;j++){const I=j%2?new Q(0):new Q(2,j+1),v=r.q(j),ok=I.eq(v);chips.push([j,ok]);
+  const lines=[`\\int_{-1}^{1}x^{${j}}\\,\\mathrm dx=${I.tex()},\\qquad Q[x^{${j}}]=${v.tex()}`];
+  if(!ok)lines.push(`\\text{degree of precision}=${j-1}`);steps.push({chips:chips.slice(),lines});if(!ok)break}
+ draw=st=>{stage.innerHTML='<div class="chips"></div>';const box=stage.firstChild;
+  st.chips.forEach(([j,ok],i)=>{const d=document.createElement('div');d.className='chip '+(ok?'ok':'bad')+(i===st.chips.length-1?' t':'');d.innerHTML='<div class="x"></div><div class="mk">'+(ok?'✓':'✗')+'</div>';K(d.firstChild,'x^{'+j+'}');box.appendChild(d)});
+  if(!st.chips.length){const d=document.createElement('div');d.className='chip';K(d,'x^{0}');box.appendChild(d)}};
+ top_.innerHTML='';Object.entries(RULES).forEach(([k,o])=>{const b=document.createElement('button');b.type='button';b.textContent=o.name;b.setAttribute('aria-pressed',k===rule);b.onclick=()=>{rule=k;if(typeof stopPlay==='function')stopPlay();degree();cur=0;render()};top_.appendChild(b)});
+}
+/* ---------- 自适应辛普森 ---------- */
+function adaptive(){
+ const f=x=>x**6,tol0=1e-5,simp=(a,b)=>{const c=(a+b)/2;return(b-a)/6*(f(a)+4*f(c)+f(b))};
+ const stack=[[0,1,tol0]],acc=[];steps=[{acc:[],pend:[[0,1]],cur:null,lines:['\\int_0^1x^6\\,\\mathrm dx,\\qquad \\varepsilon=10^{-5}']}];
+ const sci=v=>{const e=Math.floor(Math.log10(v)),m=v/10**e;return `${m.toFixed(2)}\\times10^{${e}}`};
+ while(stack.length){const [a,b,t]=stack.pop(),c=(a+b)/2,S1=simp(a,b),S2=simp(a,c)+simp(c,b),e=Math.abs(S2-S1)/15,ok=e<=t;
+  const pend=stack.map(s=>[s[0],s[1]]);if(ok)acc.push([a,b,S2+(S2-S1)/15]);else{stack.push([c,b,t/2],[a,c,t/2])}
+  steps.push({acc:acc.map(x=>x.slice(0,2)),pend:ok?pend:[...pend,[a,c],[c,b]],cur:[a,b,ok],
+   lines:[`[${fr(a)},${fr(b)}]:\\quad \\frac{|S_2-S_1|}{15}=${sci(e)}\\ ${ok?'\\leqslant':'>'}\\ ${sci(t)}`,ok?'\\text{accept}':`\\text{split at }x=${fr(c)}`]})}
+ const total=acc.reduce((s,x)=>s+x[2],0);steps.push({acc:acc.map(x=>x.slice(0,2)),pend:[],cur:null,lines:[`\\sum=${total.toFixed(8)},\\qquad \\tfrac17\\approx${(1/7).toFixed(8)}`]});
+ draw=st=>{stage.innerHTML='<canvas id="cv"></canvas>';const cv=document.getElementById('cv'),r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=w*d;cv.height=h*d;const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);
+  const pad={l:30,r:10,t:10,b:24},pw_=w-pad.l-pad.r,ph=h-pad.t-pad.b,X=x=>pad.l+x*pw_,Y=y=>pad.t+(1.08-y)*ph/1.12;
+  const fill=(a,b,col)=>{c.beginPath();c.moveTo(X(a),Y(0));for(let i=0;i<=60;i++){const x=a+(b-a)*i/60;c.lineTo(X(x),Y(f(x)))}c.lineTo(X(b),Y(0));c.closePath();c.fillStyle=col;c.fill()};
+  st.acc.forEach(([a,b])=>fill(a,b,'rgba(34, 48, 86,.22)'));st.pend.forEach(([a,b])=>fill(a,b,'rgba(143, 145, 152,.12)'));if(st.cur)fill(st.cur[0],st.cur[1],st.cur[2]?'rgba(34, 48, 86,.35)':'rgba(181,118,58,.35)');
+  c.strokeStyle='#d5d7dd';c.lineWidth=1;c.beginPath();c.moveTo(X(0),Y(0));c.lineTo(X(1),Y(0));c.stroke();
+  c.beginPath();for(let i=0;i<=300;i++){const x=i/300;i?c.lineTo(X(x),Y(f(x))):c.moveTo(X(x),Y(f(x)))}c.strokeStyle='#223056';c.lineWidth=2.4;c.stroke();
+  const ticks=new Set([0,1]);[...st.acc,...st.pend].forEach(([a,b])=>{ticks.add(a);ticks.add(b)});c.font='11px "Microsoft YaHei",sans-serif';c.fillStyle='#4f525b';c.textAlign='center';
+  [...ticks].forEach(x=>{c.strokeStyle='#4f525b';c.beginPath();c.moveTo(X(x),Y(0));c.lineTo(X(x),Y(0)+5);c.stroke();c.fillText(fr(x),X(x),h-6)})};
+}
+function fr(x){if(x===0||x===1)return String(x);for(let d=2;d<=64;d*=2){const n=Math.round(x*d);if(Math.abs(n/d-x)<1e-12)return n+'/'+d}return x.toFixed(3)}
+/* ---------- 渲染 ---------- */
+({romberg,degree,adaptive}[algo]||romberg)();
+function render(){const st=steps[cur];draw(st);fx.innerHTML='';st.lines.forEach(s=>{const d=document.createElement('div');d.className='l';K(d,s,true);fx.appendChild(d)});
+ document.getElementById('ct').textContent=`${cur} / ${steps.length-1}`;document.getElementById('prev').disabled=cur===0;document.getElementById('first').disabled=cur===0;document.getElementById('next').disabled=cur===steps.length-1}
+const go=v=>{cur=Math.max(0,Math.min(steps.length-1,v));render()};
+let timer=null;const playBtn=document.getElementById('play');
+function stopPlay(){clearInterval(timer);timer=null;playBtn.textContent='Play';playBtn.setAttribute('aria-pressed','false')}
+playBtn.onclick=()=>{if(timer){stopPlay();return}if(cur>=steps.length-1)go(0);playBtn.textContent='Pause';playBtn.setAttribute('aria-pressed','true');timer=setInterval(()=>{if(cur>=steps.length-1){stopPlay();return}go(cur+1);if(cur>=steps.length-1)stopPlay()},1300)};
+document.getElementById('next').onclick=()=>{stopPlay();go(cur+1)};document.getElementById('prev').onclick=()=>{stopPlay();go(cur-1)};document.getElementById('first').onclick=()=>{stopPlay();go(0)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay()});
+addEventListener('keydown',e=>{if(e.key==='ArrowRight'){stopPlay();go(cur+1)}if(e.key==='ArrowLeft'){stopPlay();go(cur-1)}});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+addEventListener('resize',()=>render());render();window.qsteps={n:()=>steps.length,go,steps:()=>steps};
+Steady.sweep([fx,stage],steps.length,i=>{cur=i;render()},()=>{cur=0;render()});Steady.hold(fx,stage,top_);
+</script></body></html>

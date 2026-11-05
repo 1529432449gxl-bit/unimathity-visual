@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eigen directions</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Eigen directions"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const A = [[1.3, 0.45], [0.25, 0.95]];
+const tr = 2.25, de = 1.3 * 0.95 - 0.45 * 0.25, ds = Math.sqrt(tr * tr / 4 - de), l1 = tr / 2 + ds, l2 = tr / 2 - ds;
+const ev = l => { const v = [0.45, l - 1.3]; const n = G.len(v); return [v[0] / n, v[1] / n] };
+const x1 = ev(l1), x2 = ev(l2), th1 = Math.atan2(x1[1], x1[0]), th2 = Math.atan2(x2[1], x2[0]);
+const v = G.plane(1.6);
+const S = { th: 1.9, thT: 1.9, playing: false };
+const set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+G.legend(lg, [['x', C.accent], ['Ax', C.warm], ['\\xi_1,\\ \\xi_2', C.blue, 1]]);
+const eq = G.formulas(document.getElementById('eq'), ['A\\xi_i=\\lambda_i\\xi_i,\\qquad Ax\\parallel x\\iff x\\in\\{k\\xi_1\\}\\cup\\{k\\xi_2\\}\\cup\\cdots']);
+eq('A\\xi_i=\\lambda_i\\xi_i,\\qquad Ax\\parallel x\\iff x\\in\\{k\\xi_1\\}\\cup\\{k\\xi_2\\}\\cup\\cdots');
+const hd = G.handles(canvas, v, () => [{ id: 0, p: [Math.cos(S.th), Math.sin(S.th)] }], (id, w) => { S.thT = Math.atan2(w[1], w[0]); let d = S.thT - S.th; while (d > Math.PI) { S.thT -= 2 * Math.PI; d -= 2 * Math.PI } while (d < -Math.PI) { S.thT += 2 * Math.PI; d += 2 * Math.PI } }, { onStart: () => set(false), kick: () => cv.kick() });
+const align = th => { const x = [Math.cos(th), Math.sin(th)], y = G.apply(A, x); return Math.abs(G.cross(x, y)) / G.len(y) };
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h);
+  if (S.playing) { const a = align(S.thT); S.thT += dt * (0.18 + 1.1 * Math.min(1, a * 3)) }
+  const mv = P.approach(S, 'th', S.thT, dt, 12);
+  const circ = [...Array(121)].map((_, i) => [Math.cos(i * Math.PI / 60), Math.sin(i * Math.PI / 60)]);
+  P.path(ctx, circ.map(v.S), { color: C.rule, width: 1 });
+  P.path(ctx, circ.map(p => v.S(G.apply(A, p))), { color: C.warm, width: 1.2, alpha: .3 });
+  const a = align(S.th), on = a < 0.025, x = [Math.cos(S.th), Math.sin(S.th)], y = G.apply(A, x);
+  const near1 = Math.abs(G.cross(x, x1)) < 0.03, near2 = Math.abs(G.cross(x, x2)) < 0.03;
+  G.fullLine(ctx, v, x1, { color: C.blue, alpha: near1 ? .85 : .35, width: near1 ? 1.8 : 1.2, dash: [6, 5] });
+  G.fullLine(ctx, v, x2, { color: C.blue, alpha: near2 ? .85 : .35, width: near2 ? 1.8 : 1.2, dash: [6, 5] });
+  G.arrow(ctx, v, [0, 0], y, { color: C.warm, width: 2.4 });
+  G.arrow(ctx, v, [0, 0], x, { color: C.accent, width: 3 });
+  G.dotAt(ctx, v, x, { r: hd.active != null || hd.hover != null ? 6.5 : 5, color: C.accent });
+  const sx = v.S(x), sy = v.S(y), e1 = v.S(G.mul(1.75, x1)), e2 = v.S(G.mul(-1.75, x2));
+  lab.set('x', 'x', sx[0], sx[1], { dx: -14, dy: -12, color: C.accent }); lab.set('y', 'Ax', sy[0], sy[1], { dx: 18, dy: -10, color: C.warm });
+  lab.set('e1', '\\xi_1', e1[0], e1[1], { dx: 0, dy: -14, color: C.blue }); lab.set('e2', '\\xi_2', e2[0], e2[1], { dx: 14, dy: 0, color: C.blue }); lab.end();
+  return mv || S.playing || hd.active != null;
+});
+cv.kick();
+window.visualAudit = { state: () => ({ ...S }), l1, l2 };
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

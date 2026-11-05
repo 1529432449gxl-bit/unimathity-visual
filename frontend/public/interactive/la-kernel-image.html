@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kernel and image</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}@media(max-width:520px){.stage canvas{height:310px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Kernel and image"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+import * as T from './vendor/la3d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const L3 = (cam, id, tex, p, color, dx = 12, dy = -10, alpha = 1) => { const q = cam.P(p); lab.set(id, tex, q[0], q[1], { dx, dy, color, alpha }) };
+const M = [[1.3, 0, -1.3], [0, 1.3, -1.3], [0.39, 0.52, -0.91]], k = T.unit([1, 1, 1]);
+const S = { ph: 0, playing: false, mode: 0 };
+const camL = V.camera({ az: -0.65, el: 0.36 }), camR = V.camera({ az: -0.65, el: 0.36 });
+const set = T.playToggle(document.getElementById('play'), S, () => cv.kick());
+let drag = null; canvas.style.touchAction = 'none';
+canvas.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY, camL.az, camL.el]; canvas.setPointerCapture(e.pointerId); set(false); cv.kick() });
+canvas.addEventListener('pointermove', e => { if (!drag) return; camL.az = camR.az = drag[2] + (e.clientX - drag[0]) * .008; camL.el = camR.el = P.clamp(drag[3] + (e.clientY - drag[1]) * .006, -.2, 1.3); cv.kick() });
+const up = () => { drag = null; cv.kick() }; canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+T.legend(lg, [['\\mathscr{A}^{-1}(0)', C.warm], ['x+\\mathscr{A}^{-1}(0)', C.warm, 1], ['\\mathscr{A}V', C.blue], ['x,\\ \\mathscr{A}x', C.accent]]);
+const eq = T.formulas(document.getElementById('eq'), ['\\dim\\mathscr{A}V+\\dim\\mathscr{A}^{-1}(0)=n']);
+eq('\\dim\\mathscr{A}V+\\dim\\mathscr{A}^{-1}(0)=n');
+const x0 = [1.0, -0.45, 0.05], tr = T.unit(T.cross(k, [0, 0, 1]));
+const cv = P.mount(canvas, (ctx, wd, ht, dt) => {
+  const half = wd / 2, sc = Math.min(half / 3.4, ht / 3.4);
+  camL.sc = camR.sc = sc; camL.ox = half / 2; camR.ox = half + half / 2; camL.oy = camR.oy = ht * 0.56;
+  if (S.playing) S.ph += dt * 0.55;
+  const ph = S.ph % (2 * Math.PI), along = ph < Math.PI; // 前半周期沿纤维移动，后半周期横向移动
+  const s = along ? 0.9 * Math.sin(ph) : 0, t = along ? 0 : 0.45 * Math.sin(ph - Math.PI);
+  const x = T.lin([1, x0], [s, k], [t, tr]), y = T.apply(M, x);
+  ctx.save(); ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(half, 48); ctx.lineTo(half, ht - 16); ctx.stroke(); ctx.restore();
+  V.axes(ctx, camL, [1.3, 1.3, 1.2], { alpha: .3 }); V.axes(ctx, camR, [1.3, 1.3, 1.2], { alpha: .3 });
+  V.line(ctx, camL, [T.mul(-1.5, k), T.mul(1.5, k)], { color: C.warm, width: 2, alpha: .85 });
+  const base = T.lin([1, x0], [t, tr]);
+  V.line(ctx, camL, [T.add(base, T.mul(-1.4, k)), T.add(base, T.mul(1.4, k))], { color: C.warm, width: 1.4, dash: [5, 4], alpha: .7 });
+  V.arrow(ctx, camL, [0, 0, 0], x, { color: C.accent, width: 2.6 });
+  const c1 = [1, 0, 0.3], c2 = [0, 1, 0.4];
+  V.paint(ctx, camR, [T.plane([0, 0, 0], c1, c2, C.blue, .15, 1.15)]); T.edge(ctx, camR, [0, 0, 0], c1, c2, { color: C.blue, s: 1.15 });
+  V.arrow(ctx, camR, [0, 0, 0], y, { color: C.accent, width: 2.6 });
+  const pL = camL.P(x), pR = camR.P(y);
+  ctx.save(); ctx.globalAlpha = along && S.playing ? .9 : .4; ctx.beginPath(); ctx.arc(pR[0], pR[1], along && S.playing ? 7 : 5, 0, 7); ctx.fillStyle = C.accent; ctx.fill(); ctx.restore();
+  L3(camL, 'k', '\\mathscr{A}^{-1}(0)', T.mul(1.5, k), C.warm, 0, -12); L3(camL, 'x', 'x', x, C.accent, 12, -10);
+  L3(camR, 'im', '\\mathscr{A}V', T.lin([1.1, T.unit(c1)], [-0.9, T.unit(T.sub(c2, T.proj(c2, c1)))]), C.blue, 0, 0); L3(camR, 'y', '\\mathscr{A}x', y, C.accent, 14, -10);
+  lab.set('arrow', '\\xrightarrow{\\ \\mathscr{A}\\ }', half, 26, { color: C.soft }); lab.end();
+  return S.playing || !!drag;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

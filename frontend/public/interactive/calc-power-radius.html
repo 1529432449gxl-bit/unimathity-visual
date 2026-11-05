@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Radius of convergence</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}@media(max-width:520px){.stage canvas{height:290px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="partial sums of 1-x^2+x^4-... inside and outside |x|<1"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const f = x => 1 / (1 + x * x);
+const Sn = (n, x) => { let s = 0, t = 1; for (let k = 0; k <= n; k++) { s += t; t *= -x * x } return s; };
+const NS = [0, 1, 2, 3, 4, 6, 8, 11, 15, 20];
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+for (const [t, c] of [['\\dfrac1{1+x^2}', C.accent], ['S_n(x)=\\sum_{k=0}^{n}(-1)^kx^{2k}', C.warm]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), '\\dfrac1{1+x^2}=\\sum_{k=0}^{\\infty}(-1)^kx^{2k}\\quad(|x|<1)');
+const B = [-1.75, 1.75, -0.45, 1.45];
+const v = P.view(B, { l: 12, r: 12, t: 12, b: 22 });
+const S = { ys: null, intro: 0 };
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (!st) return false; v.w = w; v.h = h;
+  const anim = st.tick(dt), intro = P.approach(S, 'intro', 1, dt, 4);
+  const k = Math.max(240, Math.round(w)), xs = []; for (let i = 0; i <= k; i++) xs.push(B[0] + (B[1] - B[0]) * i / k);
+  // 画面外的值截断，便于平滑过渡
+  const clip = y => P.clamp(y, -3, 4);
+  const tgt = xs.map(x => clip(Sn(NS[st.i], x)));
+  if (!S.ys) S.ys = tgt.slice();
+  const mv = P.approach(S, 'ys', tgt, dt, 6);
+  // 收敛区间 (-1,1) 的浅蓝底
+  ctx.save(); ctx.fillStyle = P.rgba(C.blue, .08); ctx.fillRect(v.X(-1), 0, v.X(1) - v.X(-1), h); ctx.restore();
+  for (const s of [-1, 1]) P.path(ctx, [[v.X(s), 0], [v.X(s), h]], { color: C.blue, width: 1, dash: [4, 4], alpha: .6 });
+  P.axes(ctx, v, { x: true, y: true, ticks: [-1, 1] });
+  P.path(ctx, P.curve(v, f), { color: C.accent, width: 2.2, alpha: .85 });
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+  P.path(ctx, xs.map((x, i) => [v.X(x), v.Y(S.ys[i])]), { color: C.warm, width: 2.4, alpha: S.intro });
+  ctx.restore();
+  lab.end();
+  return anim || intro || mv;
+});
+st = P.stepper(document.getElementById('nav'), { count: NS.length, dur: .8, hold: .8, kick: cv.kick });
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) st.stop() }); off.observe(document.querySelector('main'));
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Equivalence normal form</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const R=['1','\\vdots','r','r+1','\\vdots','s'], C=['1','\\cdots','r','r+1','\\cdots','n'], ord=x=>({'1':1,'r':50,'r+1':51,'s':99,'n':99})[x];
+const A=gen(R,C,(r,c,i,j,m)=>m?null:`a_${sub(r,c)}`);
+const topf=(f)=>gen(R,C,(r,c,i,j,m)=>{const ri=ord(r),cj=ord(c);
+  if(i>=3)return m==='c'?'\\cdots':(m==='v'?'\\vdots':'0');
+  return f(r,c,i,j,m,ri,cj)});
+const Ech=topf((r,c,i,j,m,ri,cj)=>{if(m==='v')return j===0?'0':(j===1?'\\ddots':null); if(m==='c')return i===2?(j===1?'\\cdots':null):null; if(cj<ri)return '0'; return `u_${sub(r,c)}`});
+Ech[2][1]='\\cdots';
+const Rr=topf((r,c,i,j,m,ri,cj)=>{ if(j>=3)return m?null:`b_${sub(r,c)}`; if(m==='v')return j===1?'\\ddots':'0'; if(m==='c')return '0'; return ri===cj?'1':'0'});
+Rr[1][1]='\\ddots';Rr[0][1]='\\cdots';Rr[2][1]='\\cdots';Rr[1][0]='\\vdots';Rr[1][2]='\\vdots';
+const N=Rr.map((row,i)=>row.map((x,j)=>j>=3?(/dots/.test(x)?x:'0'):x));
+N[1][4]='\\vdots';N[0][4]='\\cdots';N[2][4]='\\cdots';
+const tE=R.map((_,i)=>C.map((_,j)=>i<3&&j<3?'k1':''));
+const tC=R.map((_,i)=>C.map((_,j)=>i<3&&j>=3?'k3':''));
+const both=R.map((_,i)=>C.map((_,j)=>tE[i][j]||tC[i][j]));
+const mm=(cells,label,tint)=>({key:'A',label,cells,tint});
+const hiC=(cls)=>[0,2].flatMap(i=>[3,5].map(j=>['A',i,j,cls]));
+const steps=[
+ {mats:[mm(A,'A')],hi:[],lines:['A_{s\\times n},\\qquad r(A)=r']},
+ {mats:[mm(Ech,'P_1A')],hi:[['A',0,0,'s'],['A',2,2,'s']],lines:['\\text{row operations:}\\ u_{11},\\,\\cdots,\\,u_{rr}\\neq0']},
+ {mats:[mm(Rr,'PA',both)],hi:[],lines:['PA=\\begin{pmatrix}E_r&B\\\\O&O\\end{pmatrix}']},
+ {mats:[mm(Rr,'PA',both)],hi:[['A',0,0,'s'],['A',2,2,'s'],...hiC('t')],lines:['c_j-b_{1j}\\,c_1-b_{2j}\\,c_2-\\cdots-b_{rj}\\,c_r\\qquad(j>r)']},
+ {mats:[mm(N,'PAQ',tE)],hi:[],lines:['PAQ=\\begin{pmatrix}E_r&O\\\\O&O\\end{pmatrix},\\qquad P,\\ Q\\ \\text{invertible}']},
+];
+LAS.run({steps,interval:1900});
+</script></body></html>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Line integral curtain</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="nl"></span><input id="ns" type="range" min="0" max="1000" step="1" value="180" aria-label="n"><button class="tg" id="play" type="button" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Curtain over a plane curve approximated by strips"></canvas></div>
+<div class="fx" id="fx"><div id="f1"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const cv = document.getElementById('cv'); cv.style.height = '360px'; cv.style.cursor = 'grab';
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+
+/* 平面曲线 L 与高度 f */
+const L = t => [-1.7 + 3.4 * t, 0.95 * Math.sin(5.4 * t - 0.5) + 0.2 * t];
+const f = (x, y) => 0.95 + 0.42 * Math.sin(1.8 * x + 0.6) + 0.28 * y;
+const NF = 1200, fine = [];
+for (let k = 0; k <= NF; k++) { const [x, y] = L(k / NF); fine.push([x, y, f(x, y)]) }
+let exact = 0; for (let k = 1; k <= NF; k++) { const a = fine[k - 1], b = fine[k]; exact += Math.hypot(b[0] - a[0], b[1] - a[1]) * (a[2] + b[2]) / 2 }
+
+/* 分割与和式 */
+const sToN = s => Math.max(2, Math.round(2 ** (1 + 5.6 * s / 1000)));
+function strips(n) {
+  const out = []; let sum = 0;
+  for (let i = 1; i <= n; i++) {
+    const a = L((i - 1) / n), b = L(i / n), m = L((i - .5) / n), h = f(m[0], m[1]), ds = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    sum += h * ds; out.push({ a, b, m, h });
+  }
+  return { n, list: out, sum };
+}
+
+/* 视角 */
+const cam = { az: 0.38, el: 0.66, taz: 0.38, tel: 0.66 };
+function raw(x, y, z) {
+  const ca = Math.cos(cam.az), sa = Math.sin(cam.az), u = x * ca - y * sa, d = x * sa + y * ca;
+  return [u, z * Math.cos(cam.el) + d * Math.sin(cam.el), d];
+}
+const fit = { s: 0, cu: 0, cv: 0 };
+function fitView(w, h, dt) {
+  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
+  for (const p of fine) for (const z of [0, p[2]]) { const r = raw(p[0], p[1], z); u0 = Math.min(u0, r[0]); u1 = Math.max(u1, r[0]); v0 = Math.min(v0, r[1]); v1 = Math.max(v1, r[1]) }
+  const t = { s: Math.min((w - 90) / (u1 - u0), (h - 56) / (v1 - v0)), cu: (u0 + u1) / 2, cv: (v0 + v1) / 2 };
+  let mv = false; for (const k of ['s', 'cu', 'cv']) mv = (fit[k] ? P.approach(fit, k, t[k], dt, 8) : (fit[k] = t[k], false)) || mv; return mv;
+}
+function proj(x, y, z, w, h) { const r = raw(x, y, z); return [w / 2 + (r[0] - fit.cu) * fit.s, h / 2 - (r[1] - fit.cv) * fit.s + 4, r[2]] }
+
+let cur = strips(sToN(180)), old = null, fade = 1;
+const st = { s: 180, ts: 180, playing: false };
+const ns = document.getElementById('ns'), nl = document.getElementById('nl'), f1 = document.getElementById('f1'), playBtn = document.getElementById('play');
+let shownN = -1;
+function setN(n) {
+  if (n === cur.n) return;
+  old = cur; cur = strips(n); fade = 0;
+}
+function texts() {
+  if (shownN === cur.n) return; shownN = cur.n;
+  K(nl, `n=${cur.n}`);
+  K(f1, `\\sum_{i=1}^{n}f(M_i)\\,\\Delta s_i=${cur.sum.toFixed(4)}\\ \\longrightarrow\\ \\int_L f\\,\\mathrm ds=${exact.toFixed(4)}`, true);
+}
+
+function drawStrips(ctx, w, h, S, alpha) {
+  if (alpha <= 0.01) return;
+  const quads = S.list.map(q => {
+    const p0 = proj(q.a[0], q.a[1], 0, w, h), p1 = proj(q.b[0], q.b[1], 0, w, h),
+      p2 = proj(q.b[0], q.b[1], q.h, w, h), p3 = proj(q.a[0], q.a[1], q.h, w, h);
+    return { pts: [p0, p1, p2, p3], d: (p0[2] + p1[2]) / 2, q };
+  }).sort((A, B) => B.d - A.d);
+  const thin = Math.min(1, 40 / S.n);
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (const Q of quads) {
+    ctx.beginPath(); Q.pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.fillStyle = P.rgba(C.hlBg, .78); ctx.fill();
+    ctx.strokeStyle = P.rgba(C.hl, .75 * thin ** 1.6); ctx.lineWidth = .5 + .7 * thin; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(Q.pts[3][0], Q.pts[3][1]); ctx.lineTo(Q.pts[2][0], Q.pts[2][1]);
+    ctx.strokeStyle = C.warm; ctx.lineWidth = 1.6; ctx.stroke();
+  }
+  if (S.n <= 48) for (const Q of quads) {
+    const pm = proj(Q.q.m[0], Q.q.m[1], 0, w, h);
+    P.dot(ctx, pm[0], pm[1], { r: 2.6, color: C.warm, scale: thin * .6 + .4 });
+  }
+  ctx.restore();
+}
+
+const m = P.mount(cv, (ctx, w, h, dt) => {
+  let moving = false;
+  moving = P.approach(cam, 'az', cam.taz, dt, 10) || moving;
+  moving = P.approach(cam, 'el', cam.tel, dt, 10) || moving;
+  moving = fitView(w, h, dt) || moving;
+  if (st.playing) { st.ts = Math.min(1000, st.ts + dt * 150); ns.value = Math.round(st.ts); if (st.ts >= 1000) stopPlay(); moving = true }
+  setN(sToN(st.ts));
+  if (fade < 1) { fade = Math.min(1, fade + dt / .35); moving = true }
+  texts();
+
+  /* 底面坐标轴 */
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1;
+  for (const [a, b] of [[[-2, 0, 0], [2.1, 0, 0]], [[0, -1.4, 0], [0, 1.5, 0]], [[-2, 0, 0], [-2, 0, 1.75]]]) {
+    const p = proj(...a, w, h), q = proj(...b, w, h); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+  }
+  ctx.restore();
+
+  /* 光滑薄帘的淡影 */
+  const top = fine.map(p => proj(p[0], p[1], p[2], w, h)), bot = fine.map(p => proj(p[0], p[1], 0, w, h));
+  P.fill(ctx, top, bot, P.rgba(C.blue, .07));
+
+  if (old && fade < 1) drawStrips(ctx, w, h, old, 1 - P.ease.inOut(fade));
+  drawStrips(ctx, w, h, cur, old ? P.ease.inOut(fade) : 1);
+
+  P.path(ctx, bot, { color: C.accent, width: 2.4 });
+  P.path(ctx, top, { color: C.accent, width: 2.4, alpha: .9 });
+
+  const e = bot[bot.length - 1]; let t = top[0]; for (const q of top) if (q[1] < t[1]) t = q;
+  lab.set('L', 'L', e[0], e[1], { dx: 14, dy: 8, color: C.accent });
+  lab.set('f', 'f', t[0], t[1], { dy: -14, color: C.accent });
+  const xa = proj(2.1, 0, 0, w, h), ya = proj(0, 1.5, 0, w, h), za = proj(-2, 0, 1.75, w, h);
+  lab.set('x', 'x', xa[0], xa[1], { dx: 8, color: C.mute, size: 12 });
+  lab.set('y', 'y', ya[0], ya[1], { dy: -8, color: C.mute, size: 12 });
+  lab.set('z', 'z', za[0], za[1], { dy: -8, color: C.mute, size: 12 });
+  lab.end();
+  return moving;
+});
+
+/* 交互：拖动旋转，滑块 n，自动播放 */
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, az: cam.taz, el: cam.tel }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' });
+cv.addEventListener('pointermove', e => { if (!drag) return; cam.taz = drag.az + (e.clientX - drag.x) * .008; cam.tel = P.clamp(drag.el + (e.clientY - drag.y) * .006, .12, 1.25); m.kick() });
+const end = () => { drag = null; cv.style.cursor = 'grab' }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+function stopPlay() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+ns.addEventListener('input', () => { stopPlay(); st.ts = +ns.value; m.kick() });
+playBtn.onclick = () => { if (st.playing) { stopPlay(); return } if (st.ts >= 1000) { st.ts = 0; ns.value = 0 } st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); m.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopPlay() });
+P.reportHeight(document.querySelector('main'));
+texts(); m.kick();
+</script></body></html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Surface area element</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="300" aria-label="position"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Surface area element"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const r = (u, v) => [u, v, 0.35 * Math.sin(1.6 * u) + 0.25 * Math.cos(1.4 * v) + 0.15 * u * v];
+const ru = (u, v) => { const e = 1e-5, a = r(u + e, v), b = r(u - e, v); return [(a[0] - b[0]) / (2 * e), (a[1] - b[1]) / (2 * e), (a[2] - b[2]) / (2 * e)] };
+const rv = (u, v) => { const e = 1e-5, a = r(u, v + e), b = r(u, v - e); return [(a[0] - b[0]) / (2 * e), (a[1] - b[1]) / (2 * e), (a[2] - b[2]) / (2 * e)] };
+const sl = document.getElementById('s'), btn = document.getElementById('play');
+const S = { t: 0.3, target: 0.3, playing: true, dir: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['\\Sigma', C.accent], ['\\boldsymbol r_u\\Delta u,\\ \\boldsymbol r_v\\Delta v', C.blue], ['\\boldsymbol r_u\\times\\boldsymbol r_v', C.warm]]);
+K(eqEl, '\\mathrm dS=|\\boldsymbol r_u\\times\\boldsymbol r_v|\\,\\mathrm du\\,\\mathrm dv', 1);
+const cam = V.camera({ az: -0.55, el: 0.5 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const surf = V.mesh(r, -1.2, 1.2, -1.2, 1.2, 12, 12);
+const du = 0.2, dv = 0.2, path = t => [-0.8 + 1.4 * t, 0.7 - 1.3 * t + 0.4 * Math.sin(3 * t)];
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.8, h / 3.0); cam.ox = w * 0.55; cam.oy = h * 0.6;
+  if (S.playing) { S.target += S.dir * 0.25 * dt; if (S.target > 1) { S.target = 1; S.dir = -1 } if (S.target < 0) { S.target = 0; S.dir = 1 } sl.value = S.target * 1000 }
+  const mv = P.approach(S, 't', S.target, dt, 9), [u, v] = path(S.t);
+  const patch = V.mesh(r, u, u + du, v, v + dv, 4, 4), p0 = r(u, v), a = ru(u, v), b = rv(u, v);
+  const A = [p0[0] + a[0] * du, p0[1] + a[1] * du, p0[2] + a[2] * du], Bv = [p0[0] + b[0] * dv, p0[1] + b[1] * dv, p0[2] + b[2] * dv], AB = [A[0] + Bv[0] - p0[0], A[1] + Bv[1] - p0[1], A[2] + Bv[2] - p0[2]];
+  V.paint(ctx, cam, [{ quads: surf, color: C.accent, alpha: .2, edge: .2 }, { quads: patch, color: C.warm, alpha: .55 }]);
+  V.line(ctx, cam, [A, AB, Bv], { color: C.blue, width: 1, dash: [3, 3] });
+  V.arrow(ctx, cam, p0, A, { color: C.blue, width: 2 }); V.arrow(ctx, cam, p0, Bv, { color: C.blue, width: 2 });
+  const n = V.cross(a, b); V.arrow(ctx, cam, p0, [p0[0] + n[0] * .6, p0[1] + n[1] * .6, p0[2] + n[2] * .6], { color: C.warm, width: 2.2 });
+  // 参数平面小图
+  const W = Math.min(110, w * .26), ox = 14, oy = 14, X = s => ox + (s + 1.2) / 2.4 * W, Y = s => oy + W - (s + 1.2) / 2.4 * W;
+  ctx.save(); ctx.fillStyle = 'rgba(251,251,250,.94)'; ctx.strokeStyle = C.faint; ctx.beginPath(); ctx.roundRect(ox - 4, oy - 4, W + 8, W + 8, 6); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = P.rgba(C.mute, .4); ctx.lineWidth = 1; for (let k = 0; k <= 12; k++) { const s = -1.2 + .2 * k; ctx.beginPath(); ctx.moveTo(X(s), Y(-1.2)); ctx.lineTo(X(s), Y(1.2)); ctx.moveTo(X(-1.2), Y(s)); ctx.lineTo(X(1.2), Y(s)); ctx.stroke() }
+  ctx.fillStyle = P.rgba(C.warm, .7); ctx.fillRect(X(u), Y(v + dv), X(u + du) - X(u), Y(v) - Y(v + dv)); ctx.restore();
+  lab.set('uv', '\\Delta u\\,\\Delta v', ox + W / 2, oy + W + 14, { color: C.soft, size: 12 }); lab.end();
+  return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000; cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

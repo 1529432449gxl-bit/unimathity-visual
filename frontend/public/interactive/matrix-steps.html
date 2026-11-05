@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>矩阵逐元素更新演示</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}
+main{padding:10px 2px 6px}
+.mats{display:flex;flex-wrap:wrap;gap:18px 26px;justify-content:center;align-items:flex-start;min-height:210px}
+.mat{display:flex;flex-direction:column;align-items:center;gap:4px}
+.mat .lab{font-size:15px;min-height:26px}
+.grid{display:grid;gap:3px;padding:4px 6px;position:relative}
+.grid:before,.grid:after{content:"";position:absolute;top:0;bottom:0;width:7px;border:1.6px solid #4f525b}
+.grid:before{left:0;border-right:0}.grid:after{right:0;border-left:0}
+.cell{width:46px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:5px;font-size:14px;transition:background .25s,box-shadow .25s,color .25s}
+.cell.sep{margin-left:10px;position:relative}.cell.sep:before{content:"";position:absolute;left:-8px;top:2px;bottom:2px;border-left:1.4px dashed #9a9da5}
+.cell.e{color:#c9cbd1}.cell.z{color:#b3b5bc}
+.cell.s{box-shadow:inset 0 0 0 2px #223056;background:#eeeff4}
+.cell.t{background:#f3e3d2;box-shadow:inset 0 0 0 2px #b5763a;color:#161820;font-weight:600}
+.cell.p{background:#eeeff4}
+.fx{margin:14px auto 0;max-width:760px;min-height:96px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:16px}
+.fx .katex-display{margin:0}.fx .l{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:3px 4px}
+.nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px}
+.nav button{width:44px;height:36px;border:1px solid #223056;border-radius:6px;background:transparent;color:#223056;font-size:18px;cursor:pointer;line-height:1}
+.nav button:disabled{opacity:.3;cursor:default}.nav button.play{width:auto;padding:0 14px;font-size:14px}.nav button.play[aria-pressed="true"]{background:#223056;color:#fff}
+.nav .ct{min-width:64px;text-align:center;color:#4f525b;font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid #223056;outline-offset:2px}
+@media(max-width:480px){.cell{width:38px;height:32px;font-size:12px}.mats{gap:12px 14px}.fx{font-size:14px}}
+</style></head>
+<body><main>
+<div class="mats" id="mats"></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button id="first" type="button" aria-label="回到开始">↺</button><button id="prev" type="button" aria-label="上一步">◀</button><span class="ct" id="ct"></span><button id="next" type="button" aria-label="下一步">▶</button><button id="play" class="play" type="button" aria-pressed="false">Play</button></div>
+</main>
+<script>
+/* ---------- 分数 ---------- */
+const gcd=(a,b)=>{a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b]}return a||1};
+class Q{constructor(n,d=1){if(d<0){n=-n;d=-d}const g=gcd(n,d);this.n=n/g;this.d=d/g}
+ add(o){return new Q(this.n*o.d+o.n*this.d,this.d*o.d)}sub(o){return new Q(this.n*o.d-o.n*this.d,this.d*o.d)}
+ mul(o){return new Q(this.n*o.n,this.d*o.d)}div(o){return new Q(this.n*o.d,this.d*o.n)}
+ abs(){return new Q(Math.abs(this.n),this.d)}cmp(o){return this.n*o.d-o.n*this.d}isZero(){return this.n===0}
+ sqrt(){const a=Math.round(Math.sqrt(this.n)),b=Math.round(Math.sqrt(this.d));return new Q(a,b)}
+ tex(){const s=this.n<0?'-':'',a=Math.abs(this.n);return this.d===1?s+a:s+'\\tfrac{'+a+'}{'+this.d+'}'}
+ ptex(){return this.n<0?'('+this.tex()+')':this.tex()}}
+const q=x=>x instanceof Q?x:new Q(x);
+const M=(rows)=>rows.map(r=>r.map(q));
+const mul=(A,B)=>A.map((r,i)=>B[0].map((_,j)=>r.reduce((s,_,k)=>s.add(A[i][k].mul(B[k][j])),q(0))));
+const T=(A)=>A[0].map((_,j)=>A.map(r=>r[j]));
+/* ---------- 快照 ---------- */
+let mats,steps;
+function mk(key,label,cells,aug=-1){return{key,label,cells,aug}}
+function snap(hi,lines,labels){steps.push({mats:mats.map(m=>({key:m.key,label:(labels&&labels[m.key])||m.label,aug:m.aug,cells:m.cells.map(r=>r.map(c=>c&&c.v!==undefined?{...c}:c))})),hi:hi||[],lines})}
+const C=(v,z)=>({v,z:!!z});           // 已知元素
+const E=()=>({v:null});                // 待算元素
+const S=(name,i,j)=>`${name}_{${i+1}${j+1}}`;
+function sumTerms(pairs){return pairs.map(([a,b])=>a+b).join('+')}
+function numTerms(pairs){return pairs.map(([a,b])=>a.ptex()+'\\times'+b.ptex()).join('+')}
+/* ---------- 高斯消去 ---------- */
+function gauss(){
+ const L0=M([[1,0,0,0],[2,1,0,0],[-1,2,1,0],[3,-1,2,1]]),U0=M([[2,1,-1,3],[0,3,1,-2],[0,0,-1,1],[0,0,0,2]]),x0=M([[1],[-1],[2],[1]]);
+ const A=mul(L0,U0),b=mul(A,x0).map(r=>r[0]),n=4;
+ const W=A.map((r,i)=>[...r.map(v=>C(v)),C(b[i])]);
+ const L=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>i===j?C(q(1),true):j>i?C(q(0),true):E()));
+ const X=[...Array(n)].map(()=>[E()]);
+ mats=[mk('A','[A\\mid b]',W,n),mk('L','L',L),mk('x','x',X)];
+ const sup=k=>`^{(${k})}`;
+ snap([],['\\text{Gauss}\\quad [A\\mid b]\\ \\longrightarrow\\ [U\\mid g]']);
+ for(let k=0;k<n-1;k++){
+  for(let i=k+1;i<n;i++){
+   const m=W[i][k].v.div(W[k][k].v);
+   L[i][k]=C(m);
+   snap([['L',i,k,'t'],['A',i,k,'s'],['A',k,k,'s']],[`m_{${i+1}${k+1}}=\\dfrac{a${sup(k+1)}_{${i+1}${k+1}}}{a${sup(k+1)}_{${k+1}${k+1}}}=\\dfrac{${W[i][k].v.tex()}}{${W[k][k].v.tex()}}=${m.tex()}`]);
+   W[i][k]=C(q(0),true);
+   for(let j=k+1;j<=n;j++){
+    const old=W[i][j].v,nv=old.sub(m.mul(W[k][j].v));
+    const nm=j===n?['b','b']:['a','a'];
+    const sub=j===n?`_{${i+1}}`:`_{${i+1}${j+1}}`,subk=j===n?`_{${k+1}}`:`_{${k+1}${j+1}}`;
+    const oldW=W[k][j].v; W[i][j]=C(nv);
+    snap([['A',i,j,'t'],['A',k,j,'s'],['L',i,k,'s'],['A',i,k,'p']],
+     [`${nm[0]}${sup(k+2)}${sub}=${nm[0]}${sup(k+1)}${sub}-m_{${i+1}${k+1}}\\,${nm[0]}${sup(k+1)}${subk}`,
+      `=${old.tex()}-${m.ptex()}\\times${oldW.ptex()}=${nv.tex()}`]);
+   }
+  }
+ }
+ const xs=Array(n);
+ for(let i=n-1;i>=0;i--){
+  let s=W[i][n].v;const pairs=[],hi=[['x',i,0,'t'],['A',i,i,'s'],['A',i,n,'s']];
+  for(let j=i+1;j<n;j++){s=s.sub(W[i][j].v.mul(xs[j]));pairs.push([W[i][j].v,xs[j]]);hi.push(['A',i,j,'s'],['x',j,0,'s'])}
+  xs[i]=s.div(W[i][i].v);X[i]=[C(xs[i])];
+  const g=`\\dfrac{g_{${i+1}}${pairs.length?'-\\sum_{j>'+(i+1)+'}u_{'+(i+1)+'j}x_j':''}}{u_{${i+1}${i+1}}}`;
+  const num=pairs.length?`\\dfrac{${W[i][n].v.tex()}-(${numTerms(pairs)})}{${W[i][i].v.tex()}}`:`\\dfrac{${W[i][n].v.tex()}}{${W[i][i].v.tex()}}`;
+  snap(hi,[`x_{${i+1}}=${g}`,`=${num}=${xs[i].tex()}`]);
+ }
+}
+/* ---------- 列主元消去 ---------- */
+function pivot(){
+ const A0=[[-2,3,3,-2,-1],[1,1,4,4,3],[4,-2,0,2,2],[2,-4,-4,2,0]],n=4;
+ let W=A0.map(r=>r.map(v=>C(q(v))));
+ const X=[...Array(n)].map(()=>[E()]),Mv=[...Array(n)].map(()=>[C(q(0),true)]);
+ mats=[mk('A','[A\\mid b]',W,n),mk('m','m',Mv),mk('x','x',X)];
+ const rowHi=(i,c)=>[...Array(n+1)].map((_,j)=>['A',i,j,c]);
+ snap([],['\\text{Partial pivoting}\\quad |m_{ik}|\\leqslant1']);
+ for(let k=0;k<n-1;k++){
+  let p=k;for(let i=k+1;i<n;i++)if(W[i][k].v.abs().cmp(W[p][k].v.abs())>0)p=i;
+  const hi=[];for(let i=k;i<n;i++)hi.push(['A',i,k,i===p?'t':'s']);
+  snap(hi,[`|a_{${p+1}${k+1}}|=\\max_{${k+1}\\leqslant i\\leqslant 4}|a_{i${k+1}}|=${W[p][k].v.abs().tex()}`]);
+  if(p!==k){mats[0].cells=W;[W[k],W[p]]=[W[p],W[k]];mats[0].cells=W;snap([...rowHi(k,'t'),...rowHi(p,'s')],[`r_{${k+1}}\\longleftrightarrow r_{${p+1}}`])}
+  for(let i=k+1;i<n;i++){
+   const m=W[i][k].v.div(W[k][k].v);Mv.forEach((r,t)=>r[0]=C(t===i?m:q(0),t!==i));
+   snap([['m',i,0,'t'],['A',i,k,'s'],['A',k,k,'s']],[`m_{${i+1}${k+1}}=\\dfrac{${W[i][k].v.tex()}}{${W[k][k].v.tex()}}=${m.tex()}`]);
+   W[i][k]=C(q(0),true);
+   for(let j=k+1;j<=n;j++){
+    const old=W[i][j].v,pv=W[k][j].v,nv=old.sub(m.mul(pv));W[i][j]=C(nv);
+    const nm=j===n?'b':'a',sub=j===n?`_{${i+1}}`:`_{${i+1}${j+1}}`,subk=j===n?`_{${k+1}}`:`_{${k+1}${j+1}}`;
+    snap([['A',i,j,'t'],['A',k,j,'s'],['m',i,0,'s'],['A',i,k,'p']],[`${nm}${sub}\\leftarrow ${nm}${sub}-m_{${i+1}${k+1}}${nm}${subk}`,`=${old.tex()}-${m.ptex()}\\times${pv.ptex()}=${nv.tex()}`]);
+   }
+  }
+  Mv.forEach(r=>r[0]=C(q(0),true));
+ }
+ const xs=Array(n);
+ for(let i=n-1;i>=0;i--){
+  let s=W[i][n].v;const pairs=[],hi=[['x',i,0,'t'],['A',i,i,'s'],['A',i,n,'s']];
+  for(let j=i+1;j<n;j++){s=s.sub(W[i][j].v.mul(xs[j]));pairs.push([W[i][j].v,xs[j]]);hi.push(['A',i,j,'s'],['x',j,0,'s'])}
+  xs[i]=s.div(W[i][i].v);X[i]=[C(xs[i])];
+  const num=pairs.length?`\\dfrac{${W[i][n].v.tex()}-(${numTerms(pairs)})}{${W[i][i].v.tex()}}`:`\\dfrac{${W[i][n].v.tex()}}{${W[i][i].v.tex()}}`;
+  snap(hi,[`x_{${i+1}}=${num}=${xs[i].tex()}`]);
+ }
+}
+/* ---------- 杜立特分解 ---------- */
+function doolittle(){
+ const L0=M([[1,0,0,0],[2,1,0,0],[-1,2,1,0],[3,-1,2,1]]),U0=M([[2,1,-1,3],[0,3,1,-2],[0,0,-1,1],[0,0,0,2]]),A=mul(L0,U0),n=4;
+ const L=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>i===j?C(q(1),true):j>i?C(q(0),true):E()));
+ const U=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>j<i?C(q(0),true):E()));
+ const l=[...Array(n)].map(()=>Array(n)),u=[...Array(n)].map(()=>Array(n));for(let i=0;i<n;i++)l[i][i]=q(1);
+ mats=[mk('A','A',A.map(r=>r.map(v=>C(v)))),mk('L','L',L),mk('U','U',U)];
+ snap([],['A=LU']);
+ for(let r=0;r<n;r++){
+  for(let j=r;j<n;j++){
+   let s=A[r][j];const pairs=[],sym=[],hi=[['U',r,j,'t'],['A',r,j,'s']];
+   for(let k=0;k<r;k++){s=s.sub(l[r][k].mul(u[k][j]));pairs.push([l[r][k],u[k][j]]);sym.push([S('l',r,k),S('u',k,j)]);hi.push(['L',r,k,'s'],['U',k,j,'s'])}
+   u[r][j]=s;U[r][j]=C(s);
+   snap(hi,pairs.length?[`${S('u',r,j)}=${S('a',r,j)}-(${sumTerms(sym)})`,`=${A[r][j].tex()}-(${numTerms(pairs)})=${s.tex()}`]:[`${S('u',r,j)}=${S('a',r,j)}=${s.tex()}`]);
+  }
+  for(let i=r+1;i<n;i++){
+   let s=A[i][r];const pairs=[],sym=[],hi=[['L',i,r,'t'],['A',i,r,'s'],['U',r,r,'s']];
+   for(let k=0;k<r;k++){s=s.sub(l[i][k].mul(u[k][r]));pairs.push([l[i][k],u[k][r]]);sym.push([S('l',i,k),S('u',k,r)]);hi.push(['L',i,k,'s'],['U',k,r,'s'])}
+   const v=s.div(u[r][r]);l[i][r]=v;L[i][r]=C(v);
+   snap(hi,pairs.length?[`${S('l',i,r)}=\\dfrac{${S('a',i,r)}-(${sumTerms(sym)})}{${S('u',r,r)}}`,`=\\dfrac{${A[i][r].tex()}-(${numTerms(pairs)})}{${u[r][r].tex()}}=${v.tex()}`]:[`${S('l',i,r)}=\\dfrac{${S('a',i,r)}}{${S('u',r,r)}}=\\dfrac{${A[i][r].tex()}}{${u[r][r].tex()}}=${v.tex()}`]);
+  }
+ }
+}
+/* ---------- 平方根法 ---------- */
+const L0c=M([[2,0,0,0],[1,3,0,0],[-1,1,2,0],[1,-2,1,1]]),Aspd=mul(L0c,T(L0c));
+function cholesky(){
+ const A=Aspd,n=4,l=[...Array(n)].map(()=>Array(n));
+ const L=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>j>i?C(q(0),true):E()));
+ mats=[mk('A','A',A.map(r=>r.map(v=>C(v)))),mk('L','L',L)];
+ snap([],['A=LL^{T}']);
+ for(let j=0;j<n;j++){
+  let s=A[j][j];const pairs=[],sym=[],hi=[['L',j,j,'t'],['A',j,j,'s']];
+  for(let k=0;k<j;k++){s=s.sub(l[j][k].mul(l[j][k]));pairs.push([l[j][k],l[j][k]]);sym.push([S('l',j,k)+'^2','']);hi.push(['L',j,k,'s'])}
+  const v=s.sqrt();l[j][j]=v;L[j][j]=C(v);
+  snap(hi,pairs.length?[`${S('l',j,j)}=\\sqrt{${S('a',j,j)}-(${sumTerms(sym)})}`,`=\\sqrt{${A[j][j].tex()}-(${pairs.map(([a])=>a.ptex()+'^2').join('+')})}=\\sqrt{${s.tex()}}=${v.tex()}`]:[`${S('l',j,j)}=\\sqrt{${S('a',j,j)}}=\\sqrt{${A[j][j].tex()}}=${v.tex()}`]);
+  for(let i=j+1;i<n;i++){
+   let s=A[i][j];const pairs=[],sym=[],hi=[['L',i,j,'t'],['A',i,j,'s'],['L',j,j,'s']];
+   for(let k=0;k<j;k++){s=s.sub(l[i][k].mul(l[j][k]));pairs.push([l[i][k],l[j][k]]);sym.push([S('l',i,k),S('l',j,k)]);hi.push(['L',i,k,'s'],['L',j,k,'s'])}
+   const v=s.div(l[j][j]);l[i][j]=v;L[i][j]=C(v);
+   snap(hi,pairs.length?[`${S('l',i,j)}=\\dfrac{${S('a',i,j)}-(${sumTerms(sym)})}{${S('l',j,j)}}`,`=\\dfrac{${A[i][j].tex()}-(${numTerms(pairs)})}{${l[j][j].tex()}}=${v.tex()}`]:[`${S('l',i,j)}=\\dfrac{${S('a',i,j)}}{${S('l',j,j)}}=\\dfrac{${A[i][j].tex()}}{${l[j][j].tex()}}=${v.tex()}`]);
+  }
+ }
+}
+/* ---------- 改进平方根法 ---------- */
+function ldlt(){
+ const A=Aspd,n=4,l=[...Array(n)].map(()=>Array(n)),d=Array(n);
+ const L=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>i===j?C(q(1),true):j>i?C(q(0),true):E()));
+ const D=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>i===j?E():C(q(0),true)));
+ mats=[mk('A','A',A.map(r=>r.map(v=>C(v)))),mk('L','L',L),mk('D','D',D)];
+ snap([],['A=LDL^{T}']);
+ for(let j=0;j<n;j++){
+  let s=A[j][j];const pairs=[],hi=[['D',j,j,'t'],['A',j,j,'s']];
+  for(let k=0;k<j;k++){s=s.sub(l[j][k].mul(l[j][k]).mul(d[k]));pairs.push(k);hi.push(['L',j,k,'s'],['D',k,k,'s'])}
+  d[j]=s;D[j][j]=C(s);
+  snap(hi,pairs.length?[`d_{${j+1}}=${S('a',j,j)}-(${pairs.map(k=>S('l',j,k)+'^2d_{'+(k+1)+'}').join('+')})`,`=${A[j][j].tex()}-(${pairs.map(k=>l[j][k].ptex()+'^2\\times'+d[k].ptex()).join('+')})=${s.tex()}`]:[`d_{1}=${S('a',0,0)}=${s.tex()}`]);
+  for(let i=j+1;i<n;i++){
+   let s=A[i][j];const pairs=[],hi=[['L',i,j,'t'],['A',i,j,'s'],['D',j,j,'s']];
+   for(let k=0;k<j;k++){s=s.sub(l[i][k].mul(d[k]).mul(l[j][k]));pairs.push(k);hi.push(['L',i,k,'s'],['L',j,k,'s'],['D',k,k,'s'])}
+   const v=s.div(d[j]);l[i][j]=v;L[i][j]=C(v);
+   snap(hi,pairs.length?[`${S('l',i,j)}=\\dfrac{${S('a',i,j)}-(${pairs.map(k=>S('l',i,k)+'d_{'+(k+1)+'}'+S('l',j,k)).join('+')})}{d_{${j+1}}}`,`=\\dfrac{${A[i][j].tex()}-(${pairs.map(k=>l[i][k].ptex()+'\\times'+d[k].ptex()+'\\times'+l[j][k].ptex()).join('+')})}{${d[j].tex()}}=${v.tex()}`]:[`${S('l',i,j)}=\\dfrac{${S('a',i,j)}}{d_{${j+1}}}=\\dfrac{${A[i][j].tex()}}{${d[j].tex()}}=${v.tex()}`]);
+  }
+ }
+}
+/* ---------- 追赶法 ---------- */
+function thomas(){
+ const n=4,a=[0,-1,-1,-1].map(q),b=[4,4,4,4].map(q),c=[-1,-1,-1,0].map(q),d=[3,2,2,3].map(q);
+ const A=[...Array(n)].map((_,i)=>[...[...Array(n)].map((_,j)=>j===i?C(b[i]):j===i-1?C(a[i]):j===i+1?C(c[i]):C(q(0),true)),C(d[i])]);
+ const L=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>i===j?C(q(1),true):j===i-1?E():C(q(0),true)));
+ const U=[...Array(n)].map((_,i)=>[...Array(n)].map((_,j)=>j===i?E():j===i+1?C(c[i]):C(q(0),true)));
+ const Y=[...Array(n)].map(()=>[E()]),X=[...Array(n)].map(()=>[E()]);
+ mats=[mk('A','[A\\mid d]',A,n),mk('L','L',L),mk('U','U',U),mk('y','y',Y),mk('x','x',X)];
+ const u=Array(n),y=Array(n),l=Array(n),x=Array(n);
+ snap([],['A=LU,\\quad Ly=d,\\quad Ux=y']);
+ u[0]=b[0];U[0][0]=C(u[0]);snap([['U',0,0,'t'],['A',0,0,'s']],[`u_1=b_1=${u[0].tex()}`]);
+ y[0]=d[0];Y[0]=[C(y[0])];snap([['y',0,0,'t'],['A',0,n,'s']],[`y_1=d_1=${y[0].tex()}`]);
+ for(let i=1;i<n;i++){
+  l[i]=a[i].div(u[i-1]);L[i][i-1]=C(l[i]);
+  snap([['L',i,i-1,'t'],['A',i,i-1,'s'],['U',i-1,i-1,'s']],[`l_{${i+1}}=\\dfrac{a_{${i+1}}}{u_{${i}}}=\\dfrac{${a[i].tex()}}{${u[i-1].tex()}}=${l[i].tex()}`]);
+  u[i]=b[i].sub(l[i].mul(c[i-1]));U[i][i]=C(u[i]);
+  snap([['U',i,i,'t'],['A',i,i,'s'],['L',i,i-1,'s'],['U',i-1,i,'s']],[`u_{${i+1}}=b_{${i+1}}-l_{${i+1}}c_{${i}}`,`=${b[i].tex()}-${l[i].ptex()}\\times${c[i-1].ptex()}=${u[i].tex()}`]);
+  y[i]=d[i].sub(l[i].mul(y[i-1]));Y[i]=[C(y[i])];
+  snap([['y',i,0,'t'],['A',i,n,'s'],['L',i,i-1,'s'],['y',i-1,0,'s']],[`y_{${i+1}}=d_{${i+1}}-l_{${i+1}}y_{${i}}`,`=${d[i].tex()}-${l[i].ptex()}\\times${y[i-1].ptex()}=${y[i].tex()}`]);
+ }
+ x[n-1]=y[n-1].div(u[n-1]);X[n-1]=[C(x[n-1])];
+ snap([['x',n-1,0,'t'],['y',n-1,0,'s'],['U',n-1,n-1,'s']],[`x_4=\\dfrac{y_4}{u_4}=\\dfrac{${y[n-1].tex()}}{${u[n-1].tex()}}=${x[n-1].tex()}`]);
+ for(let i=n-2;i>=0;i--){
+  x[i]=y[i].sub(c[i].mul(x[i+1])).div(u[i]);X[i]=[C(x[i])];
+  snap([['x',i,0,'t'],['y',i,0,'s'],['U',i,i+1,'s'],['x',i+1,0,'s'],['U',i,i,'s']],[`x_{${i+1}}=\\dfrac{y_{${i+1}}-c_{${i+1}}x_{${i+2}}}{u_{${i+1}}}`,`=\\dfrac{${y[i].tex()}-${c[i].ptex()}\\times${x[i+1].ptex()}}{${u[i].tex()}}=${x[i].tex()}`]);
+ }
+}
+/* ---------- 渲染 ---------- */
+const ALGOS={gauss,pivot,doolittle,cholesky,ldlt,thomas};
+const algo=new URLSearchParams(location.search).get('algo')||'gauss';
+steps=[];(ALGOS[algo]||gauss)();
+const K=(el,s,disp)=>katex.render(s,el,{throwOnError:false,displayMode:!!disp});
+let cur=0;const matsEl=document.getElementById('mats'),fx=document.getElementById('fx'),ct=document.getElementById('ct');
+function render(){const st=steps[cur];matsEl.innerHTML='';
+ const hmap={};st.hi.forEach(([k,i,j,c])=>{hmap[k+','+i+','+j]=c});
+ st.mats.forEach(m=>{const box=document.createElement('div');box.className='mat';const lab=document.createElement('div');lab.className='lab';K(lab,m.label);
+  const g=document.createElement('div');g.className='grid';g.style.gridTemplateColumns=`repeat(${m.cells[0].length},auto)`;
+  m.cells.forEach((r,i)=>r.forEach((c,j)=>{const d=document.createElement('div');let cls='cell';if(j===m.aug)cls+=' sep';
+   if(!c||c.v===null){cls+=' e';d.textContent='·'}else{if(c.z)cls+=' z';K(d,c.v.tex())}
+   const h=hmap[m.key+','+i+','+j];if(h)cls+=' '+h;d.className=cls;g.appendChild(d)}));
+  box.append(lab,g);matsEl.appendChild(box)});
+ fx.innerHTML='';st.lines.forEach(s=>{const d=document.createElement('div');d.className='l';K(d,s,true);fx.appendChild(d)});
+ ct.textContent=`${cur} / ${steps.length-1}`;document.getElementById('prev').disabled=cur===0;document.getElementById('first').disabled=cur===0;document.getElementById('next').disabled=cur===steps.length-1}
+const go=v=>{cur=Math.max(0,Math.min(steps.length-1,v));render()};
+let timer=null;const playBtn=document.getElementById('play');
+function stopPlay(){clearInterval(timer);timer=null;playBtn.textContent='Play';playBtn.setAttribute('aria-pressed','false')}
+playBtn.onclick=()=>{if(timer){stopPlay();return}if(cur>=steps.length-1)go(0);playBtn.textContent='Pause';playBtn.setAttribute('aria-pressed','true');timer=setInterval(()=>{if(cur>=steps.length-1){stopPlay();return}go(cur+1);if(cur>=steps.length-1)stopPlay()},1300)};
+document.getElementById('next').onclick=()=>{stopPlay();go(cur+1)};document.getElementById('prev').onclick=()=>{stopPlay();go(cur-1)};document.getElementById('first').onclick=()=>{stopPlay();go(0)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay()});
+addEventListener('keydown',e=>{if(e.key==='ArrowRight'){stopPlay();go(cur+1)}if(e.key==='ArrowLeft'){stopPlay();go(cur-1)}});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+render();window.msteps={n:()=>steps.length,go,last:()=>steps[steps.length-1]};
+Steady.sweep([document.getElementById('fx'),matsEl],steps.length,i=>{cur=i;render()},()=>{cur=0;render()});Steady.hold(document.getElementById('fx'),matsEl);
+</script></body></html>

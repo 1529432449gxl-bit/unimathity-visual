@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>正方形面积增量</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>
+main{max-width:900px;margin:auto}.controls{min-height:40px}.controls .n{min-width:90px}.stage canvas{height:340px}.fx{height:92px;min-height:92px;justify-content:center}.fx>div{min-height:30px;max-width:100%}.nav{height:40px}.ct{min-width:64px}.legend{min-height:26px}.legend .key{font-size:13px}@media(max-width:520px){.stage canvas{height:290px}.fx{font-size:13px}.legend{gap:4px 12px}}
+</style></head><body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="h" type="range" min="0.2" max="1" step="0.01" value="0.8" aria-label="边长增量"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="正方形面积增量由两个长方形和一个小正方形组成"></canvas></div>
+<div class="legend" id="legend"></div><div class="fx" id="fx"><div id="base"></div><div id="value"></div></div><div class="nav" id="nav"></div>
+</main><script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+// P.mount handles devicePixelRatio and stops drawing when hidden.
+const {C}=P,steps=[.8,.65,.5,.4,.3,.2],slider=document.getElementById('h');
+const S={h:.8,target:.8,intro:0},main=document.querySelector('main'),stage=document.getElementById('stage'),labels=P.labels(stage);
+const fmt=v=>Number(v.toFixed(4)).toString();
+function tex(e,t){if(e.dataset.tex!==t||!e.querySelector('.katex')){katex.render(t,e,{throwOnError:true});e.dataset.tex=t}}
+tex(document.getElementById('base'),String.raw`\Delta S=2xh+h^2,\quad x=1`);
+for(const [t,c] of [[String.raw`x^2`,C.accent],[String.raw`xh`,C.blue],[String.raw`h^2`,C.warm]]){const el=document.createElement('span');el.className='key';el.style.setProperty('--c',c);tex(el,t);document.getElementById('legend').append(el)}
+function formula(h){tex(document.getElementById('lab'),String.raw`h=${fmt(h)}`);tex(document.getElementById('value'),String.raw`2\cdot1\cdot${fmt(h)}+${fmt(h)}^2=${fmt(2*h+h*h)}`)}
+let stepper,points=[];
+const cv=P.mount(document.getElementById('cv'),(ctx,w,height,dt)=>{
+ if(!stepper)return false;const anim=stepper.tick(dt),moving=P.approach(S,'h',S.target,dt,7),intro=P.approach(S,'intro',1,dt,5);
+ const h=S.h,side=Math.min(height-50,w-100),unit=side/(1+h),left=(w-side)/2,top=(height-side)/2;
+ const X=u=>left+u*unit,Y=u=>top+(1+h-u)*unit;
+ const rect=(x,y,ww,hh,col,alpha)=>{ctx.save();ctx.globalAlpha=alpha*S.intro;ctx.fillStyle=col;ctx.fillRect(X(x),Y(y+hh),ww*unit,hh*unit);ctx.restore();P.path(ctx,[[X(x),Y(y)],[X(x+ww),Y(y)],[X(x+ww),Y(y+hh)],[X(x),Y(y+hh)],[X(x),Y(y)]],{color:col,width:1.35,alpha:.85*S.intro})};
+ rect(0,0,1,1,C.accent,.11);rect(1,0,h,1,C.blue,.15);rect(0,1,1,h,C.blue,.15);rect(1,1,h,h,C.warm,.23);
+ labels.set('x2','x^2',X(.5),Y(.5),{color:C.accent,alpha:S.intro});
+ labels.set('xh1','xh',X(1+h/2),Y(.5),{color:C.blue,alpha:S.intro});
+ labels.set('xh2','xh',X(.5),Y(1+h/2),{color:C.blue,alpha:S.intro});
+ if(unit*h>32)labels.set('h2','h^2',X(1+h/2),Y(1+h/2),{color:C.warm,alpha:S.intro,size:13});
+ labels.set('x','x',X(.5),Y(0),{dy:18,color:C.soft,alpha:S.intro,size:13});
+ labels.set('h','h',X(1+h/2),Y(0),{dy:18,color:C.soft,alpha:S.intro,size:13});
+ labels.set('y','x',X(0),Y(.5),{dx:-16,color:C.soft,alpha:S.intro,size:13});
+ labels.set('v','h',X(0),Y(1+h/2),{dx:-16,color:C.soft,alpha:S.intro,size:13});
+ labels.end();formula(moving?h:S.target);
+ const ct=document.querySelector('.ct');tex(ct,String.raw`${stepper.i}\,/\,${steps.length-1}`);
+ return anim||moving||intro;
+});
+// reset is provided by the shared stepper’s first button.
+stepper=P.stepper(document.getElementById('nav'),{count:steps.length,dur:.8,hold:1,kick:cv.kick,onChange:s=>{S.target=steps[s.i];slider.value=S.target;formula(S.target)}});
+slider.addEventListener('input',()=>{stepper.stop();const requested=+slider.value;const idx=steps.reduce((best,v,i)=>Math.abs(v-requested)<Math.abs(steps[best]-requested)?i:best,0);stepper.go(idx,false);S.target=requested;slider.value=requested;formula(requested);cv.kick()});
+const off=new IntersectionObserver(e=>{if(!e[0].isIntersecting)stepper.stop()});off.observe(main);
+const hidden=()=>{if(document.hidden)stepper.stop()};document.addEventListener('visibilitychange',hidden);
+const cleanup=()=>{off.disconnect();document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',cleanup)};window.addEventListener('pagehide',cleanup,{once:true});
+Steady.sweep([document.getElementById('fx')],steps.length,i=>formula(steps[i]),()=>formula(steps[0]));Steady.hold(document.getElementById('fx'));
+window.__mathviz={'calc-square-differential':{getState:()=>({h:S.target,drawnH:S.h,step:stepper.i,playing:stepper.playing}),setState:s=>{stepper.stop();if(s.step!==undefined)stepper.go(P.clamp(+s.step,0,steps.length-1),true);if(s.h!==undefined){S.target=P.clamp(+s.h,.2,1);slider.value=S.target}cv.kick()},report:()=>{const base=stage.getBoundingClientRect();const labs=[...stage.querySelectorAll('span[data-t]')].filter(e=>+getComputedStyle(e).opacity>.5).map(e=>{const r=e.getBoundingClientRect();return{text:e.dataset.t,x:r.x-base.x,y:r.y-base.y,w:r.width,h:r.height}});const issues=[];for(const q of labs)if(q.x<0||q.y<0||q.x+q.w>base.width||q.y+q.h>base.height)issues.push({kind:'outside',label:q.text});return{issues,labels:labs,protectCount:0}}}};
+P.reportHeight(main);formula(S.target);cv.kick();
+</script></body></html>

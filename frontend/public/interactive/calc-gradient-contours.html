@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gradient and level curves</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Gradient and level curves"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+// 等值线：在网格上用 marching squares 求 f=c 的线段
+function contours(f, B, levels, nx, ny) { const out = levels.map(() => []), dx = (B[1] - B[0]) / nx, dy = (B[3] - B[2]) / ny;
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) { const x = B[0] + i * dx, y = B[2] + j * dy, q = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]], fv = q.map(p => f(p[0], p[1]));
+    levels.forEach((c, k) => { const pts = []; for (let e = 0; e < 4; e++) { const a = fv[e] - c, b = fv[(e + 1) % 4] - c; if ((a < 0) !== (b < 0)) { const t = a / (a - b), p1 = q[e], p2 = q[(e + 1) % 4]; pts.push([p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])]) } }
+      if (pts.length >= 2) out[k].push([pts[0], pts[1]]); if (pts.length === 4) out[k].push([pts[2], pts[3]]) }) }
+  return out; }
+function drawContours(ctx, v, segs, color, alpha, width = 1.1) { ctx.save(); ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.beginPath();
+  for (const lv of segs) for (const [a, b] of lv) { ctx.moveTo(v.X(a[0]), v.Y(a[1])); ctx.lineTo(v.X(b[0]), v.Y(b[1])) } ctx.stroke(); ctx.restore(); }
+function arrow2(ctx, x0, y0, x1, y1, color, width = 2.2) { const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy); if (L < 2) return; const ux = dx / L, uy = dy / L, h = Math.min(9, L * .4);
+  ctx.save(); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - ux * h * .7, y1 - uy * h * .7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * h - uy * h * .45, y1 - uy * h + ux * h * .45); ctx.lineTo(x1 - ux * h + uy * h * .45, y1 - uy * h - ux * h * .45); ctx.closePath(); ctx.fill(); ctx.restore(); }
+
+const f = (x, y) => Math.exp(-((x - 0.7) ** 2 + (y - 0.4) ** 2)) * 1.6 + 0.9 * Math.exp(-((x + 1) ** 2 + (y + 0.6) ** 2) / 0.6);
+const gr = (x, y) => { const e = 1e-4; return [(f(x + e, y) - f(x - e, y)) / (2 * e), (f(x, y + e) - f(x, y - e)) / (2 * e)] };
+legend([['f=c', C.accent], ['\\nabla f', C.warm], ['\\text{tangent of level curve}', C.blue, 1]]);
+K(eqEl, '\\nabla f\\perp\\{f=c\\},\\qquad \\max_{l}\\frac{\\partial f}{\\partial l}=|\\nabla f|', 1);
+const B = [-2.4, 2.4, -1.85, 1.95], v = P.view(B);
+// 沿一条真实的等值线 f=c 运动：切向前进 + 牛顿修正回到等值线
+const C0 = 0.55, loop = (() => { let p = [0.7, 0.4]; for (let i = 0; i < 40; i++) { const g = gr(...p); p = [p[0] + 0.02 * g[0] / (Math.hypot(...g) || 1) * Math.sign(C0 - f(...p)), p[1]]; if (Math.abs(f(...p) - C0) < 1e-3) break }
+  // 先沿 x 方向找到 f=C0 的点
+  let x = 0.7; while (f(x, 0.4) > C0) x += 0.005; p = [x, 0.4];
+  const out = [p.slice()], h = 0.012; for (let i = 0; i < 4000; i++) { const g = gr(...p), n = Math.hypot(...g); p = [p[0] - g[1] / n * h, p[1] + g[0] / n * h];
+    for (let k = 0; k < 3; k++) { const g2 = gr(...p), d = (f(...p) - C0) / (g2[0] ** 2 + g2[1] ** 2); p = [p[0] - d * g2[0], p[1] - d * g2[1]] }
+    out.push(p.slice()); if (i > 50 && Math.hypot(p[0] - out[0][0], p[1] - out[0][1]) < h) break }
+  return out })();
+const path = t => { const n = loop.length, u = ((t % 1) + 1) % 1 * n, i = Math.floor(u), r = u - i, a = loop[i % n], b = loop[(i + 1) % n]; return [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r] };
+const S = { t: 0.6, playing: true, drag: false, p: null };
+const btn = document.createElement('button'); btn.className = 'tg'; btn.type = 'button'; const ctl = document.createElement('div'); ctl.className = 'controls'; ctl.append(btn); document.querySelector('main').prepend(ctl);
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => { S.p = null; set(!S.playing) };
+let segs = null, s = 1;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  s = Math.min(w / (B[1] - B[0]), h / (B[3] - B[2])); const cx = (B[0] + B[1]) / 2, cy = (B[2] + B[3]) / 2;
+  v.b = [cx - w / s / 2, cx + w / s / 2, cy - h / s / 2, cy + h / s / 2]; v.w = w; v.h = h; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  if (!segs || segs.w !== w) { const L = []; for (let c = 0.15; c < 1.65; c += 0.1) L.push(c); segs = contours(f, v.b, L, 90, 70); segs.w = w }
+  if (S.playing) S.t += 0.06 * dt;
+  drawContours(ctx, v, segs, C.accent, .4);
+  // 稀疏的梯度箭头场
+  for (let i = 0; i < 11; i++) for (let j = 0; j < 8; j++) { const x = v.b[0] + (v.b[1] - v.b[0]) * (i + .5) / 11, y = v.b[2] + (v.b[3] - v.b[2]) * (j + .5) / 8, g = gr(x, y), k = 0.42 * s;
+    arrow2(ctx, v.X(x), v.Y(y), v.X(x) + g[0] * k, v.Y(y) - g[1] * k, P.rgba(C.warm, .35), 1.3) }
+  if (!S.p) P.path(ctx, loop.map(q => [v.X(q[0]), v.Y(q[1])]), { color: C.accent, width: 2.2, alpha: .85 });
+  const p = S.p || path(S.t), g = gr(...p), n = Math.hypot(...g), X = v.X(p[0]), Y = v.Y(p[1]);
+  const tg = [-g[1] / n, g[0] / n];
+  P.path(ctx, [[X - tg[0] * 50, Y + tg[1] * 50], [X + tg[0] * 50, Y - tg[1] * 50]], { color: C.blue, width: 1.8, dash: [5, 4] });
+  arrow2(ctx, X, Y, X + g[0] * 0.75 * s, Y - g[1] * 0.75 * s, C.warm, 2.6);
+  P.dot(ctx, X, Y, { r: 5, color: C.warm });
+  lab.end(); return S.playing || S.drag;
+});
+const at = e => { const r = canvas.getBoundingClientRect(); return [v.b[0] + (e.clientX - r.left) / r.width * (v.b[1] - v.b[0]), v.b[3] - (e.clientY - r.top) / r.height * (v.b[3] - v.b[2])] };
+canvas.addEventListener('pointerdown', e => { set(false); S.drag = true; canvas.setPointerCapture(e.pointerId); S.p = at(e); cv.kick() });
+canvas.addEventListener('pointermove', e => { if (S.drag) { S.p = at(e); cv.kick() } });
+canvas.addEventListener('pointerup', () => { S.drag = false; cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

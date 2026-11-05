@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>微分与实际增量</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>
+main{max-width:1000px;margin:auto}.controls{min-height:40px}.controls .n{min-width:115px}.stage canvas{height:350px}.fx{height:112px;min-height:112px;justify-content:center}.fx .katex-display{margin:0}.fx>div{min-height:32px;max-width:100%}.legend{min-height:28px}.nav{height:40px}.ref,.update{border:1px solid;border-radius:3px;padding:2px 8px!important}.ref{border-color:var(--deep);background:var(--reference)}.update{border-color:#b5763a;background:var(--update)}.key{font-size:13px}.nav .ct{font-size:13px;min-width:65px}
+@media(max-width:520px){.stage canvas{height:310px}.controls{gap:5px}.controls .n{min-width:100px}.fx{font-size:12px}.legend{gap:4px 10px}.key{font-size:12px}.nav{gap:8px}}
+</style></head><body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="h" type="range" aria-label="自变量增量"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="微分与实际增量，可调节增量并播放"></canvas></div>
+<div class="legend" id="legend"></div><div class="fx" id="fx"><div id="base" class="ref"></div><div id="value" class="update"></div><div id="rest"></div></div>
+<div class="nav" id="nav"></div></main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+// P.mount handles devicePixelRatio and the requestAnimationFrame lifecycle.
+for(const [k,v]of Object.entries({deep:P.C.accent,reference:P.C.pane,update:P.C.hlBg}))document.documentElement.style.setProperty('--'+k,v);
+const mode='differential',diff=mode==='differential', {C}=P;
+const tex=(e,t)=>{if(e.dataset.tex!==t||!e.querySelector('.katex')){katex.render(t,e,{throwOnError:true});e.dataset.tex=t}};
+const num=x=>Math.abs(x)<5e-7?'0':Number(x.toFixed(5)).toString();
+const steps=diff?[.8,.6,.45,.32,.24,.18,.13,.10,.08]:[1.2,.8,.5,.3,.18,.10,.05,.02,0];
+const a=diff?1:0, f=diff?x=>x*x:Math.exp, fa=f(a), slope=diff?2:1;
+const tangent=x=>fa+slope*(x-a), quotient=h=>h===0?1:Math.expm1(h)/h;
+const main=document.querySelector('main'), slider=document.getElementById('h'),lab=P.labels(document.getElementById('stage'));
+slider.min=diff?.08:-1.2;slider.max=steps[0];slider.step=.01;slider.value=steps[0];
+const S={h:steps[0],target:steps[0],intro:0,map:0},B=diff?[.35,2.2,-.1,4.9]:[-1.8,1.8,-.1,6.2];
+const v=P.view(B,{l:34,r:38,t:28,b:38});
+function frame(h){const d=Math.max(Math.abs(h),diff?.08:.02),lo=Math.min(a,a+h)-.65*d,hi=Math.max(a,a+h)+.65*d;
+ const low=Math.min(f(lo),tangent(lo)),high=Math.max(f(hi),tangent(hi)),span=Math.max(high-low,.02);
+ return[lo,hi,low-.18*span,high+.22*span]}
+const legend=document.getElementById('legend');
+for(const [text,color,dashed] of (diff?[[String.raw`y=x^2`,C.accent,false],[String.raw`y=1+2(x-1)`,C.warm,false],[String.raw`\Delta y`,C.blue,false]]:[[String.raw`y=e^x`,C.accent,false],[String.raw`PQ`,C.warm,false],[String.raw`y=1+x`,C.blue,true]])){
+ const e=document.createElement('span');e.className='key'+(dashed?' dash':'');e.style.setProperty('--c',color);tex(e,text);legend.append(e)}
+let st,lastRead=-99,auditPoints=[];
+function formula(h){tex(document.getElementById('lab'),String.raw`h=${num(h)}`);
+ if(diff){tex(document.getElementById('base'),String.raw`\Delta y=(1+h)^2-1,\quad\mathrm dy=2h`);
+ tex(document.getElementById('value'),String.raw`\Delta y=${num(2*h+h*h)},\quad\mathrm dy=${num(2*h)}`);
+ tex(document.getElementById('rest'),String.raw`\Delta y-\mathrm dy=h^2=${num(h*h)}`)}
+ else{tex(document.getElementById('base'),String.raw`k_h=\frac{e^h-1}{h}\ (h\ne0),\quad f'(0)=1`);
+ tex(document.getElementById('value'),h===0?String.raw`k_0:=f'(0)=1`:String.raw`k_{${num(h)}}=\frac{e^{${num(h)}}-1}{${num(h)}}\approx${num(quotient(h))}`);
+ tex(document.getElementById('rest'),String.raw`\lim_{h\to0}k_h=1`)}
+}
+function line(ctx,x1,y1,x2,y2,opts){P.path(ctx,[[v.X(x1),v.Y(y1)],[v.X(x2),v.Y(y2)]],opts)}
+function marker(ctx,x,y,color,r=4){auditPoints.push({x:v.X(x),y:v.Y(y),r});P.dot(ctx,v.X(x),v.Y(y),{color,r,scale:P.ease.out(S.intro)})}
+const cv=P.mount(document.getElementById('cv'),(ctx,w,height,dt)=>{
+ if(!st)return false;v.w=w;v.h=height;
+ auditPoints=[];const playing=st.tick(dt),moving=P.approach(S,'h',S.target,dt,7),intro=P.approach(S,'intro',1,dt,5);
+ v.aim(frame(S.h));const cam=v.step(dt,5),h=S.h,b=a+h,y=f(b),ty=tangent(b);
+ const wantMap=(B[1]-B[0])/(v.b[1]-v.b[0])>2?1:0;
+ const mapMoving=P.approach(S,'map',wantMap,dt,5);
+ ctx.save();ctx.beginPath();ctx.rect(v.pad.l,v.pad.t,w-v.pad.l-v.pad.r,height-v.pad.t-v.pad.b);ctx.clip();
+ P.axes(ctx,v,{x:true,y:true});
+ P.path(ctx,P.curve(v,f),{color:C.accent,width:2.4,progress:P.ease.out(S.intro)});
+ P.path(ctx,P.curve(v,tangent),{color:diff?C.warm:C.blue,width:1.6,dash:diff?null:[5,5],alpha:.8*S.intro});
+ if(!diff){const k=quotient(h);P.path(ctx,P.curve(v,x=>1+k*x),{color:C.warm,width:1.8,alpha:S.intro});
+ line(ctx,a,fa,b,fa,{color:C.mute,width:1,dash:[3,4],alpha:S.intro});line(ctx,b,fa,b,y,{color:C.mute,width:1,dash:[3,4],alpha:S.intro});
+ marker(ctx,a,fa,C.accent);if(Math.abs(v.X(b)-v.X(a))>5)marker(ctx,b,y,C.warm);
+ }else{const d=v.b[1]-v.b[0],u=b+.10*d,z=b+.23*d;
+ P.fill(ctx,[[v.X(a),v.Y(fa)],[v.X(b),v.Y(y)]],[[v.X(a),v.Y(fa)],[v.X(b),v.Y(ty)]],C.warm,.12*S.intro);
+ line(ctx,a,fa,z,fa,{color:C.mute,width:1,dash:[3,4],alpha:.6*S.intro});
+ line(ctx,b,ty,u,ty,{color:C.warm,width:1,dash:[3,4],alpha:.5*S.intro});line(ctx,b,y,z,y,{color:C.blue,width:1,dash:[3,4],alpha:.5*S.intro});
+ line(ctx,u,fa,u,ty,{color:C.warm,width:1.8,progress:S.intro});line(ctx,z,fa,z,y,{color:C.blue,width:1.8,progress:S.intro});
+ for(const [xx,yy,col]of[[u,fa,C.warm],[u,ty,C.warm],[z,fa,C.blue],[z,y,C.blue]])line(ctx,xx-.012*d,yy,xx+.012*d,yy,{color:col,width:1,alpha:S.intro});
+ marker(ctx,a,fa,C.accent);marker(ctx,b,y,C.accent);marker(ctx,b,ty,C.warm,3.4);
+ lab.set('dy',String.raw`\mathrm dy`,v.X(u),v.Y((fa+ty)/2),{dx:-20,color:C.warm,alpha:S.intro,size:13});
+ lab.set('delta',String.raw`\Delta y`,v.X(z),v.Y((fa+y)/2),{dx:24,color:C.blue,alpha:S.intro,size:13});
+ }
+ ctx.restore();
+ // Labels sit below/above the active points; the compact overview occupies only the upper left.
+ lab.set('P',diff?'A':'P',v.X(a),v.Y(fa),{dx:-12,dy:22,color:C.accent,alpha:S.intro});
+ if(!diff&&Math.hypot(v.X(b)-v.X(a),v.Y(y)-v.Y(fa))>38)lab.set('Q','Q',v.X(b),v.Y(y),{dx:h>=0?-15:15,dy:-18,color:C.warm,alpha:S.intro});
+ if(diff)lab.set('Q','B',v.X(b),v.Y(y),{dx:-14,dy:-20,color:C.accent,alpha:S.intro});
+ P.minimap(ctx,v,{B,alpha:S.map,frac:.23,corner:'tl',paint:(mx,my,c)=>{
+ P.mapCurve(c,mx,my,f,B[0],B[1],{width:1.2});P.mapCurve(c,mx,my,diff?tangent:x=>1+quotient(h)*x,B[0],B[1],{color:C.warm,width:1});
+ P.dot(c,mx(a),my(fa),{r:2,color:C.accent});P.dot(c,mx(b),my(y),{r:2,color:C.warm});}});
+ lab.end();
+ // Formula values are the same continuously changing state as the geometry.
+ if(Math.abs(h-lastRead)>.000005||!moving){formula(moving?h:S.target);lastRead=h}
+ const ct=document.querySelector('.ct');tex(ct,String.raw`${st.i}\,/\,${steps.length-1}`);
+ return playing||moving||intro||cam||mapMoving;
+});
+st=P.stepper(document.getElementById('nav'),{count:steps.length,dur:.9,hold:1,kick:cv.kick,onChange:s=>{S.target=steps[s.i];slider.value=S.target;formula(S.target)}});
+slider.addEventListener('input',()=>{st.stop();const requested=+slider.value;S.target=requested;const idx=steps.reduce((best,h,i)=>Math.abs(h-S.target)<Math.abs(steps[best]-S.target)?i:best,0);st.go(idx,false);S.target=requested;slider.value=requested;formula(S.target);cv.kick()});
+const off=new IntersectionObserver(es=>{if(!es[0].isIntersecting)st.stop()});off.observe(main);
+const hidden=()=>{if(document.hidden)st.stop()};document.addEventListener('visibilitychange',hidden);
+const cleanup=()=>{off.disconnect();document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',cleanup)};window.addEventListener('pagehide',cleanup,{once:true});
+// Fixed heights plus a preflight of every formula keep slider and player positions steady.
+Steady.sweep([document.getElementById('fx')],steps.length,i=>formula(steps[i]),()=>formula(steps[0]));Steady.hold(document.getElementById('fx'));
+window.__mathviz={['calc-'+mode]:{getState:()=>({h:S.target,step:st.i,playing:st.playing,drawnH:S.h,view:v.b.slice()}),setState:s=>{st.stop();if(s.step!==undefined)st.go(P.clamp(+s.step,0,steps.length-1),true);if(s.h!==undefined){S.target=P.clamp(+s.h,+slider.min,+slider.max);slider.value=S.target}cv.kick()},report:()=>{const base=document.getElementById('stage').getBoundingClientRect();const labels=[...document.querySelectorAll('#stage span[data-t]')].filter(e=>+getComputedStyle(e).opacity>.5).map(e=>{const r=e.getBoundingClientRect();return{text:e.dataset.t,x:r.x-base.x,y:r.y-base.y,w:r.width,h:r.height}});const issues=[];for(const q of labels){if(q.x<0||q.y<0||q.x+q.w>base.width||q.y+q.h>base.height)issues.push({kind:'outside',label:q.text});for(const p of auditPoints)if(p.x+p.r>q.x&&p.x-p.r<q.x+q.w&&p.y+p.r>q.y&&p.y-p.r<q.y+q.h)issues.push({kind:'rect',label:q.text,amount:1})}return{issues,labels,protectCount:auditPoints.length}}}};
+window.visualAudit={f,tangent,quotient,steps,reset:()=>{st.stop();st.go(0,true)}};
+P.reportHeight(main);formula(S.target);cv.kick();
+</script></body></html>

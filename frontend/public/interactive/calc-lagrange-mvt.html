@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lagrange MVT</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="xi" type="range" min="40" max="260" step="1" value="151" aria-label="xi"></div>
+<div class="legend"><span class="key" style="--c:#223056" id="kf"></span><span class="key" style="--c:#ad6844" id="kc"></span><span class="key" style="--c:#3f6e8c" id="kt"></span></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Lagrange mean value theorem"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const A = 0.4, B = 2.6, f = Math.sin, df = Math.cos;
+const chord = (f(B) - f(A)) / (B - A), XI = Math.acos(chord);
+const sl = document.getElementById('xi'), fx = document.getElementById('fx');
+const S = { xi: XI };
+const v = P.view([0.05, 2.95, -0.45, 1.45], { l: 18, r: 18, t: 18, b: 28 });
+const lab = P.labels(document.getElementById('stage'));
+K(document.getElementById('kf'), 'f(x)=\\sin x');
+K(document.getElementById('kc'), 'chord\\ AB');
+K(document.getElementById('kt'), "tangent\\ at\\ \\xi");
+function targetFromSl() { return A + (B - A) * (+sl.value - 40) / 220; }
+function syncLab() { K(document.getElementById('lab'), `\\xi=${S.xi.toFixed(2)}`); }
+function formula() {
+  fx.innerHTML = '<div></div>';
+  const match = Math.abs(df(S.xi) - chord) < 0.02;
+  const tag = match ? ',\\quad f\'(\\xi)=\\dfrac{f(b)-f(a)}{b-a}\\ \\text{(parallel)}' : '';
+  K(fx.children[0], `a=${A},\\ b=${B},\\quad \\dfrac{f(b)-f(a)}{b-a}=${chord.toFixed(3)},\\quad f'(\\xi)=${df(S.xi).toFixed(3)}${tag}`, true);
+}
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  const moving = P.approach(S, 'xi', targetFromSl(), dt, 10);
+  syncLab(); formula();
+  P.axes(ctx, v, { x: true, ticks: [1, 2] });
+  P.path(ctx, P.curve(v, f, A - 0.02, B + 0.02), { color: C.accent, width: 2.4 });
+  const pa = [v.X(A), v.Y(f(A))], pb = [v.X(B), v.Y(f(B))];
+  P.path(ctx, [pa, pb], { color: C.warm, width: 2 });
+  P.dot(ctx, ...pa, { r: 4.2, color: C.warm });
+  P.dot(ctx, ...pb, { r: 4.2, color: C.warm });
+  lab.set('A', 'A', pa[0], pa[1], { dx: -10, dy: 16, color: C.warm });
+  lab.set('B', 'B', pb[0], pb[1], { dx: 10, dy: 16, color: C.warm });
+  lab.set('a', `a=${A}`, v.X(A), v.Y(0), { dy: 16, color: C.mute });
+  lab.set('b', `b=${B}`, v.X(B), v.Y(0), { dy: 16, color: C.mute });
+  const xi = S.xi, py = f(xi), m = df(xi);
+  const x0 = A - 0.05, x1 = B + 0.05;
+  P.path(ctx, [[v.X(x0), v.Y(py + m * (x0 - xi))], [v.X(x1), v.Y(py + m * (x1 - xi))]], { color: C.blue, width: 2 });
+  P.dot(ctx, v.X(xi), v.Y(py), { r: 5, color: C.blue });
+  P.path(ctx, [[v.X(xi), v.Y(py)], [v.X(xi), v.Y(0)]], { color: C.mute, width: 1, dash: [3, 4], alpha: 0.7 });
+  lab.set('M', 'M', v.X(xi), v.Y(py), { dy: -14, color: C.blue });
+  lab.set('xi', '\\xi', v.X(xi), v.Y(0), { dy: 16, color: C.blue });
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+{ for (const t of [40, 100, 151, 200, 260]) { sl.value = t; S.xi = targetFromSl(); formula(); }
+  fx.style.minHeight = Math.ceil(fx.getBoundingClientRect().height) + 'px';
+  sl.value = 151; S.xi = XI; }
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

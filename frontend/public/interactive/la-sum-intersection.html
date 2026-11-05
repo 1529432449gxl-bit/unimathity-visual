@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sum and intersection of subspaces</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}@media(max-width:520px){.stage canvas{height:310px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Sum and intersection of subspaces"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+import * as T from './vendor/la3d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const L3 = (cam, id, tex, p, color, dx = 12, dy = -10, alpha = 1) => { const q = cam.P(p); lab.set(id, tex, q[0], q[1], { dx, dy, color, alpha }) };
+const g = T.unit([0.2, 1, 0.25]), a = T.unit([1, -0.1, 0.15]), b = T.unit([-0.15, 0.1, 1]);
+const S = { ph: 0, playing: false };
+const cam = V.camera({ az: -0.7, el: 0.38 });
+const set = T.playToggle(document.getElementById('play'), S, () => cv.kick());
+const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+T.legend(lg, [['U', C.accent], ['W', C.blue], ['U\\cap W', C.warm], ['u+w', C.mute]]);
+const eq = T.formulas(document.getElementById('eq'), ['\\dim(U+W)=\\dim U+\\dim W-\\dim(U\\cap W)']);
+eq('\\dim(U+W)=\\dim U+\\dim W-\\dim(U\\cap W)');
+const cv = P.mount(canvas, (ctx, wd, ht, dt) => {
+  cam.sc = Math.min(wd / 4.2, ht / 3.3); cam.ox = wd / 2; cam.oy = ht * 0.56;
+  if (S.playing) S.ph += dt * 0.6;
+  const uu = T.lin([0.8 * Math.cos(S.ph), g], [0.9, a]), ww = T.lin([0.6 * Math.sin(1.3 * S.ph + 1), g], [0.85, b]), s = T.add(uu, ww);
+  V.axes(ctx, cam, [1.6, 1.6, 1.5], { alpha: .3 });
+  V.paint(ctx, cam, [T.plane([0, 0, 0], g, a, C.accent, .12, 1.3), T.plane([0, 0, 0], g, b, C.blue, .14, 1.3)]);
+  T.edge(ctx, cam, [0, 0, 0], g, a, { color: C.accent, s: 1.3, alpha: .3 }); T.edge(ctx, cam, [0, 0, 0], g, b, { color: C.blue, s: 1.3 });
+  V.line(ctx, cam, [T.mul(-1.7, g), T.mul(1.7, g)], { color: C.warm, width: 2, alpha: .85 });
+  V.line(ctx, cam, [uu, s], { color: C.mute, width: 1, dash: [3, 4], alpha: .6 }); V.line(ctx, cam, [ww, s], { color: C.mute, width: 1, dash: [3, 4], alpha: .6 });
+  V.arrow(ctx, cam, [0, 0, 0], uu, { color: C.accent, width: 2.2 }); V.arrow(ctx, cam, [0, 0, 0], ww, { color: C.blue, width: 2.2 });
+  V.arrow(ctx, cam, [0, 0, 0], s, { color: C.mute, width: 2.4 });
+  L3(cam, 'U', 'U', T.lin([1.25, a], [-1.2, g]), C.accent, 0, 0); L3(cam, 'W', 'W', T.lin([1.25, b], [-1.1, g]), C.blue, 0, 0); L3(cam, 'g', 'U\\cap W', T.mul(1.75, g), C.warm, 22, -6);
+  L3(cam, 'u', 'u', uu, C.accent, 10, 10); L3(cam, 'w', 'w', ww, C.blue, -12, -8); L3(cam, 's', 'u+w', s, C.mute, 16, -10); lab.end();
+  return S.playing || dr.active;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

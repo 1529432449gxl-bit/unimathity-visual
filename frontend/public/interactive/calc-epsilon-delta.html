@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Epsilon-delta window</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>.controls button.tg{min-width:78px}.controls .n{min-width:96px}.fx>div{padding:1px 4px}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="eps" type="range" min="4" max="200" step="1" value="120" aria-label="epsilon"><button class="tg" id="play" type="button" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="epsilon-delta rectangle band for a function limit"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const K = (el, s, d = false) => katex.render(s, el, { throwOnError: false, displayMode: d });
+
+// f(x)=x^2 在 x0=1 处极限为 A=1：|x^2-1|<eps 当 |x-1|<delta=sqrt(1+eps)-1。
+const f = x => x * x, X0 = 1, A = 1, EPS_MIN = 0.004, EPS_MAX = 0.2;
+const deltaOf = e => Math.sqrt(1 + e) - 1;
+const BASE = [0.4, 1.6, 0.3, 1.75];
+const viewOf = e => {
+  const d = deltaOf(e), xr = Math.max(4.2 * d, 0.02), yr = Math.max(2.8 * e, 0.02);
+  return [X0 - xr, X0 + xr, A - yr, A + yr];
+};
+
+const v = P.view(BASE, { l: 36, r: 22, t: 24, b: 34 });
+const lab = P.labels(document.getElementById('stage'));
+const sl = document.getElementById('eps'), play = document.getElementById('play'), fx = document.getElementById('fx');
+const S = { eps: 0.12, cur: 0.12, playing: false, map: 0 };
+
+const setSlider = () => { sl.value = String(Math.round(S.eps * 1000)); };
+let lastF = '', lastL = '';
+function sliderLabel() {
+  const key = S.cur.toFixed(3);
+  if (key === lastL) return;
+  lastL = key;
+  K(document.getElementById('lab'), `\\varepsilon=${key}`);
+}
+function formula() {
+  const e = S.cur, d = deltaOf(e);
+  const key = e.toFixed(4);
+  if (key === lastF) return;
+  lastF = key;
+  fx.innerHTML = '<div></div><div></div><div></div>';
+  K(fx.children[0], 'f(x)=x^2,\\qquad x_0=1,\\qquad A=1', true);
+  K(fx.children[1], `\\varepsilon=${e.toFixed(3)},\\qquad \\delta=\\sqrt{1+\\varepsilon}-1=${d.toFixed(4)}`, true);
+  K(fx.children[2], '0<|x-x_0|<\\delta\\ \\Longrightarrow\\ |x^2-1|<\\varepsilon', true);
+}
+
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let moving = P.approach(S, 'cur', S.eps, dt, 6);
+  if (S.playing) {
+    const next = S.eps * Math.exp(-dt * 0.85);
+    if (next <= EPS_MIN + 1e-12) { S.eps = EPS_MIN; stop(); }
+    else { S.eps = next; setSlider(); }
+    moving = true;
+  }
+  const e = S.cur, d = deltaOf(e);
+  v.aim(viewOf(e));
+  const cam = v.step(dt, 3.4);
+  formula();
+  sliderLabel();
+
+  // 水平 ε 带与竖直 δ 邻域
+  P.fill(ctx, [[v.pad.l, v.Y(A + e)], [v.w - v.pad.r, v.Y(A + e)]],
+    [[v.pad.l, v.Y(A - e)], [v.w - v.pad.r, v.Y(A - e)]], C.pane, 0.92);
+  P.fill(ctx, [[v.X(X0 - d), v.pad.t], [v.X(X0 + d), v.pad.t]],
+    [[v.X(X0 - d), v.h - v.pad.b], [v.X(X0 + d), v.h - v.pad.b]], C.hlBg, 0.6);
+  P.path(ctx, [[v.pad.l, v.Y(A + e)], [v.w - v.pad.r, v.Y(A + e)]], { color: C.blue, width: 1.2, dash: [5, 4] });
+  P.path(ctx, [[v.pad.l, v.Y(A - e)], [v.w - v.pad.r, v.Y(A - e)]], { color: C.blue, width: 1.2, dash: [5, 4] });
+  P.path(ctx, [[v.X(X0 - d), v.pad.t], [v.X(X0 - d), v.h - v.pad.b]], { color: C.warm, width: 1.2, dash: [5, 4] });
+  P.path(ctx, [[v.X(X0 + d), v.pad.t], [v.X(X0 + d), v.h - v.pad.b]], { color: C.warm, width: 1.2, dash: [5, 4] });
+
+  // 参考线与曲线
+  P.path(ctx, [[v.pad.l, v.Y(A)], [v.w - v.pad.r, v.Y(A)]], { color: C.accent, width: 1, dash: [6, 5], alpha: 0.75 });
+  P.path(ctx, [[v.X(X0), v.pad.t], [v.X(X0), v.h - v.pad.b]], { color: C.mute, width: 1, dash: [3, 5], alpha: 0.6 });
+  P.path(ctx, P.curve(v, f), { color: C.accent, width: 2.4 });
+  // δ 邻域内被框住的一段曲线（橙色）
+  P.path(ctx, P.curve(v, f, X0 - d, X0 + d), { color: C.warm, width: 2.6 });
+  P.dot(ctx, v.X(X0), v.Y(A), { r: 4.5, color: C.accent });
+  P.dot(ctx, v.X(X0 - d), v.Y(f(X0 - d)), { r: 3.4, color: C.warm });
+  P.dot(ctx, v.X(X0 + d), v.Y(f(X0 + d)), { r: 3.4, color: C.warm });
+
+  // 端点与读数标签
+  const yb = v.h - v.pad.b;
+  lab.set('xm', 'x_0-\\delta', v.X(X0 - d), yb, { dy: 15, color: C.warm, size: 13 });
+  lab.set('x0', 'x_0', v.X(X0), yb, { dy: 15, color: C.soft, size: 13 });
+  lab.set('xp', 'x_0+\\delta', v.X(X0 + d), yb, { dy: 15, color: C.warm, size: 13 });
+  lab.set('am', 'A', v.pad.l + 20, v.Y(A), { dy: -12, color: C.accent, size: 13 });
+
+  // 角落小图：整体曲线与当前镜头框
+  const zoomed = (v.b[1] - v.b[0]) < 0.5;
+  const mapMoving = P.approach(S, 'map', zoomed ? 1 : 0, dt, 5);
+  P.minimap(ctx, v, { B: BASE, alpha: S.map, aspect: 0.66, frac: 0.27, paint: (mx, my, cx) => {
+    P.mapCurve(cx, mx, my, f, BASE[0], BASE[1], { width: 1.3 });
+    P.dot(cx, mx(X0), my(A), { r: 2.4, color: C.warm, ring: false });
+  } });
+  lab.end();
+  return moving || S.playing || cam || mapMoving;
+});
+
+function stop() { S.playing = false; play.textContent = 'Play'; play.setAttribute('aria-pressed', 'false'); }
+sl.addEventListener('input', () => { stop(); S.eps = +sl.value / 1000; cv.kick(); });
+play.addEventListener('click', () => {
+  if (S.playing) { stop(); return; }
+  if (S.eps <= EPS_MIN + 1e-12) { S.eps = EPS_MAX; setSlider(); }
+  S.playing = true; play.textContent = 'Pause'; play.setAttribute('aria-pressed', 'true'); cv.kick();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+
+// 预排公式，锁定高度
+{ formula(); const hh = fx.getBoundingClientRect().height; fx.style.minHeight = Math.ceil(hh) + 'px'; }
+formula(); setSlider();
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+
+// 验收接口
+window.epsDelta = {
+  set(e) { S.eps = +e; setSlider(); S.cur = +e; cv.kick(); },
+  state() { return { eps: S.cur, delta: deltaOf(S.cur), playing: S.playing }; },
+  delta: e => deltaOf(+e),
+};
+</script></body></html>

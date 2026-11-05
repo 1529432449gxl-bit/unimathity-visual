@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Surface of revolution</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:330px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="z" type="range" min="0" max="1000" step="1" value="600" aria-label="point height"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Surface of revolution"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const sl = document.getElementById('z'), btn = document.getElementById('play');
+const g = z => 0.55 + 0.35 * Math.sin(1.8 * z) + 0.15 * z;     // 母线 x = g(z)（在 xOz 面上）
+const Z0 = -1, Z1 = 1.2, zOf = s => Z0 + 0.05 + (Z1 - Z0 - 0.1) * s / 1000;
+const S = { phi: 0, z: zOf(+sl.value), target: zOf(+sl.value), playing: true };
+const set = playBtn(btn, S, () => cv.kick()); set(true);
+btn.onclick = () => { if (!S.playing && S.phi >= 2 * Math.PI) S.phi = 0; set(!S.playing) };
+legend([['\\text{generatrix }F(x,z)=0', C.accent], ['\\text{circle of }M', C.warm], ['z\\text{-axis}', C.mute, 1]]);
+K(eqEl, 'F(x,z)=0\\ \\xrightarrow{\\ \\text{about }z\\text{-axis}\\ }\\ F\\!\\left(\\pm\\sqrt{x^2+y^2},\\,z\\right)=0', 1);
+const cam = V.camera({ az: -0.5, el: 0.3 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.4, h / 3.0); cam.ox = w / 2; cam.oy = h * 0.55;
+  if (S.playing) { S.phi += 1.4 * dt; if (S.phi >= 2 * Math.PI) { S.phi = 2 * Math.PI; set(false) } }
+  const mv = P.approach(S, 'z', S.target, dt, 9), ph = S.phi;
+  K(document.getElementById('lab'), `z=${S.z.toFixed(2)}`);
+  const quads = ph > .05 ? V.mesh((z, t) => [g(z) * Math.cos(t), g(z) * Math.sin(t), z], Z0, Z1, 0, ph, 24, Math.max(2, Math.round(36 * ph / 6.283))) : [];
+  V.line(ctx, cam, [[0, 0, Z0 - .3], [0, 0, Z1 + .35]], { color: C.mute, width: 1.2, dash: [5, 4] });
+  V.paint(ctx, cam, [{ quads, color: C.accent, alpha: .2, edge: .1 }]);
+  const gen = []; for (let i = 0; i <= 80; i++) { const z = Z0 + (Z1 - Z0) * i / 80; gen.push([g(z), 0, z]) }
+  V.line(ctx, cam, gen, { color: C.accent, width: 2.4 });
+  const cur = gen.map(([x, , z]) => [x * Math.cos(ph), x * Math.sin(ph), z]); V.line(ctx, cam, cur, { color: C.accent, width: 1.6, alpha: .6 });
+  // 母线上的点 M 绕轴画出的圆，半径为它到轴的距离
+  const z = S.z, r = g(z), circ = []; for (let i = 0; i <= 90; i++) { const t = ph * i / 90; circ.push([r * Math.cos(t), r * Math.sin(t), z]) }
+  V.line(ctx, cam, circ, { color: C.warm, width: 2.2 });
+  V.line(ctx, cam, [[0, 0, z], [r, 0, z]], { color: C.warm, width: 1.4, dash: [3, 3] });
+  const pm = cam.P([r, 0, z]), pq = cam.P([r * Math.cos(ph), r * Math.sin(ph), z]);
+  P.dot(ctx, pm[0], pm[1], { r: 4.6, color: C.warm }); P.dot(ctx, pq[0], pq[1], { r: 3.6, color: C.warm, alpha: .8 });
+  lab.set('M', 'M', pm[0], pm[1], { dx: 13, dy: -6, color: C.warm, size: 13 }); lab.end();
+  return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { S.target = zOf(+sl.value); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

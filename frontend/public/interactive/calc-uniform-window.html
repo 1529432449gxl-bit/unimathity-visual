@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Uniform continuity window</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{cursor:grab}.stage canvas:active{cursor:grabbing}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="eps" type="range" min="0.3" max="0.8" step="0.01" value="0.6" aria-label="epsilon"><button type="button" class="tg" id="play" aria-pressed="true">Pause</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="a fixed delta-epsilon window sliding along y = sqrt(x)"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="def"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const L = 4, f = Math.sqrt;
+const sl = document.getElementById('eps'), btn = document.getElementById('play'), stage = document.getElementById('stage'), canvas = document.getElementById('cv');
+// 对 sqrt x，长度为 delta 的区间上振幅最大在左端，为 sqrt(delta)；取 delta=0.9 eps^2 保证所有位置都满足
+const deltaOf = e => 0.9 * e * e;
+const S = { eps: 0.6, epsT: 0.6, c: 0.4, dir: 1, playing: true, drag: false, cT: 0.4 };
+const v = P.view([-0.15, 4.25, -0.25, 2.35], { l: 30, r: 10, t: 14, b: 24 });
+const lab = P.labels(stage);
+for (const [t, c] of [['y=\\sqrt{x}', C.accent], ['\\delta\\times\\varepsilon\\ \\text{window}', C.hl]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('def'), '|x_1-x_2|<\\delta\\ \\Longrightarrow\\ |f(x_1)-f(x_2)|<\\varepsilon');
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let moving = P.approach(S, 'eps', S.epsT, dt, 8);
+  const d = deltaOf(S.eps), lo = d / 2, hi = L - d / 2;
+  if (S.playing) {
+    S.cT += S.dir * 0.55 * dt;
+    if (S.cT > hi) { S.cT = hi; S.dir = -1 } if (S.cT < lo) { S.cT = lo; S.dir = 1 }
+    S.c = S.cT;
+  } else { S.cT = P.clamp(S.cT, lo, hi); moving = P.approach(S, 'c', S.cT, dt, 14) || moving; }
+  K(document.getElementById('lab'), `\\varepsilon=${S.eps.toFixed(2)}`);
+  P.axes(ctx, v, { x: true, y: true });
+  const a = S.c - d / 2, b = S.c + d / 2, ya = f(a), yb = f(b), mid = (ya + yb) / 2;
+  const bx0 = v.X(a), bx1 = v.X(b), by0 = v.Y(mid + S.eps / 2), by1 = v.Y(mid - S.eps / 2);
+  // 窗口：浅橙底 + 橙框
+  ctx.save(); ctx.fillStyle = C.hlBg; ctx.globalAlpha = .7; ctx.beginPath(); ctx.roundRect(bx0, by0, bx1 - bx0, by1 - by0, 3); ctx.fill();
+  ctx.globalAlpha = 1; ctx.strokeStyle = C.hl; ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+  // 窗口在两轴上的投影（虚线）
+  P.path(ctx, [[bx0, by1], [bx0, v.Y(0)]], { color: C.hl, width: 1, dash: [3, 4], alpha: .6 });
+  P.path(ctx, [[bx1, by1], [bx1, v.Y(0)]], { color: C.hl, width: 1, dash: [3, 4], alpha: .6 });
+  P.path(ctx, [[v.X(0), by0], [bx0, by0]], { color: C.hl, width: 1, dash: [3, 4], alpha: .45 });
+  P.path(ctx, [[v.X(0), by1], [bx0, by1]], { color: C.hl, width: 1, dash: [3, 4], alpha: .45 });
+  P.path(ctx, P.curve(v, f, 0, L), { color: C.accent, width: 2.4, alpha: .45 });
+  P.path(ctx, P.curve(v, f, a, b), { color: C.accent, width: 2.8 });
+  P.dot(ctx, bx0, v.Y(ya), { r: 3.6, color: C.accent });
+  P.dot(ctx, bx1, v.Y(yb), { r: 3.6, color: C.accent });
+  lab.set('d', '\\delta', (bx0 + bx1) / 2, v.Y(0), { dy: 13, color: C.hl, size: 13 });
+  lab.set('e', '\\varepsilon', v.X(0), (by0 + by1) / 2, { dx: -14, color: C.hl, size: 13, alpha: by1 - by0 > 20 ? 1 : 0 });
+  lab.end();
+  return moving || S.playing || S.drag;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => setPlay(!S.playing));
+sl.addEventListener('input', () => { S.epsT = +sl.value; cv.kick(); });
+// 拖动画布移动窗口，手动操作即暂停
+const toX = e => { const r = canvas.getBoundingClientRect(); return v.b[0] + (e.clientX - r.left - v.pad.l) / (r.width - v.pad.l - v.pad.r) * (v.b[1] - v.b[0]); };
+canvas.addEventListener('pointerdown', e => { setPlay(false); S.drag = true; canvas.setPointerCapture(e.pointerId); S.cT = toX(e); cv.kick(); });
+canvas.addEventListener('pointermove', e => { if (!S.drag) return; S.cT = toX(e); cv.kick(); });
+const up = () => { S.drag = false; cv.kick(); };
+canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting && S.playing) { S.wasPlaying = true; setPlay(false) } else if (e[0].isIntersecting && S.wasPlaying) { S.wasPlaying = false; setPlay(true) } });
+off.observe(document.querySelector('main'));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

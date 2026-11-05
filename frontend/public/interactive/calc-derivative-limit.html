@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Secant to tangent</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="secants through P from both sides approach the tangent"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const f = x => 0.25 * x ** 3 - x + 1.2, df = x => 0.75 * x * x - 1;
+const x0 = 1.4, y0 = f(x0), k0 = df(x0);
+const steps = [1.4, 1, 0.7, 0.45, 0.28, 0.16, 0.08, 0.035];
+const FULL = [-0.7, 3.0, -0.1, 5.3];
+const S = { h: steps[0], target: steps[0], intro: 0, map: 0 };
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+for (const [t, c, d] of [['y=f(x)', C.accent], ['PQ', C.warm], ['PQ\'', C.warm, 1], ['\\text{tangent at }P', C.blue, 2]]) {
+  const e = document.createElement('span'); e.className = 'key' + (d === 2 ? ' dash' : ''); e.style.setProperty('--c', c); if (d === 1) e.style.opacity = .6; K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), "f'(x_0)=\\lim_{h\\to0}\\dfrac{f(x_0+h)-f(x_0)}{h}");
+// 镜头：随 h 缩小推近 P，框住两侧的点
+function frame(h) {
+  const hx = Math.max(1.3 * h, 0.05);
+  const dy = Math.max(Math.abs(f(x0 + h) - y0), Math.abs(f(x0 - h) - y0), Math.abs(k0 * hx));
+  const b = [x0 - hx, x0 + hx, y0 - 1.35 * dy - 0.04, y0 + 1.35 * dy + 0.04];
+  // 不比整体视图更大
+  return b[1] - b[0] >= FULL[1] - FULL[0] - 0.4 ? FULL : b;
+}
+const v = P.view(FULL, { l: 12, r: 12, t: 12, b: 12 });
+let st;
+const line = (ctx, k, opts) => P.path(ctx, [[v.X(v.b[0] - 1), v.Y(y0 + k * (v.b[0] - 1 - x0))], [v.X(v.b[1] + 1), v.Y(y0 + k * (v.b[1] + 1 - x0))]], opts);
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (!st) return false; v.w = w; v.h = h;
+  const anim = st.tick(dt), mv = P.approach(S, 'h', S.target, dt, 5), intro = P.approach(S, 'intro', 1, dt, 4);
+  v.aim(frame(S.h)); const cam = v.step(dt, 5);
+  const hh = S.h, xr = x0 + hh, xl = x0 - hh, yr = f(xr), yl = f(xl);
+  const kr = (yr - y0) / hh, kl = (y0 - yl) / hh, a = S.intro;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+  P.axes(ctx, v, { x: true, y: true });
+  line(ctx, k0, { color: C.blue, width: 1.6, dash: [6, 6], alpha: .85 * a });
+  line(ctx, kl, { color: C.warm, width: 1.6, alpha: .5 * a });
+  line(ctx, kr, { color: C.warm, width: 2, alpha: a });
+  // 右侧的增量直角
+  P.path(ctx, [[v.X(x0), v.Y(y0)], [v.X(xr), v.Y(y0)], [v.X(xr), v.Y(yr)]], { color: C.mute, width: 1, dash: [3, 4], alpha: .7 * a });
+  P.path(ctx, P.curve(v, f, v.b[0], v.b[1]), { color: C.accent, width: 2.4, progress: P.ease.out(a) });
+  P.dot(ctx, v.X(xl), v.Y(yl), { r: 4, color: C.warm, alpha: .65, scale: a });
+  P.dot(ctx, v.X(xr), v.Y(yr), { r: 4.4, color: C.warm, scale: a });
+  P.dot(ctx, v.X(x0), v.Y(y0), { r: 4.8, color: C.accent, scale: a });
+  ctx.restore();
+  lab.set('P', 'P', v.X(x0), v.Y(y0), { dx: -12, dy: -14, color: C.accent, alpha: a });
+  lab.set('Q', 'Q', v.X(xr), v.Y(yr), { dx: 13, dy: -6, color: C.warm, alpha: a });
+  lab.set('Q2', "Q'", v.X(xl), v.Y(yl), { dx: -13, dy: 10, color: C.warm, alpha: .7 * a });
+  lab.set('h', 'h', (v.X(x0) + v.X(xr)) / 2, v.Y(y0), { dy: 13, color: C.soft, size: 13, alpha: v.X(xr) - v.X(x0) > 26 ? a : 0 });
+  lab.end();
+  // 推近后显示整体小图
+  const zoom = (FULL[1] - FULL[0]) / (v.b[1] - v.b[0]);
+  const mm = P.approach(S, 'map', zoom > 1.8 ? 1 : 0, dt, 5);
+  P.minimap(ctx, v, { B: FULL, alpha: S.map, corner: 'tl', frac: .26, aspect: (FULL[3] - FULL[2]) / (FULL[1] - FULL[0]) * 0.8,
+    paint: (mx, my, c) => { P.mapCurve(c, mx, my, f, FULL[0], FULL[1], { width: 1.3 }); P.dot(c, mx(x0), my(y0), { r: 2.4, color: C.accent, ring: false }) } });
+  return anim || mv || intro || cam || mm;
+});
+st = P.stepper(document.getElementById('nav'), { count: steps.length, dur: 1.1, hold: .9, kick: cv.kick, onChange: s => { S.target = steps[s.i] } });
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) st.stop() }); off.observe(document.querySelector('main'));
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

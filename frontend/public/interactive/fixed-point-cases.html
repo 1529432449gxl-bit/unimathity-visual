@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fixed point cases</title>
+<style>
+  html,body{margin:0;background:#fbfbfa}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:4px}
+  iframe{display:block;width:100%;height:410px;border:1px solid #e3e4e8;border-radius:6px;background:#fff}
+  @media (max-width:620px){.grid{grid-template-columns:1fr}iframe{height:410px}}
+</style>
+</head>
+<body>
+<div class="grid">
+  <iframe src="fixed-point-case.html?case=stair-converge" title="case 1" loading="eager"></iframe>
+  <iframe src="fixed-point-case.html?case=spiral-converge" title="case 2" loading="eager"></iframe>
+  <iframe src="fixed-point-case.html?case=stair-diverge" title="case 3" loading="eager"></iframe>
+  <iframe src="fixed-point-case.html?case=spiral-diverge" title="case 4" loading="eager"></iframe>
+</div>
+<script>
+  // 课程页的 iframe 高度自适应。
+  function reportHeight() {
+    if (window.parent === window) return;
+    window.parent.postMessage({ type: 'runge-height', height: Math.ceil(document.documentElement.scrollHeight) }, window.location.origin);
+  }
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(reportHeight).observe(document.documentElement);
+  window.addEventListener('load', reportHeight);
+  setTimeout(reportHeight, 500);
+</script>
+</body>
+</html>

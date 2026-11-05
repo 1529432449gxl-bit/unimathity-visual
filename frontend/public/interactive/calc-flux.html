@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flux through a surface element</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="up" aria-pressed="true"></button><button type="button" data-m="down" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="a" type="range" min="0" max="1000" step="1" value="0" aria-label="tilt"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Flux through a surface element"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const F = [0.55, 0.25, 0.95];                       // 均匀向量场
+const btns = [...document.querySelectorAll('#mode button')]; K(btns[0], '\\text{upper side}'); K(btns[1], '\\text{lower side}');
+legend([['\\boldsymbol A', C.blue], ['\\boldsymbol n', C.warm], ['\\boldsymbol A\\cdot\\boldsymbol n', C.accent]]);
+K(eqEl, '\\mathrm d\\Phi=\\boldsymbol A\\cdot\\boldsymbol n\\,\\mathrm dS=(P\\cos\\alpha+Q\\cos\\beta+R\\cos\\gamma)\\,\\mathrm dS', 1);
+const sl = document.getElementById('a'), btn = document.getElementById('play');
+const S = { a: 0, target: 0, playing: true, side: 1, sg: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+btns.forEach(b => b.addEventListener('click', () => { S.side = b.dataset.m === 'up' ? 1 : -1; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); cv.kick() }));
+const cam = V.camera({ az: -0.7, el: 0.35 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.6, h / 3.2); cam.ox = w / 2; cam.oy = h * 0.6;
+  if (S.playing) { S.target += 0.45 * dt; sl.value = ((S.target % (2 * Math.PI)) / (2 * Math.PI)) * 1000 }
+  let mv = P.approach(S, 'a', S.target, dt, 9); mv = P.approach(S, 'sg', S.side, dt, 7) || mv;
+  const t = S.a, tilt = 1.05 * Math.sin(t);           // 微元绕 x 轴来回倾斜
+  const e1 = [1, 0, 0], e2 = [0, Math.cos(tilt), Math.sin(tilt)], n0 = V.cross(e1, e2), n = n0.map(c => c * S.sg);
+  const s = 0.6, corner = (i, j) => [i * s * e1[0] + j * s * e2[0], i * s * e1[1] + j * s * e2[1], i * s * e1[2] + j * s * e2[2]];
+  const flux = V.dot3(F, n), col = flux >= 0 ? C.warm : C.blue;
+  K(document.getElementById('lab'), `\\boldsymbol A\\cdot\\boldsymbol n=${flux.toFixed(2)}`);
+  // 场线：穿过微元的平行箭头
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const b = corner(i * .7, j * .7), a0 = [b[0] - F[0] * .9, b[1] - F[1] * .9, b[2] - F[2] * .9];
+    V.arrow(ctx, cam, a0, [b[0] + F[0] * .5, b[1] + F[1] * .5, b[2] + F[2] * .5], { color: C.blue, width: 1.3, alpha: .5, head: 7 }) }
+  V.paint(ctx, cam, [V.poly([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], col, .32)]);
+  V.line(ctx, cam, [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1), corner(-1, -1)], { color: col, width: 1.6 });
+  // 法向量与 A 在法向上的分量
+  V.arrow(ctx, cam, [0, 0, 0], n, { color: C.warm, width: 2.4 });
+  V.arrow(ctx, cam, [0, 0, 0], F, { color: C.blue, width: 2.4 });
+  const pr = n.map(c => c * flux); V.line(ctx, cam, [[0, 0, 0], pr], { color: C.accent, width: 5, alpha: .55 });
+  V.line(ctx, cam, [F, pr], { color: C.mute, width: 1, dash: [3, 3] });
+  const pn = cam.P(n); lab.set('n', '\\boldsymbol n', pn[0], pn[1], { dx: 12, dy: -6, color: C.warm, size: 13 });
+  const pf = cam.P(F); lab.set('A', '\\boldsymbol A', pf[0], pf[1], { dx: 12, dy: -6, color: C.blue, size: 13 }); lab.end();
+  return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000 * 2 * Math.PI; S.a = S.a % (2 * Math.PI); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

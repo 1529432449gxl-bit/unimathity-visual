@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lagrange multiplier</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="1000" step="1" value="0" aria-label="position on the constraint"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Lagrange multiplier"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+// 等值线：在网格上用 marching squares 求 f=c 的线段
+function contours(f, B, levels, nx, ny) { const out = levels.map(() => []), dx = (B[1] - B[0]) / nx, dy = (B[3] - B[2]) / ny;
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) { const x = B[0] + i * dx, y = B[2] + j * dy, q = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]], fv = q.map(p => f(p[0], p[1]));
+    levels.forEach((c, k) => { const pts = []; for (let e = 0; e < 4; e++) { const a = fv[e] - c, b = fv[(e + 1) % 4] - c; if ((a < 0) !== (b < 0)) { const t = a / (a - b), p1 = q[e], p2 = q[(e + 1) % 4]; pts.push([p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])]) } }
+      if (pts.length >= 2) out[k].push([pts[0], pts[1]]); if (pts.length === 4) out[k].push([pts[2], pts[3]]) }) }
+  return out; }
+function drawContours(ctx, v, segs, color, alpha, width = 1.1) { ctx.save(); ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.beginPath();
+  for (const lv of segs) for (const [a, b] of lv) { ctx.moveTo(v.X(a[0]), v.Y(a[1])); ctx.lineTo(v.X(b[0]), v.Y(b[1])) } ctx.stroke(); ctx.restore(); }
+function arrow2(ctx, x0, y0, x1, y1, color, width = 2.2) { const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy); if (L < 2) return; const ux = dx / L, uy = dy / L, h = Math.min(9, L * .4);
+  ctx.save(); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - ux * h * .7, y1 - uy * h * .7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * h - uy * h * .45, y1 - uy * h + ux * h * .45); ctx.lineTo(x1 - ux * h + uy * h * .45, y1 - uy * h - ux * h * .45); ctx.closePath(); ctx.fill(); ctx.restore(); }
+
+const f = (x, y) => x + 2 * y, phi = (x, y) => x * x / 2.2 + y * y - 1;   // 约束：椭圆
+const pt = t => [Math.sqrt(2.2) * Math.cos(t), Math.sin(t)];
+const gf = [1, 2], gphi = (x, y) => [x / 1.1, 2 * y];
+let best = 0, bv = -1e9; for (let i = 0; i < 4000; i++) { const t = 2 * Math.PI * i / 4000, p = pt(t), val = f(...p); if (val > bv) { bv = val; best = t } }
+const sl = document.getElementById('t'), btn = document.getElementById('play');
+const S = { t: best - 1.4, target: best - 1.4, playing: true };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['f=c', C.accent], ['\\varphi=0', C.blue], ['\\nabla f', C.warm], ['\\nabla\\varphi', C.blue]]);
+K(eqEl, '\\nabla f(P_0)=-\\lambda\\nabla\\varphi(P_0)', 1);
+const B = [-2.3, 2.3, -1.6, 1.8], v = P.view(B);
+let segs = null, s = 1;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  s = Math.min(w / (B[1] - B[0]), h / (B[3] - B[2])); const cx = 0, cy = (B[2] + B[3]) / 2;
+  v.b = [cx - w / s / 2, cx + w / s / 2, cy - h / s / 2, cy + h / s / 2]; v.w = w; v.h = h; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  if (!segs || segs.w !== w) { const L = []; for (let c = -5; c <= 5; c += 0.5) L.push(c); segs = contours(f, v.b, L, 40, 30); segs.w = w }
+  if (S.playing) { S.target += 0.4 * dt; sl.value = ((S.target % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI) * 1000 }
+  const mv = P.approach(S, 't', S.target, dt, 9), p = pt(S.t), c0 = f(...p);
+  K(document.getElementById('lab'), `f=${c0.toFixed(2)}`);
+  drawContours(ctx, v, segs, C.accent, .2);
+  // 过当前点的等值线
+  P.path(ctx, [[v.X(-3), v.Y((c0 + 3) / 2)], [v.X(3), v.Y((c0 - 3) / 2)]], { color: C.accent, width: 2 });
+  const el = []; for (let i = 0; i <= 120; i++) el.push(pt(2 * Math.PI * i / 120).map((q, k) => k ? v.Y(q) : v.X(q)));
+  P.path(ctx, el, { color: C.blue, width: 2.4 });
+  const X = v.X(p[0]), Y = v.Y(p[1]), g2 = gphi(...p), k = 0.32 * s;
+  arrow2(ctx, X, Y, X + gf[0] * k, Y - gf[1] * k, C.warm, 2.4);
+  arrow2(ctx, X, Y, X + g2[0] * k, Y - g2[1] * k, C.blue, 2.4);
+  const cr = Math.abs(gf[0] * g2[1] - gf[1] * g2[0]) / (Math.hypot(...gf) * Math.hypot(...g2));
+  P.dot(ctx, X, Y, { r: cr < .03 ? 6 : 4.6, color: C.warm });
+  for (const t of [best, best + Math.PI]) { const q = pt(t); P.dot(ctx, v.X(q[0]), v.Y(q[1]), { r: 3, color: C.soft, alpha: .7 }) }
+  lab.end(); return mv || S.playing;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000 * 2 * Math.PI; S.t = ((S.t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

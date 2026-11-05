@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spectral decomposition</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Spectral decomposition"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const q1 = [Math.cos(0.52), Math.sin(0.52)], q2 = [-q1[1], q1[0]], l1 = 1.55, l2 = 0.5;
+const A = [[l1 * q1[0] * q1[0] + l2 * q2[0] * q2[0], l1 * q1[0] * q1[1] + l2 * q2[0] * q2[1]], [l1 * q1[1] * q1[0] + l2 * q2[1] * q2[0], l1 * q1[1] * q1[1] + l2 * q2[1] * q2[1]]];
+const v = G.plane(1.75); v.cy = .25;
+const S = { x: [-0.25, 1.05], xT: [-0.25, 1.05], playing: false, ph: 1.8 };
+const set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+G.legend(lg, [['x', C.accent], ['(q_i^{\\prime}x)\\,q_i', C.blue], ['\\lambda_i(q_i^{\\prime}x)\\,q_i', C.warm], ['Ax', C.warm]]);
+const eq = G.formulas(document.getElementById('eq'), ["A=\\lambda_1q_1q_1^{\\prime}+\\lambda_2q_2q_2^{\\prime}+\\cdots+\\lambda_nq_nq_n^{\\prime}"]);
+eq("A=\\lambda_1q_1q_1^{\\prime}+\\lambda_2q_2q_2^{\\prime}+\\cdots+\\lambda_nq_nq_n^{\\prime}");
+const hd = G.handles(canvas, v, () => [{ id: 0, p: S.x }], (id, w) => { if (G.len(w) > .3 && G.len(w) < 1.25) S.xT = w }, { onStart: () => set(false), kick: () => cv.kick() });
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h);
+  if (S.playing) { S.ph += dt * 0.45; S.xT = [1.05 * Math.cos(S.ph), 1.05 * Math.sin(S.ph)] }
+  const mv = P.approach(S, 'x', S.xT, dt, 12);
+  const x = S.x, c1 = G.dot(q1, x), c2 = G.dot(q2, x), p1 = G.mul(c1, q1), p2 = G.mul(c2, q2), s1 = G.mul(l1, p1), s2 = G.mul(l2, p2), y = G.add(s1, s2);
+  G.fullLine(ctx, v, q1, { color: C.blue, alpha: .35, dash: [6, 5] }); G.fullLine(ctx, v, q2, { color: C.blue, alpha: .35, dash: [6, 5] });
+  const sq = (o, a, b) => { const k = .1, u = G.mul(k / G.len(a), a), n = G.mul(k / G.len(b), b); G.seg(ctx, v, G.add(o, u), G.add(G.add(o, u), n), { color: C.soft, width: 1, alpha: .6 }); G.seg(ctx, v, G.add(G.add(o, u), n), G.add(o, n), { color: C.soft, width: 1, alpha: .6 }) };
+  G.seg(ctx, v, p1, x, { color: C.soft, width: 1, dash: [3, 4], alpha: .7 }); G.seg(ctx, v, p2, x, { color: C.soft, width: 1, dash: [3, 4], alpha: .7 });
+  G.seg(ctx, v, s1, y, { color: C.warm, width: 1, dash: [3, 4], alpha: .6 }); G.seg(ctx, v, s2, y, { color: C.warm, width: 1, dash: [3, 4], alpha: .6 });
+  sq([0, 0], q1, q2);
+  G.arrow(ctx, v, [0, 0], s1, { color: C.warm, width: 1.8, alpha: .75, head: 8 }); G.arrow(ctx, v, [0, 0], s2, { color: C.warm, width: 1.8, alpha: .75, head: 8 });
+  G.arrow(ctx, v, [0, 0], p1, { color: C.blue, width: 2, head: 8 }); G.arrow(ctx, v, [0, 0], p2, { color: C.blue, width: 2, head: 8 });
+  G.arrow(ctx, v, [0, 0], y, { color: C.warm, width: 2.8 }); G.arrow(ctx, v, [0, 0], x, { color: C.accent, width: 2.8 });
+  G.dotAt(ctx, v, x, { r: hd.active != null || hd.hover != null ? 6.5 : 5, color: C.accent });
+  const L = (id, t, p, c, dx, dy) => { const s = v.S(p); lab.set(id, t, s[0], s[1], { dx, dy, color: c }) };
+  L('x', 'x', x, C.accent, -12, -12); L('y', 'Ax', y, C.warm, 16, -10); L('q1', 'q_1', G.mul(1.6, q1), C.blue, 10, 10); L('q2', 'q_2', G.mul(1.3, q2), C.blue, -12, 0); lab.end();
+  return mv || S.playing || hd.active != null;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

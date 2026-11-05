@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Similar matrices and bases</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Similar matrices and bases"></canvas></div>
+<div class="controls"><input id="t" type="range" min="0" max="1000" step="1" value="0" aria-label="basis"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const A = [[1.3, 0.45], [0.25, 0.95]];
+const tr = 2.25, de = 1.3 * 0.95 - 0.45 * 0.25, ds = Math.sqrt(tr * tr / 4 - de), l1 = tr / 2 + ds, l2 = tr / 2 - ds;
+const ev = l => { const v = [0.45, l - 1.3]; const n = G.len(v); return [v[0] / n, v[1] / n] };
+const x1 = ev(l1), x2m = ev(l2), x2 = G.mul(-1, x2m);
+const a1 = Math.atan2(x1[1], x1[0]), a2 = Math.atan2(x2[1], x2[0]);
+const v = G.plane(1.05); v.cy = .6; v.cx = .5;
+const S = { t: 0, tT: 0, x: [0.55, 1.0], xT: [0.55, 1.0], playing: false, ph: 0 };
+const sl = document.getElementById('t'), set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+G.legend(lg, [['x', C.accent], ['Ax', C.warm], ['\\eta_1,\\ \\eta_2', C.blue]]);
+const F = ['B=P^{-1}AP', 'P^{-1}AP=\\operatorname{diag}\\{\\lambda_1,\\,\\lambda_2,\\,\\cdots,\\,\\lambda_n\\}'];
+const eq = G.formulas(document.getElementById('eq'), F);
+const basis = t => { const e = t => { const s = t * t * (3 - 2 * t); return s }; const s = e(t); const b1 = s * a1, b2 = Math.PI / 2 + s * (a2 - Math.PI / 2); return [[Math.cos(b1), Math.sin(b1)], [Math.cos(b2), Math.sin(b2)]] };
+const hd = G.handles(canvas, v, () => [{ id: 0, p: S.x }], (id, w) => { if (G.len(w) > .35 && G.len(w) < 1.4) S.xT = w }, { onStart: () => set(false), kick: () => cv.kick() });
+sl.addEventListener('input', () => { set(false); S.tT = +sl.value / 1000; cv.kick() });
+function comps(ctx, e1, e2, p, color, alpha) {
+  const [c1, c2] = G.coords(e1, e2, p), u = G.mul(c1, e1), w2 = G.mul(c2, e2);
+  G.arrow(ctx, v, [0, 0], u, { color, width: 1.8, alpha, head: 8 }); G.arrow(ctx, v, u, p, { color, width: 1.8, alpha, head: 8 });
+  G.seg(ctx, v, w2, p, { color, width: 1, alpha: alpha * .5, dash: [3, 4] }); G.seg(ctx, v, [0, 0], w2, { color, width: 1, alpha: alpha * .5, dash: [3, 4] });
+}
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h);
+  if (S.playing) { S.ph += dt * 0.5; const c = (1 - Math.cos(S.ph)) / 2; S.tT = Math.min(1, Math.max(0, c * 1.15 - .075)); sl.value = Math.round(S.tT * 1000) }
+  let mv = P.approach(S, 't', S.tT, dt, 8); mv = P.approach(S, 'x', S.xT, dt, 12) || mv;
+  const [e1, e2] = basis(S.t), Bm = [[e1[0], e2[0]], [e1[1], e2[1]]];
+  const on = S.t > .995;
+  const x = S.x, y = G.apply(A, x);
+  comps(ctx, e1, e2, x, C.accent, .55); comps(ctx, e1, e2, y, C.warm, .55);
+  G.arrow(ctx, v, [0, 0], e1, { color: C.blue, width: 2.4 }); G.arrow(ctx, v, [0, 0], e2, { color: C.blue, width: 2.4 });
+  G.arrow(ctx, v, [0, 0], y, { color: C.warm, width: 2.6 }); G.arrow(ctx, v, [0, 0], x, { color: C.accent, width: 2.8 });
+  G.dotAt(ctx, v, x, { r: hd.active != null || hd.hover != null ? 6.5 : 5, color: C.accent });
+  const s1 = v.S(e1), s2 = v.S(e2), sx = v.S(x), sy = v.S(y);
+  lab.set('e1', '\\eta_1', s1[0], s1[1], { dx: 14, dy: 10, color: C.blue }); lab.set('e2', '\\eta_2', s2[0], s2[1], { dx: -14, dy: -6, color: C.blue });
+  lab.set('x', 'x', sx[0], sx[1], { dx: -12, dy: -12, color: C.accent }); lab.set('y', 'Ax', sy[0], sy[1], { dx: 18, dy: -10, color: C.warm }); lab.end();
+  eq(on ? F[1] : F[0]);
+  return mv || S.playing || hd.active != null;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

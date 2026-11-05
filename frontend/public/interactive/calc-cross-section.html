@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Volume by cross sections</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px;cursor:grab}.stage canvas:active{cursor:grabbing}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="380" aria-label="section position"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="wedge cut from a cylinder with triangular cross sections"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const R = 1, TA = Math.tan(0.75);
+for (const [t, c] of [['\\text{wedge}', C.accent], ['A(x)', C.warm]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), 'V=\\int_a^b A(x)\\,\\mathrm dx,\\qquad A(x)=\\tfrac12\\left(R^2-x^2\\right)\\tan\\alpha');
+const sl = document.getElementById('s'), btn = document.getElementById('play'), stage = document.getElementById('stage'), canvas = document.getElementById('cv');
+const xOf = s => -R + 0.02 + (2 * R - 0.04) * s / 1000;
+const S = { x: xOf(+sl.value), xT: xOf(+sl.value), az: 0.62, el: 0.5, playing: false, dir: 1, drag: null, sweep: 0 };
+const lab = P.labels(stage);
+// 立体坐标：x 沿交线，y 为底面内与 x 垂直的方向，z 向上
+function proj(p, M) { const ca = Math.cos(S.az), sa = Math.sin(S.az), ce = Math.cos(S.el), se = Math.sin(S.el);
+  const x1 = p[0] * ca - p[1] * sa, y1 = p[0] * sa + p[1] * ca; return [M.ox + M.sc * x1, M.oy - M.sc * (p[2] * ce + y1 * se)]; }
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (S.playing) { S.xT += S.dir * 0.55 * dt; if (S.xT > R - 0.03) { S.xT = R - 0.03; S.dir = -1 } if (S.xT < -R + 0.03) { S.xT = -R + 0.03; S.dir = 1 } sl.value = (S.xT + R - 0.02) / (2 * R - 0.04) * 1000; }
+  let moving = P.approach(S, 'x', S.xT, dt, 10);
+  if (S.sweep < 1) { S.sweep = Math.min(1, S.sweep + 0.8 * dt); moving = true }
+  K(document.getElementById('lab'), `x=${S.x.toFixed(2)}`);
+  const M = { sc: Math.min(w / 2.9, h / 2.0), ox: w / 2, oy: h * 0.66 };
+  const pr = p => proj(p, M);
+  const n = 120, arc = []; for (let i = 0; i <= n; i++) { const t = Math.PI * i / n; arc.push([R * Math.cos(t), R * Math.sin(t)]) }
+  // 整个圆柱底面（浅）与半圆底
+  const full = []; for (let i = 0; i <= 120; i++) { const t = 2 * Math.PI * i / 120; full.push(pr([R * Math.cos(t), R * Math.sin(t), 0])) }
+  P.path(ctx, full, { color: C.mute, width: 1, alpha: .5, dash: [4, 4] });
+  const base = arc.map(([x, y]) => pr([x, y, 0]));
+  P.fill(ctx, base, [pr([R, 0, 0]), pr([-R, 0, 0])], C.accent, .08);
+  // 斜面：底上 (x,y,0) 与顶 (x,y,y tanα) 之间
+  const topE = arc.map(([x, y]) => pr([x, y, y * TA]));
+  P.fill(ctx, topE, [pr([R, 0, 0]), pr([-R, 0, 0])], C.accent, .14);
+  // 侧面（圆柱面的一部分）
+  P.fill(ctx, topE, base, C.accent, .07);
+  for (let i = 0; i <= 12; i++) { const [x, y] = arc[i * 10]; P.path(ctx, [pr([x, y, 0]), pr([x, y, y * TA])], { color: C.accent, width: 1, alpha: .25 }) }
+  P.path(ctx, base, { color: C.accent, width: 1.8 }); P.path(ctx, topE, { color: C.accent, width: 2.2 });
+  P.path(ctx, [pr([-R, 0, 0]), pr([R, 0, 0])], { color: C.accent, width: 1.8 });
+  // 当前截面三角形：(x,0,0)、(x,√(R²−x²),0)、(x,√(R²−x²),√(R²−x²)tanα)
+  const x = S.x, yy = Math.sqrt(Math.max(0, R * R - x * x)), tri = [pr([x, 0, 0]), pr([x, yy, 0]), pr([x, yy, yy * TA])];
+  ctx.save(); ctx.globalAlpha = S.sweep; ctx.fillStyle = P.rgba(C.warm, .5); ctx.strokeStyle = C.warm; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(...tri[0]); ctx.lineTo(...tri[1]); ctx.lineTo(...tri[2]); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  // 角 α 与交线方向
+  const ax = pr([R + 0.25, 0, 0]), ax0 = pr([-R - 0.25, 0, 0]);
+  P.path(ctx, [ax0, ax], { color: C.mute, width: 1, dash: [5, 4] });
+  lab.set('x', 'x', ax[0], ax[1], { dx: 10, dy: 4, color: C.soft, size: 13 });
+  lab.set('a', '\\alpha', tri[0][0], tri[0][1], { dx: 24, dy: -8, color: C.warm, size: 13, alpha: yy > .45 ? S.sweep : 0 });
+  lab.end();
+  return moving || S.playing || !!S.drag;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => setPlay(!S.playing));
+sl.addEventListener('input', () => { setPlay(false); S.xT = xOf(+sl.value); cv.kick() });
+canvas.addEventListener('pointerdown', e => { S.drag = [e.clientX, e.clientY, S.az, S.el]; canvas.setPointerCapture(e.pointerId); cv.kick() });
+canvas.addEventListener('pointermove', e => { if (!S.drag) return; S.az = S.drag[2] + (e.clientX - S.drag[0]) * 0.008; S.el = P.clamp(S.drag[3] + (e.clientY - S.drag[1]) * 0.006, 0.05, 1.3); cv.kick() });
+const up = () => { S.drag = null; cv.kick() }; canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Principal axes</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="top" id="kind"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Principal axes"></canvas></div>
+<div class="controls"><input id="t" type="range" min="0" max="1000" step="1" value="0" aria-label="rotation"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const PH = 0.52;
+const pre = { ell: [0.42, 1.7], hyp: [0.75, -0.6] };
+const v = G.plane(1.85);
+const S = { kind: 'ell', lam: pre.ell.slice(), lamT: pre.ell.slice(), phi: 0, phiT: 0, playing: false, ph: 0 };
+const sl = document.getElementById('t'), set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+sl.addEventListener('input', () => { set(false); S.phiT = PH * (+sl.value / 1000); cv.kick() });
+G.segmented(document.getElementById('kind'), [['ell', '\\lambda_1,\\ \\lambda_2>0'], ['hyp', '\\lambda_1>0>\\lambda_2']], 'ell', k => { S.kind = k; S.lamT = pre[k].slice(); cv.kick() });
+G.legend(lg, [['x^{\\prime}Ax=1', C.accent], ['y_1,\\ y_2', C.warm], ['\\text{principal axes}', C.blue, 1]]);
+const F = ['f=b_{11}y_1^2+2b_{12}y_1y_2+b_{22}y_2^2+\\cdots,\\qquad x=Qy', 'f=\\lambda_1y_1^2+\\lambda_2y_2^2+\\cdots+\\lambda_ny_n^2,\\qquad x=Qy'];
+const eq = G.formulas(document.getElementById('eq'), F);
+function level(l1, l2, sgn) { // 主轴坐标中 l1 u^2 + l2 w^2 = sgn 的曲线分支
+  const out = [], c = Math.cos(PH), s = Math.sin(PH), R = (u, w) => [c * u - s * w, s * u + c * w];
+  if (l1 > 0 && l2 > 0) { const a = 1 / Math.sqrt(l1), b = 1 / Math.sqrt(l2); out.push([...Array(181)].map((_, i) => { const t = i * Math.PI / 90; return R(a * Math.cos(t), b * Math.sin(t)) })); return out }
+  const pos = l1 > 0 ? 0 : 1, lp = Math.abs(pos ? l2 : l1), ln = Math.abs(pos ? l1 : l2), a = 1 / Math.sqrt(lp), b = 1 / Math.sqrt(ln);
+  for (const sg of [1, -1]) out.push([...Array(121)].map((_, i) => { const t = -1.9 + 3.8 * i / 120; const u = sg * a * Math.cosh(t), w = b * Math.sinh(t); return pos ? R(w, u) : R(u, w) }));
+  return out;
+}
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h);
+  if (S.playing) { S.ph += dt * 0.55; const c = (1 - Math.cos(S.ph)) / 2; S.phiT = PH * Math.min(1, c * 1.2); sl.value = Math.round(S.phiT / PH * 1000) }
+  let mv = P.approach(S, 'phi', S.phiT, dt, 9); mv = P.approach(S, 'lam', S.lamT, dt, 6) || mv;
+  const c = Math.cos(PH), s = Math.sin(PH);
+  G.fullLine(ctx, v, [c, s], { color: C.blue, alpha: .4, dash: [6, 5] }); G.fullLine(ctx, v, [-s, c], { color: C.blue, alpha: .4, dash: [6, 5] });
+  const [l1, l2] = S.lam;
+  for (const br of level(l1, l2, 1)) P.path(ctx, br.map(v.S), { color: C.accent, width: 2.4 });
+  const on = Math.abs(S.phi - PH) < 0.004, f1 = [Math.cos(S.phi), Math.sin(S.phi)], f2 = [-f1[1], f1[0]];
+  G.fullLine(ctx, v, f1, { color: C.warm, alpha: on ? .5 : .28, width: 1 }); G.fullLine(ctx, v, f2, { color: C.warm, alpha: on ? .5 : .28, width: 1 });
+  G.arrow(ctx, v, [0, 0], G.mul(1.5, f1), { color: C.warm, width: 2.2 }); G.arrow(ctx, v, [0, 0], G.mul(1.5, f2), { color: C.warm, width: 2.2 });
+  const a = v.S(G.mul(1.5, f1)), b = v.S(G.mul(1.5, f2)); lab.set('y1', 'y_1', a[0], a[1], { dx: 12, dy: 10, color: C.warm }); lab.set('y2', 'y_2', b[0], b[1], { dx: -14, dy: -4, color: C.warm }); lab.end();
+  eq(on ? F[1] : F[0]);
+  return mv || S.playing;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

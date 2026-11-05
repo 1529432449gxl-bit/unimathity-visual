@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solid of revolution</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px;cursor:grab}.stage canvas:active{cursor:grabbing}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="disk" aria-pressed="true"></button><button type="button" data-m="shell" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="450" aria-label="slice position"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="solid of revolution with a disk or a cylindrical shell element"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const A = 0.6, B = 3.4;
+const f = x => 0.75 + 0.42 * Math.sin(1.5 * x - 0.5) + 0.12 * x;
+const btns = [...document.querySelectorAll('#mode button')];
+K(btns[0], '\\text{about the }x\\text{-axis}'); K(btns[1], '\\text{about the }y\\text{-axis}');
+for (const [t, c] of [['y=f(x)', C.accent], ['\\mathrm dV', C.warm]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+const EQ = { disk: '\\mathrm dV=\\pi f(x)^2\\,\\mathrm dx,\\qquad V=\\pi\\int_a^b f(x)^2\\,\\mathrm dx',
+             shell: '\\mathrm dV=2\\pi x f(x)\\,\\mathrm dx,\\qquad V=2\\pi\\int_a^b x f(x)\\,\\mathrm dx' };
+const eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+{ let m = 0; for (const k in EQ) { K(eqEl, EQ[k], 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; }
+const sl = document.getElementById('s'), btn = document.getElementById('play'), stage = document.getElementById('stage'), canvas = document.getElementById('cv');
+const S = { m: 'disk', phi: 0, x: 0, xT: 0, az: -0.55, el: 0.42, playing: false, dir: 1, drag: null };
+const xOf = s => A + 0.04 + (B - A - 0.08) * s / 1000;
+S.x = S.xT = xOf(+sl.value);
+const lab = P.labels(stage);
+// 三维点 (x, y, z)：y 向上；绕 x 轴时 z 为纵深
+function proj(p, w, h, M) {
+  const ca = Math.cos(S.az), sa = Math.sin(S.az), ce = Math.cos(S.el), se = Math.sin(S.el);
+  const x1 = p[0] * ca + p[2] * sa, z1 = -p[0] * sa + p[2] * ca;
+  const y1 = p[1] * ce - z1 * se, d = p[1] * se + z1 * ce;
+  return [M.ox + M.sc * x1, M.oy - M.sc * y1, d];
+}
+function setMode(m) { S.m = m; btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m))); K(eqEl, EQ[m], 1); S.phi = 0; S.az = m === 'disk' ? -0.55 : -0.35; S.el = m === 'disk' ? 0.42 : 0.32; cv.kick(); }
+btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+K(eqEl, EQ.disk, 1);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (S.playing) { S.xT += S.dir * 0.7 * dt; if (S.xT > B - 0.05) { S.xT = B - 0.05; S.dir = -1 } if (S.xT < A + 0.05) { S.xT = A + 0.05; S.dir = 1 } sl.value = (S.xT - A - 0.04) / (B - A - 0.08) * 1000; }
+  let moving = P.approach(S, 'x', S.xT, dt, 10);
+  // 旋转生成：phi 从 0 增加到 2π
+  if (S.phi < 2 * Math.PI) { S.phi = Math.min(2 * Math.PI, S.phi + 2.6 * dt); moving = true }
+  const disk = S.m === 'disk', x0 = S.x, dx = 0.12;
+  K(document.getElementById('lab'), `x=${x0.toFixed(2)}`);
+  let M;
+  if (disk) { const sc = Math.min(w / 4.4, h / 3.7), xm = (A + B) / 2, ca = Math.cos(S.az), sa = Math.sin(S.az), se = Math.sin(S.el);
+    M = { sc, ox: w / 2 - sc * xm * ca, oy: h / 2 + sc * (xm * sa * se) }; }
+  else M = { sc: Math.min(w / 8.0, h / 3.6), ox: w * 0.5, oy: h * 0.74 };
+  const Q = p => proj(p, w, h, M);
+  // 生成点：绕 x 轴 (x, f cosφ, f sinφ)；绕 y 轴 (x cosφ, f, x sinφ)
+  const pt = (x, y, ph) => disk ? [x, y * Math.cos(ph), y * Math.sin(ph)] : [x * Math.cos(ph), y, x * Math.sin(ph)];
+  // 坐标轴
+  const axis = disk ? [[-0.2, 0, 0], [B + 0.6, 0, 0]] : [[0, -0.15, 0], [0, 2.3, 0]];
+  P.path(ctx, axis.map(Q).map(q => [q[0], q[1]]), { color: C.mute, width: 1.2, dash: [5, 4] });
+  // 母线所在平面上的平面区域（φ=0）
+  const n = 120, xs = []; for (let i = 0; i <= n; i++) xs.push(A + (B - A) * i / n);
+  const topL = xs.map(x => Q(pt(x, f(x), 0))), baseL = xs.map(x => Q(disk ? pt(x, 0, 0) : [x, 0, 0]));
+  P.fill(ctx, topL.map(q => [q[0], q[1]]), baseL.map(q => [q[0], q[1]]), C.accent, .1);
+  // 曲面线框：子午线与纬线，前面的更实
+  const phis = []; for (let k = 0; k < 24; k++) phis.push(k * Math.PI / 12);
+  for (const ph of phis) { if (ph > S.phi + 1e-6) continue;
+    const ln = xs.map(x => Q(pt(x, f(x), ph))), dep = ln[n >> 1][2];
+    P.path(ctx, ln.map(q => [q[0], q[1]]), { color: C.accent, width: 1, alpha: dep > 0 ? .16 : .38 }) }
+  for (let j = 0; j <= 10; j++) { const x = A + (B - A) * j / 10, ring = [];
+    for (let k = 0; k <= 72; k++) { const ph = S.phi * k / 72; ring.push(Q(pt(x, f(x), ph))) }
+    P.path(ctx, ring.map(q => [q[0], q[1]]), { color: C.accent, width: 1, alpha: .28 }) }
+  // 当前母线
+  P.path(ctx, xs.map(x => Q(pt(x, f(x), S.phi))).map(q => [q[0], q[1]]), { color: C.accent, width: 2.4 });
+  P.path(ctx, topL.map(q => [q[0], q[1]]), { color: C.accent, width: 2.4, alpha: .55 });
+  // 体积微元
+  const ready = S.phi >= 2 * Math.PI - 1e-6, ea = ready ? 1 : 0;
+  if (ready) {
+    ctx.save(); ctx.globalAlpha = ea;
+    if (disk) {
+      const r = f(x0), c1 = [], c2 = [];
+      for (let k = 0; k <= 72; k++) { const ph = 2 * Math.PI * k / 72; c1.push(Q(pt(x0 - dx / 2, r, ph))); c2.push(Q(pt(x0 + dx / 2, r, ph))) }
+      ctx.fillStyle = P.rgba(C.warm, .45); ctx.beginPath(); c2.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = P.rgba(C.warm, .3); ctx.beginPath(); c1.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill();
+      P.path(ctx, c1.map(q => [q[0], q[1]]), { color: C.warm, width: 1.2 }); P.path(ctx, c2.map(q => [q[0], q[1]]), { color: C.warm, width: 1.6 });
+      const cen = Q([x0 + dx / 2, 0, 0]), rim = Q(pt(x0 + dx / 2, r, Math.PI / 2 + 0.0));
+      P.path(ctx, [[cen[0], cen[1]], [rim[0], rim[1]]], { color: C.warm, width: 1.4 });
+      lab.set('r', 'f(x)', (cen[0] + rim[0]) / 2, (cen[1] + rim[1]) / 2, { dx: 22, color: C.warm, size: 13 });
+    } else {
+      // 柱壳：半径 x0、厚 dx、高 f(x0)
+      const H = f(x0), bot = [], topc = [], bot2 = [], top2 = [];
+      for (let k = 0; k <= 72; k++) { const ph = 2 * Math.PI * k / 72; bot.push(Q([x0 * Math.cos(ph), 0, x0 * Math.sin(ph)])); topc.push(Q([x0 * Math.cos(ph), H, x0 * Math.sin(ph)])) }
+      // 侧面按小块填充，前面的块更实
+      for (let k = 0; k < 72; k++) { const dep = (topc[k][2] + topc[k + 1][2]) / 2;
+        ctx.fillStyle = P.rgba(C.warm, dep < 0 ? .34 : .12); ctx.beginPath(); ctx.moveTo(topc[k][0], topc[k][1]); ctx.lineTo(topc[k + 1][0], topc[k + 1][1]); ctx.lineTo(bot[k + 1][0], bot[k + 1][1]); ctx.lineTo(bot[k][0], bot[k][1]); ctx.closePath(); ctx.fill(); }
+      P.path(ctx, topc.map(q => [q[0], q[1]]), { color: C.warm, width: 1.6 }); P.path(ctx, bot.map(q => [q[0], q[1]]), { color: C.warm, width: 1.2, alpha: .8 });
+      const s0 = Q([x0, 0, 0]), s1 = Q([x0, H, 0]); P.path(ctx, [[s0[0], s0[1]], [s1[0], s1[1]]], { color: C.warm, width: 1.6 });
+      const o = Q([0, 0, 0]); P.path(ctx, [[o[0], o[1]], [s0[0], s0[1]]], { color: C.warm, width: 1.4, dash: [3, 3] });
+      lab.set('r', 'x', (o[0] + s0[0]) / 2, (o[1] + s0[1]) / 2, { dy: 12, color: C.warm, size: 13 });
+      lab.set('hh', 'f(x)', s1[0], (s0[1] + s1[1]) / 2, { dx: 24, color: C.warm, size: 13 });
+    }
+    ctx.restore();
+  }
+  lab.end();
+  return moving || S.playing || !!S.drag;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => setPlay(!S.playing));
+sl.addEventListener('input', () => { setPlay(false); S.xT = xOf(+sl.value); cv.kick() });
+// 拖动画布旋转视角
+canvas.addEventListener('pointerdown', e => { S.drag = [e.clientX, e.clientY, S.az, S.el]; canvas.setPointerCapture(e.pointerId); cv.kick() });
+canvas.addEventListener('pointermove', e => { if (!S.drag) return; S.az = S.drag[2] + (e.clientX - S.drag[0]) * 0.008; S.el = P.clamp(S.drag[3] + (e.clientY - S.drag[1]) * 0.006, -0.1, 1.2); cv.kick() });
+const up = () => { S.drag = null; cv.kick() }; canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

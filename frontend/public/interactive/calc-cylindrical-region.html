@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cylindrical coordinates</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="r" type="range" min="0" max="1000" step="1" value="300" aria-label="radius"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Cylindrical coordinates"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const R = 1.2, H = 1.4, T0 = 4.7, dr = 0.24, dth = 0.45, dz = 0.36, th1 = 0.55, z1 = 0.7;
+const sl = document.getElementById('r'), btn = document.getElementById('play');
+const S = { r: 0.5, target: 0.5, playing: true, dir: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['r=R', C.accent], ['\\theta=\\text{const}', C.blue], ['\\mathrm dV=r\\,\\mathrm dr\\,\\mathrm d\\theta\\,\\mathrm dz', C.warm]]);
+K(eqEl, '\\iiint_\\Omega f\\,\\mathrm dV=\\iiint f(r\\cos\\theta,r\\sin\\theta,z)\\,r\\,\\mathrm dr\\,\\mathrm d\\theta\\,\\mathrm dz', 1);
+const cam = V.camera({ az: -0.45, el: 0.42 }); const drg = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const cy = (r, t, z) => [r * Math.cos(t), r * Math.sin(t), z];
+const region = [
+  { quads: V.mesh((t, z) => cy(R, t, z), 0, T0, 0, H, 30, 4), color: C.accent, alpha: .12, edge: .08 },
+  { quads: V.mesh((r, t) => cy(r, t, H), 0.001, R, 0, T0, 3, 30), color: C.accent, alpha: .07 },
+  { quads: V.mesh((r, t) => cy(r, t, 0), 0.001, R, 0, T0, 3, 30), color: C.accent, alpha: .07 },
+  { quads: V.mesh((r, z) => cy(r, 0, z), 0, R, 0, H, 2, 2), color: C.blue, alpha: .12 },
+  { quads: V.mesh((r, z) => cy(r, T0, z), 0, R, 0, H, 2, 2), color: C.blue, alpha: .12 }];
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.6, h / 3.0); cam.ox = w / 2; cam.oy = h * 0.66;
+  if (S.playing) { S.target += S.dir * 0.35 * dt; if (S.target > R - dr - .02) { S.target = R - dr - .02; S.dir = -1 } if (S.target < .12) { S.target = .12; S.dir = 1 } sl.value = (S.target - .12) / (R - dr - .14) * 1000 }
+  const mv = P.approach(S, 'r', S.target, dt, 9), r = S.r;
+  K(document.getElementById('lab'), `r=${r.toFixed(2)}`);
+  const box = [
+    { quads: V.mesh((t, z) => cy(r, t, z), th1, th1 + dth, z1, z1 + dz, 4, 1), color: C.warm, alpha: .5 },
+    { quads: V.mesh((t, z) => cy(r + dr, t, z), th1, th1 + dth, z1, z1 + dz, 4, 1), color: C.warm, alpha: .5 },
+    { quads: V.mesh((q, t) => cy(q, t, z1), r, r + dr, th1, th1 + dth, 1, 4), color: C.warm, alpha: .5 },
+    { quads: V.mesh((q, t) => cy(q, t, z1 + dz), r, r + dr, th1, th1 + dth, 1, 4), color: C.warm, alpha: .5 },
+    { quads: V.mesh((q, z) => cy(q, th1, z), r, r + dr, z1, z1 + dz, 1, 1), color: C.warm, alpha: .5 },
+    { quads: V.mesh((q, z) => cy(q, th1 + dth, z), r, r + dr, z1, z1 + dz, 1, 1), color: C.warm, alpha: .5 }];
+  V.axes(ctx, cam, [1.7, 1.7, 1.9], { alpha: .45 });
+  V.paint(ctx, cam, region.concat(box));
+  // 小块的三条棱
+  const arc = []; for (let i = 0; i <= 12; i++) arc.push(cy(r + dr, th1 + dth * i / 12, z1));
+  V.line(ctx, cam, arc, { color: C.warm, width: 2.6 });
+  V.line(ctx, cam, [cy(r, th1, z1), cy(r + dr, th1, z1)], { color: C.accent, width: 2.6 });
+  V.line(ctx, cam, [cy(r + dr, th1, z1), cy(r + dr, th1, z1 + dz)], { color: C.blue, width: 2.6 });
+  V.line(ctx, cam, [[0, 0, z1], cy(r, th1, z1)], { color: C.mute, width: 1, dash: [3, 4] });
+  const a = cam.P(cy(r + dr + .1, th1 + dth / 2, z1)), b = cam.P(cy(r + dr / 2, th1, z1)), c2 = cam.P(cy(r + dr, th1, z1 + dz / 2));
+  lab.set('a', 'r\\,\\mathrm d\\theta', a[0], a[1], { dx: 18, dy: 6, color: C.warm, size: 13 }); lab.set('b', '\\mathrm dr', b[0], b[1], { dy: 13, color: C.accent, size: 13 }); lab.set('c', '\\mathrm dz', c2[0], c2[1], { dx: -16, color: C.blue, size: 13 });
+  lab.end(); return mv || S.playing || drg.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = .12 + (R - dr - .14) * +sl.value / 1000; cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

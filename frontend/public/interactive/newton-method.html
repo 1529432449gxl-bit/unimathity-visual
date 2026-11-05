@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>牛顿法切线迭代</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="x0" type="range" min="2.4" max="4.2" step="0.01" value="3.6" aria-label="初值"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="牛顿法切线迭代"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const f = x => x ** 3 - 2 * x - 5, df = x => 3 * x * x - 2, ROOT = 2.0945514815423265, N = 4;
+const sl = document.getElementById('x0'), fx = document.getElementById('fx');
+let xs = [];
+const build = () => { xs = [+sl.value]; for (let k = 0; k < N; k++) { const x = xs[k]; xs.push(x - f(x) / df(x)) } };
+const v = P.view([1.6, 4.4, -12, 70], { l: 16, r: 16, t: 18, b: 28 });
+// 第 i 步的镜头：同时框住 x_{i-1}、x_i 与曲线上的点，越收敛镜头越近
+function frameFor(i) {
+  const a = xs[Math.max(0, i - 1)], b = xs[i], lo = Math.min(a, b, i ? b : ROOT), hi = Math.max(a, b);
+  const span = Math.max(hi - lo, 2e-4), x0 = lo - span * .7, x1 = hi + span * .3;
+  let y0 = 0, y1 = 0; for (let k = 0; k <= 40; k++) { const y = f(x0 + (x1 - x0) * k / 40); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
+  const yr = y1 - y0 || 1; return [x0, x1, y0 - yr * .12, y1 + yr * .2];
+}
+const fmt = x => x.toFixed(6);
+function formula(i) {
+  fx.innerHTML = '<div></div><div></div>';
+  K(fx.children[0], 'f(x)=x^3-2x-5,\\qquad x_{k+1}=x_k-\\dfrac{f(x_k)}{f\'(x_k)}', true);
+  K(fx.children[1], i === 0 ? `x_0=${fmt(xs[0])}` : `x_{${i}}=${fmt(xs[i - 1])}-\\dfrac{${f(xs[i - 1]).toFixed(5)}}{${df(xs[i - 1]).toFixed(5)}}=${fmt(xs[i])}`, true);
+}
+const lab = P.labels(document.getElementById('stage'));
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; const moving = st.tick(dt), cam = v.step(dt, 3.2);
+  const i = st.i, p = st.p;
+  P.axes(ctx, v, { x: true });
+  P.path(ctx, P.curve(v, f), { color: C.accent, width: 2.4 });
+  const ax = x => [v.X(x), v.Y(0)], on = x => [v.X(x), v.Y(f(x))];
+  // 已完成的步：淡色切线与竖线
+  for (let k = 1; k < i; k++) {
+    const age = (i - k) / i;
+    P.path(ctx, [ax(xs[k - 1]), on(xs[k - 1])], { color: C.mute, width: 1, alpha: .35 * (1 - age * .6), dash: [3, 4] });
+    P.path(ctx, [on(xs[k - 1]), ax(xs[k])], { color: C.warm, width: 1.4, alpha: .45 * (1 - age * .6) });
+    P.dot(ctx, ...ax(xs[k - 1]), { r: 3, color: C.mute, alpha: .6 });
+  }
+  if (i === 0) { P.dot(ctx, ...ax(xs[0]), { r: 4.5, color: C.warm, scale: P.ease.back(P.seg(p, 0, .4)) }); lab.set('x0', 'x_0', ...ax(xs[0]), { dy: 16, color: C.warm }) }
+  else {
+    const a = xs[i - 1], b = xs[i], pa = P.ease.inOut(P.seg(p, 0, .28)), pb = P.ease.inOut(P.seg(p, .28, .78)), pc = P.seg(p, .72, 1);
+    P.dot(ctx, ...ax(a), { r: 3.5, color: C.mute });
+    P.path(ctx, [ax(a), on(a)], { color: C.mute, width: 1.2, dash: [3, 4], progress: pa });
+    P.dot(ctx, ...on(a), { r: 4.5, color: C.accent, scale: P.ease.back(P.seg(p, .18, .4)) });
+    // 切线：从曲线上的点画向 x 轴，再略越过
+    const s = df(a), t0 = a + (a - b) * .35, t1 = b - (a - b) * .25;
+    P.path(ctx, [on(a), ax(b)], { color: C.warm, width: 2.2, progress: pb });
+    P.path(ctx, [[v.X(t0), v.Y(f(a) + s * (t0 - a))], on(a)], { color: C.warm, width: 1.4, alpha: .5 * pb });
+    P.path(ctx, [ax(b), [v.X(t1), v.Y(f(a) + s * (t1 - a))]], { color: C.warm, width: 1.4, alpha: .5 * pc });
+    P.dot(ctx, ...ax(b), { r: 4.5, color: C.warm, scale: P.ease.back(pc) });
+    lab.set('a', `x_{${i - 1}}`, ...ax(a), { dy: 16, color: C.soft });
+    lab.set('b', `x_{${i}}`, ...ax(b), { dy: 16, color: C.warm, alpha: pc });
+  }
+  // 角落小地图：整条曲线 + 当前镜头框，放大后仍知道身在何处
+  const zoomed = (v.b[1] - v.b[0]) < 1.6;
+  if (zoomed) {
+    const W = Math.min(150, w * .3), H = W * .62, ox = 14, oy = 10, B = [1.6, 4.4, -12, 70];
+    const mx = x => ox + (x - B[0]) / (B[1] - B[0]) * W, my = y => oy + (B[3] - y) / (B[3] - B[2]) * H;
+    ctx.save(); ctx.fillStyle = 'rgba(251,251,250,.92)'; ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(ox - 4, oy - 4, W + 8, H + 8, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(ox, oy, W, H); ctx.clip();
+    P.path(ctx, [[ox, my(0)], [ox + W, my(0)]], { color: C.rule, width: 1 });
+    const pts = []; for (let k = 0; k <= 80; k++) { const x = B[0] + (B[1] - B[0]) * k / 80; pts.push([mx(x), my(f(x))]) }
+    P.path(ctx, pts, { color: C.accent, width: 1.4 });
+    for (let k = 0; k <= i; k++) P.dot(ctx, mx(xs[k]), my(0), { r: 2, color: k === i ? C.warm : C.mute, ring: false });
+    ctx.strokeStyle = C.hl; ctx.lineWidth = 1.2; const rx0 = mx(v.b[0]), rx1 = mx(v.b[1]);
+    ctx.strokeRect(rx0, Math.max(oy, my(v.b[3])), Math.max(2, rx1 - rx0), Math.max(2, Math.min(oy + H, my(v.b[2])) - Math.max(oy, my(v.b[3]))));
+    ctx.restore();
+  }
+  lab.end();
+  return moving || cam;
+});
+st = P.stepper(document.getElementById('nav'), { count: N + 1, dur: 1.9, hold: .7, kick: cv.kick, onChange: s => { v.aim(frameFor(s.i)); formula(s.i) } });
+const wide = () => [1.6, 4.4, -12, Math.max(70, f(+sl.value) * 1.15)];
+function reset(snap) { build(); K(document.getElementById('lab'), `x_0=${(+sl.value).toFixed(2)}`); st.stop(); st.go(0, true); v.aim(wide(), snap) }
+st.go = (orig => (i, a) => { orig(i, a); if (st.i === 0) v.aim(wide()) })(st.go);
+sl.addEventListener('input', () => reset(false));
+reset(true);
+// 预排所有步骤的公式，锁定公式区高度，播放时界面不跳
+{ let m = 0; for (let i = 0; i <= N; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } fx.style.minHeight = Math.ceil(m) + 'px'; formula(st.i) }
+P.reportHeight(document.querySelector('main'));
+window.newtonTrace = () => xs.slice();
+</script></body></html>

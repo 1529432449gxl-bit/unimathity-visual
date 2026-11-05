@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>最佳平方逼近的逼近过程</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/morph.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}main{padding:8px 2px}.controls{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}.controls .n{flex:none;min-width:58px}.controls input{flex:1;min-width:140px;accent-color:#223056;min-height:30px}button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:4px 12px;background:transparent;cursor:pointer}.legend{display:flex;gap:18px;flex:none}.key:before{content:"";display:inline-block;width:20px;border-top:2.4px solid var(--c);margin:0 6px 4px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cell{position:relative;border:1px solid #e3e4e8;border-radius:6px;background:#fff}.cell .lab{position:absolute;left:8px;top:4px;font-size:15px;pointer-events:none}canvas{display:block;width:100%;height:190px}button:focus-visible,input:focus-visible{outline:2px solid #223056;outline-offset:3px}@media(max-width:480px){.grid{grid-template-columns:1fr}canvas{height:170px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="nlab"></span><input id="deg" type="range" min="0" max="14" step="1" value="2" aria-label="逼近次数"><button id="play" type="button">Play</button><span class="legend"><span class="key" style="--c:#223056" id="kf"></span><span class="key" style="--c:#ad6844" id="ks"></span></span></div>
+<div class="grid" id="grid"></div>
+</main>
+<script>
+const T=(el,s)=>katex.render(s,el,{throwOnError:false});
+const F=[
+ {tex:'e^{x}',f:x=>Math.exp(x)},
+ {tex:'|x|',f:x=>Math.abs(x)},
+ {tex:'\\operatorname{sgn}x',f:x=>Math.sign(x)},
+ {tex:'\\dfrac{1}{1+25x^2}',f:x=>1/(1+25*x*x)}];
+const N=14,GX=[-0.8611363115940526,-0.3399810435848563,0.3399810435848563,0.8611363115940526],GW=[0.3478548451374538,0.6521451548625461,0.6521451548625461,0.3478548451374538];
+const QX=[],QW=[];{const M=400,h=2/M;for(let j=0;j<M;j++){const c=-1+(j+.5)*h;for(let k=0;k<4;k++){QX.push(c+GX[k]*h/2);QW.push(GW[k]*h/2)}}}
+const legAll=(x,n)=>{const p=[1,x];for(let k=1;k<n;k++)p.push(((2*k+1)*x*p[k]-k*p[k-1])/(k+1));return p};
+const PX=Array.from({length:801},(_,i)=>-1+2*i/800);
+F.forEach(o=>{const a=Array(N+1).fill(0);QX.forEach((x,i)=>{const p=legAll(x,N),v=QW[i]*o.f(x);for(let k=0;k<=N;k++)a[k]+=v*p[k]});o.c=a.map((s,k)=>s*(2*k+1)/2);
+ const ys=PX.map(o.f),lo=Math.min(...ys),hi=Math.max(...ys),pd=(hi-lo)*.3;o.B=[lo-pd,hi+pd];o.ev=(x,n)=>{const p=legAll(x,Math.max(n,1));let s=0;for(let k=0;k<=n;k++)s+=o.c[k]*p[k];return s}});
+const grid=document.getElementById('grid');
+F.forEach(o=>{const cell=document.createElement('div');cell.className='cell';const lab=document.createElement('div');lab.className='lab';T(lab,'f(x)='+o.tex);o.cv=document.createElement('canvas');o.cv.setAttribute('role','img');cell.append(o.cv,lab);grid.appendChild(cell)});
+function draw(o,n){const cv=o.cv,r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=Math.round(w*d);cv.height=Math.round(h*d);const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.lineJoin=c.lineCap='round';const B=o.B,pad={l:8,r:8,t:8,b:18},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,X=x=>pad.l+(x+1)*pw/2,Y=y=>pad.t+(B[1]-y)*ph/(B[1]-B[0]);
+ c.clearRect(0,0,w,h);c.font='10px "Microsoft YaHei",sans-serif';c.fillStyle='#7a7c84';c.textAlign='center';for(const x of[-1,0,1])c.fillText(String(x),X(x)+(x===-1?6:x===1?-6:0),h-5);
+ c.strokeStyle='#d5d7dd';c.lineWidth=1;if(B[0]<0&&B[1]>0){c.beginPath();c.moveTo(X(-1),Y(0));c.lineTo(X(1),Y(0));c.stroke()}c.beginPath();c.moveTo(X(0),pad.t);c.lineTo(X(0),pad.t+ph);c.stroke();
+ c.save();c.beginPath();c.rect(0,pad.t,w,ph);c.clip();
+ const L=(fn,col,wd,key)=>{const ys=key?Morph.v(key,PX.map(fn)):PX.map(fn);c.beginPath();PX.forEach((x,i)=>{const y=ys[i];i?c.lineTo(X(x),Y(y)):c.moveTo(X(x),Y(y))});c.strokeStyle=col;c.lineWidth=wd;c.stroke()};
+ L(o.f,'#223056',2.4);L(x=>o.ev(x,n),'#ad6844',2.2,o.tex);c.restore()}
+const deg=document.getElementById('deg'),nlab=document.getElementById('nlab');
+function frame(){const n=+deg.value;F.forEach(o=>{draw(o,n);o.cv.setAttribute('aria-label',`f(x)=${o.tex} 的 ${n} 次最佳平方逼近`)})}
+const kick=Morph.bind(frame);function render(){T(nlab,'n='+(+deg.value));kick()}
+T(document.getElementById('kf'),'f(x)');T(document.getElementById('ks'),'S_n^*(x)');
+let timer=null;const play=document.getElementById('play');function stop(){clearInterval(timer);timer=null;play.textContent='Play'}
+play.onclick=()=>{if(timer){stop();return}if(+deg.value>=N)deg.value=0;play.textContent='Pause';render();timer=setInterval(()=>{if(+deg.value>=N){stop();return}deg.value=+deg.value+1;render()},800)};
+deg.addEventListener('input',()=>{stop();render()});document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(frame).observe(grid);render();
+window.approxErr=n=>F.map(o=>{let s=0;QX.forEach((x,i)=>{const e=o.f(x)-o.ev(x,n);s+=QW[i]*e*e});return Math.sqrt(s)});
+</script></body></html>

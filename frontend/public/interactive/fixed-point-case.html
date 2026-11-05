@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>不动点迭代</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>body{background:#fff!important}main{padding:8px 6px 8px!important}canvas{height:250px!important}.nav{gap:6px!important}.nav button{width:38px!important;height:32px!important;font-size:15px!important}.nav button.play{width:auto!important;font-size:13px!important}.controls{gap:8px!important}.fx{font-size:14px!important;min-height:30px!important}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="x0" type="range" step="0.01" aria-label="初值"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="不动点迭代的蛛网图"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+// 四种情形都用弯曲的 g；两种发散情形的初值放在另一个不动点附近
+const CASES = {
+  'stair-converge':  { tex: "0<g'(x^*)<1",  g: x => (x * x + 6) / 5, x0: .4,  min: .3,   max: 1.5, b: [.25, 2.2, .25, 2.2], fp: 2 },
+  'spiral-converge': { tex: "-1<g'(x^*)<0", g: Math.cos,              x0: .25, min: .2,   max: .45, b: [.15, 1.05, .15, 1.05], fp: .7390851332 },
+  'stair-diverge':   { tex: "g'(x^*)>1",    g: x => (x * x + 6) / 5, x0: 3.2, min: 3.05, max: 3.4, b: [1.5, 5.2, 1.5, 5.2], fp: 3 },
+  'spiral-diverge':  { tex: "g'(x^*)<-1",   g: x => 3 - .3 * x * x,  x0: 2.05, min: 1.95, max: 2.2, b: [1.1, 2.75, 1.1, 2.75], fp: 1.9079 },
+};
+const c = CASES[new URLSearchParams(location.search).get('case')] || CASES['stair-converge'], N = 8;
+const sl = document.getElementById('x0'); sl.min = c.min; sl.max = c.max; sl.value = c.x0;
+let xs = []; const build = () => { xs = [+sl.value]; for (let k = 0; k < N; k++) xs.push(c.g(xs[k])) };
+const v = P.view(c.b, { l: 12, r: 12, t: 12, b: 12 }), fx = document.getElementById('fx'), lab = P.labels(document.getElementById('stage'));
+const inside = x => x > c.b[0] - .5 && x < c.b[1] + .5;
+let st; const S = { map: 0 };
+// 第 i 步镜头：框住当前蛛网段与不动点，收敛时逐步放大，发散时拉远（不超过初始视窗）
+function frameFor(i) {
+  if (i === 0) return c.b.slice();
+  const a = xs[i - 1], b = xs[i], lo = Math.min(a, b, c.fp), hi = Math.max(a, b, c.fp, c.g(a)), L = Math.min(c.b[1] - c.b[0], Math.max(hi - lo, 1e-3) * 1.6), m = (lo + hi) / 2;
+  let x0 = m - L / 2; x0 = Math.max(c.b[0], Math.min(c.b[1] - L, x0)); return [x0, x0 + L, x0, x0 + L];
+}
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const side = Math.min(w, h); v.w = w; v.h = h; const sx = (w - side) / 2;
+  v.pad = { l: 12 + sx, r: 12 + sx, t: 12, b: 12 };
+  const moving = st.tick(dt), cam = v.step(dt, 3), i = st.i, p = st.p, S = (x, y) => [v.X(x), v.Y(y)];
+  ctx.save(); ctx.beginPath(); ctx.rect(v.pad.l - 2, 10, w - v.pad.l - v.pad.r + 4, h - 20); ctx.clip();
+  P.path(ctx, [S(c.b[0], c.b[0]), S(c.b[1], c.b[1])], { color: C.mute, width: 1, alpha: .7 });
+  P.path(ctx, P.curve(v, c.g), { color: C.accent, width: 2.4 });
+  P.dot(ctx, ...S(c.fp, c.fp), { r: 3, color: C.ink, alpha: .5, ring: false });
+  // 蛛网：完成的段按年龄淡出，当前段先竖后横逐段画出
+  for (let k = 1; k <= i; k++) {
+    const a = xs[k - 1], b = xs[k]; if (!inside(a) || !inside(b)) break;
+    const cur = k === i, age = (i - k) / Math.max(1, N), al = cur ? 1 : .25 + .55 * (1 - age);
+    const pv = cur ? P.ease.inOut(P.seg(p, 0, .5)) : 1, ph = cur ? P.ease.inOut(P.seg(p, .45, 1)) : 1;
+    P.path(ctx, [S(a, a), S(a, b)], { color: C.warm, width: cur ? 2 : 1.4, alpha: al, progress: pv });
+    P.path(ctx, [S(a, b), S(b, b)], { color: C.warm, width: cur ? 2 : 1.4, alpha: al, progress: ph });
+    if (cur) P.dot(ctx, ...S(a, b), { r: 3.5, color: C.accent, scale: P.ease.back(P.seg(p, .35, .6)) });
+  }
+  const last = xs[i];
+  if (inside(last)) P.dot(ctx, ...S(last, last), { r: 4.2, color: C.warm, scale: i ? P.ease.back(P.seg(p, .8, 1)) : 1 });
+  ctx.restore();
+  const mapMoving = P.approach(S, 'map', (c.b[1] - c.b[0]) / (v.b[1] - v.b[0]) > 2 ? 1 : 0, dt, 5);
+  P.minimap(ctx, v, { B: c.b, alpha: S.map, aspect: 1, frac: .26, paint: (mx, my, cx) => {
+    P.path(cx, [[mx(c.b[0]), my(c.b[0])], [mx(c.b[1]), my(c.b[1])]], { color: C.mute, width: 1 }); P.mapCurve(cx, mx, my, c.g, c.b[0], c.b[1], { width: 1.2 });
+    for (let k = 1; k <= i; k++) { const a = xs[k - 1], b = xs[k]; P.path(cx, [[mx(a), my(a)], [mx(a), my(b)], [mx(b), my(b)]], { color: C.warm, width: .8, alpha: .7 }) } } });
+  lab.set('case', c.tex, w - v.pad.r - 46, h - 24, { color: C.soft, size: 13 }); lab.end();
+  return moving || cam || mapMoving;
+});
+const show = i => { K(fx, `x_{${i}}=${xs[i].toFixed(5)}`) };
+st = P.stepper(document.getElementById('nav'), { count: N + 1, dur: 1.1, hold: .35, kick: cv.kick, onChange: s => { show(s.i); v.aim(frameFor(s.i)) } });
+const reset = () => { build(); K(document.getElementById('lab'), `x_0=${(+sl.value).toFixed(2)}`); st.stop(); st.go(0, false); v.aim(c.b, true) };
+sl.addEventListener('input', reset); reset();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Block elimination</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const cong=new URLSearchParams(location.search).get('mode')==='cong';
+const Ct=cong?"B^{\\prime}":'C';
+const I2=[['E','O'],['O','E']];
+const F=(key,cells,tint,label='')=>({key,cells,tint,label});
+const mul={key:'dot1',sym:'\\,'}, mul2={key:'dot2',sym:'\\,'}, eq={key:'eq',sym:'='};
+const M0=[['A','B'],[Ct,'D']], S=cong?"D-B^{\\prime}A^{-1}B":'D-CA^{-1}B';
+const Lf=[['E','O'],[`-${Ct}A^{-1}`,'E']], Rf=[['E','-A^{-1}B'],['O','E']];
+const tL=[['',''],['k2','']], tR=[['','k2'],['','']];
+const row=(l,m,r,res,tl,tr,tres)=>[F('L',l,tl,cong&&l!==I2?"P^{\\prime}":''),mul,F('M',m,null),mul2,F('R',r,tr,cong&&r!==I2?'P':''),eq,F('X',res,tres)];
+const steps=[];
+if(!cong){
+ steps.push({mats:row(I2,M0,I2,M0),hi:[['M',0,0,'s']],lines:['A\\ \\text{invertible}']});
+ steps.push({mats:row(Lf,M0,I2,M0,tL),hi:[['L',1,0,'t'],['M',0,0,'s'],['M',1,0,'t']],lines:['\\text{block row }2\\quad -\\quad CA^{-1}\\cdot\\text{block row }1']});
+ steps.push({mats:row(Lf,M0,I2,[['A','B'],['O',S]],tL,null,[['',''],['','k3']]),hi:[['X',1,0,'p'],['X',1,1,'t']],lines:['D\\quad \\longrightarrow\\quad D-CA^{-1}B']});
+ steps.push({mats:row(Lf,M0,Rf,[['A','B'],['O',S]],tL,tR,[['',''],['','k3']]),hi:[['R',0,1,'t'],['X',0,0,'s'],['X',0,1,'t']],lines:['\\text{block column }2\\quad -\\quad \\text{block column }1\\cdot A^{-1}B']});
+ steps.push({mats:row(Lf,M0,Rf,[['A','O'],['O',S]],tL,tR,[['k1',''],['','k3']]),hi:[['X',0,1,'p'],['X',1,0,'p']],lines:['r\\begin{pmatrix}A&B\\\\C&D\\end{pmatrix}=n+r(D-CA^{-1}B)','\\begin{vmatrix}A&B\\\\C&D\\end{vmatrix}=|A|\\,|D-CA^{-1}B|']});
+}else{
+ steps.push({mats:row(I2,M0,I2,M0),hi:[['M',0,0,'s']],lines:["A^{\\prime}=A,\\quad D^{\\prime}=D,\\quad A\\ \\text{invertible}"]});
+ steps.push({mats:row(Lf,M0,Rf,M0,tL,tR),hi:[['L',1,0,'t'],['R',0,1,'t'],['M',1,0,'t'],['M',0,1,'t'],['M',0,0,'s']],lines:["P=\\begin{pmatrix}E&-A^{-1}B\\\\O&E\\end{pmatrix},\\qquad P^{\\prime}=\\begin{pmatrix}E&O\\\\-B^{\\prime}A^{-1}&E\\end{pmatrix}"]});
+ steps.push({mats:row(Lf,M0,Rf,[['A','O'],['O',S]],tL,tR,[['k1',''],['','k3']]),hi:[['X',0,1,'p'],['X',1,0,'p'],['X',1,1,'t']],lines:["P^{\\prime}\\begin{pmatrix}A&B\\\\B^{\\prime}&D\\end{pmatrix}P=\\begin{pmatrix}A&O\\\\O&D-B^{\\prime}A^{-1}B\\end{pmatrix}"]});
+ steps.push({mats:row(Lf,M0,Rf,[['A','O'],['O',S]],tL,tR,[['k1',''],['','k3']]),hi:[['X',0,0,'s'],['X',1,1,'s']],lines:["\\begin{pmatrix}A&B\\\\B^{\\prime}&D\\end{pmatrix}>0\\iff A>0\\ \\text{and}\\ D-B^{\\prime}A^{-1}B>0"]});
+}
+LAS.run({steps,interval:1900});
+</script></body></html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quadric surfaces</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:330px}}#mode{display:grid;grid-template-columns:repeat(3,auto);justify-content:center;gap:6px}#mode button{width:100%}@media(max-width:520px){#mode{grid-template-columns:repeat(2,auto)}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="ell" aria-pressed="true"></button><button type="button" data-m="hyp1" aria-pressed="false"></button><button type="button" data-m="hyp2" aria-pressed="false"></button><button type="button" data-m="cone" aria-pressed="false"></button><button type="button" data-m="par" aria-pressed="false"></button><button type="button" data-m="sad" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="h" type="range" min="0" max="1000" step="1" value="650" aria-label="height"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Quadric surfaces"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const Q = {
+  ell: { t: '\\text{ellipsoid}', eq: '\\frac{x^2}{a^2}+\\frac{y^2}{b^2}+\\frac{z^2}{c^2}=1', F: (u, v) => [1.3 * Math.sin(u) * Math.cos(v), 0.9 * Math.sin(u) * Math.sin(v), 1.0 * Math.cos(u)], U: [0.001, Math.PI], sec: z => { const k = 1 - z * z; return k > 0 ? [1.3 * Math.sqrt(k), 0.9 * Math.sqrt(k)] : null }, H: [-1, 1] },
+  hyp1: { t: '\\text{hyperboloid of one sheet}', eq: '\\frac{x^2}{a^2}+\\frac{y^2}{b^2}-\\frac{z^2}{c^2}=1', F: (u, v) => [0.7 * Math.cosh(u) * Math.cos(v), 0.55 * Math.cosh(u) * Math.sin(v), 0.8 * Math.sinh(u)], U: [-1.15, 1.15], sec: z => { const k = 1 + (z / .8) ** 2; return [0.7 * Math.sqrt(k), 0.55 * Math.sqrt(k)] }, H: [-1.1, 1.1] },
+  hyp2: { t: '\\text{hyperboloid of two sheets}', eq: '\\frac{x^2}{a^2}+\\frac{y^2}{b^2}-\\frac{z^2}{c^2}=-1', F: null, U: [0, 1.25], sec: z => { const k = (z / .55) ** 2 - 1; return k > 0 ? [0.6 * Math.sqrt(k), 0.5 * Math.sqrt(k)] : null }, H: [-1.25, 1.25] },
+  cone: { t: '\\text{elliptic cone}', eq: '\\frac{x^2}{a^2}+\\frac{y^2}{b^2}-\\frac{z^2}{c^2}=0', F: (u, v) => [0.9 * u * Math.cos(v), 0.7 * u * Math.sin(v), u], U: [-1.1, 1.1], sec: z => Math.abs(z) > 1e-3 ? [0.9 * Math.abs(z), 0.7 * Math.abs(z)] : null, H: [-1.1, 1.1] },
+  par: { t: '\\text{elliptic paraboloid}', eq: 'z=\\frac{x^2}{a^2}+\\frac{y^2}{b^2}', F: (u, v) => [1.1 * u * Math.cos(v), 0.8 * u * Math.sin(v), u * u - 0.6], U: [0, 1.3], sec: z => { const k = z + 0.6; return k > 0 ? [1.1 * Math.sqrt(k), 0.8 * Math.sqrt(k)] : null }, H: [-0.6, 1.05] },
+  sad: { t: '\\text{hyperbolic paraboloid}', eq: 'z=\\frac{x^2}{a^2}-\\frac{y^2}{b^2}', grid: (x, y) => [x, y, 0.6 * x * x - 0.6 * y * y], H: [-0.55, 0.55] } };
+Q.hyp2.parts = [(u, v) => [0.6 * Math.sinh(u) * Math.cos(v), 0.5 * Math.sinh(u) * Math.sin(v), 0.55 * Math.cosh(u)], (u, v) => [0.6 * Math.sinh(u) * Math.cos(v), 0.5 * Math.sinh(u) * Math.sin(v), -0.55 * Math.cosh(u)]];
+const btns = [...document.querySelectorAll('#mode button')]; btns.forEach(b => K(b, Q[b.dataset.m].t));
+legend([['\\text{surface}', C.accent], ['z=h', C.blue], ['\\text{section}', C.warm]]);
+const sl = document.getElementById('h'), btn = document.getElementById('play');
+const S = { m: 'ell', h: 0.3, target: 0.3, playing: true, dir: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+const hOf = s => { const [a, b] = Q[S.m].H; return a + (b - a) * s / 1000 };
+const eqs = Object.values(Q).map(q => q.eq); lockEq(eqs); K(eqEl, Q.ell.eq, 1);
+const cam = V.camera({ az: -0.7, el: 0.32 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+let quads = [];
+function secs(m, z) { const q = Q[m];
+  if (m === 'sad') { const out = [], k = 0.6, Y = 1.25;      // z = k(x^2 - y^2)
+    if (Math.abs(z) < 1e-3) { out.push([[-Y, -Y, z], [Y, Y, z]], [[-Y, Y, z], [Y, -Y, z]]); return out }
+    for (const s2 of [-1, 1]) { const pts = []; for (let i = 0; i <= 60; i++) { const t = -Y + 2 * Y * i / 60; if (z > 0) { const x = s2 * Math.sqrt(z / k + t * t); if (Math.abs(x) <= Y) pts.push([x, t, z]) } else { const y = s2 * Math.sqrt(-z / k + t * t); if (Math.abs(y) <= Y) pts.push([t, y, z]) } } if (pts.length > 1) out.push(pts) }
+    return out }
+  const e = q.sec(z); if (!e) return []; const pts = []; for (let i = 0; i <= 90; i++) { const t = 2 * Math.PI * i / 90; pts.push([e[0] * Math.cos(t), e[1] * Math.sin(t), z]) } return [pts]; }
+const build = () => { const q = Q[S.m]; quads = q.grid ? V.mesh(q.grid, -1.25, 1.25, -1.25, 1.25, 22, 22) : (q.parts || [q.F]).flatMap(F => V.mesh(F, q.U[0], q.U[1], 0, 2 * Math.PI, 16, 36)) };
+build();
+btns.forEach(b => b.addEventListener('click', () => { S.m = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); K(eqEl, Q[S.m].eq, 1); build(); S.target = P.clamp(S.target, ...Q[S.m].H); cv.kick() }));
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.2, h / 3.4); cam.ox = w / 2; cam.oy = h / 2;
+  const [h0, h1] = Q[S.m].H;
+  if (S.playing) { S.target += S.dir * 0.45 * dt; if (S.target > h1) { S.target = h1; S.dir = -1 } if (S.target < h0) { S.target = h0; S.dir = 1 } sl.value = (S.target - h0) / (h1 - h0) * 1000 }
+  const mv = P.approach(S, 'h', S.target, dt, 9), z = S.h;
+  K(document.getElementById('lab'), `h=${z.toFixed(2)}`);
+  const pl = 1.7, plane = V.poly([[-pl, -pl, z], [pl, -pl, z], [pl, pl, z], [-pl, pl, z]], C.blue, .1);
+  V.paint(ctx, cam, [{ quads, color: C.accent, alpha: .2, edge: .12 }, plane]);
+  for (const pts of secs(S.m, z)) V.line(ctx, cam, pts, { color: C.warm, width: 2.6 });
+  lab.end(); return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = hOf(+sl.value); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

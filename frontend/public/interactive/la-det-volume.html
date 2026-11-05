@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Determinant as volume</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="top" id="mode"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Parallelogram spanned by two columns"></canvas></div>
+<div class="controls"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage);
+const v = G.plane(1.4); v.cx = .75; v.cy = .62;
+const base2 = [0.35, 1.05];
+const S = { mode: 'shear', k: 0, kT: 0, s: 1, sT: 1, a1: [1.0, 0.16], a1T: [1.0, 0.16], a2: base2.slice(), a2T: base2.slice(), playing: false, ph: 0 };
+const eq = G.formulas(document.getElementById('eq'), [
+  '\\det(\\alpha_1,\\,\\alpha_2+k\\alpha_1,\\,\\cdots,\\,\\alpha_n)=\\det(\\alpha_1,\\,\\alpha_2,\\,\\cdots,\\,\\alpha_n)',
+  '\\det(\\alpha_1,\\,\\alpha_2,\\,\\cdots,\\,\\alpha_n)=\\text{signed volume}']);
+const setMode = G.segmented(document.getElementById('mode'), [['shear', '\\alpha_2+k\\alpha_1'], ['free', '\\alpha_1,\\ \\alpha_2']], 'shear', m => { S.mode = m; set(false); cv.kick() });
+const set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+const okPair = (a, b) => G.cross(a, b) > 0.22 * G.len(a) * G.len(b) && G.len(a) > .45 && G.len(b) > .45 && G.len(a) < 1.45 && G.len(b) < 1.45;
+const curA2 = () => S.mode === 'shear' ? G.add(S.a2T0 || S.a2T, G.mul(S.kT, S.a1T)) : S.a2T;
+const hd = G.handles(canvas, v, () => S.mode === 'shear' ? [{ id: 2, p: S.a2 }] : [{ id: 1, p: S.a1 }, { id: 2, p: S.a2 }], (id, w) => {
+  if (S.mode === 'shear') { const b0 = S.a2T0 || S.a2T, u = S.a1T, k = G.dot(G.sub(w, b0), u) / G.dot(u, u); S.kT = P.clamp(k, -0.75, 0.75) }
+  else if (id === 1) { if (okPair(w, S.a2T)) S.a1T = w } else { if (okPair(S.a1T, w)) S.a2T = w }
+}, { onStart: () => set(false), kick: () => cv.kick() });
+function syncMode() { if (S.mode === 'shear' && !S.a2T0) { S.a2T0 = S.a2T.slice(); S.kT = 0 } if (S.mode === 'free' && S.a2T0) { S.a2T = G.add(S.a2T0, G.mul(S.kT, S.a1T)); S.a2T0 = null; S.kT = 0 } }
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h); syncMode();
+  if (S.playing) { S.ph += dt * 0.9; if (S.mode === 'shear') S.kT = 0.7 * Math.sin(S.ph); else { const f = 1 + 0.38 * Math.sin(S.ph); const u = G.mul(1 / G.len(S.a1T), S.a1T); S.a1T = G.mul(1.0 * f, u) } }
+  let mv = P.approach(S, 'a1', S.a1T, dt, 10);
+  const a2t = curA2(); mv = P.approach(S, 'a2', a2t, dt, 10) || mv;
+  const a1 = S.a1, a2 = S.a2, O = [0, 0], tip = G.add(a1, a2);
+  G.poly(ctx, v, [O, [1, 0], [1, 1], [0, 1]], { stroke: C.rule, width: 1, alpha: .9 });
+  G.fullLine(ctx, v, a1, { color: C.mute, alpha: .25 });
+  if (S.mode === 'shear') G.fullLine(ctx, v, a1, { p: a2, color: C.blue, alpha: .35, dash: [5, 5] });
+  G.poly(ctx, v, [O, a1, tip, a2], { fill: C.warm, fillAlpha: .2, stroke: C.warm, width: 1.4, alpha: .9 });
+  const u = G.mul(1 / G.len(a1), a1), foot = G.mul(G.dot(a2, u), u);
+  G.seg(ctx, v, foot, a2, { color: C.soft, width: 1.2, dash: [4, 4], alpha: .8 });
+  const fs = v.S(foot), n = [-u[1], u[0]], q1 = G.add(foot, G.mul(.12, u)), q2 = G.add(q1, G.mul(.12, n)), q3 = G.add(foot, G.mul(.12, n));
+  G.seg(ctx, v, q1, q2, { color: C.soft, width: 1, alpha: .6 }); G.seg(ctx, v, q2, q3, { color: C.soft, width: 1, alpha: .6 });
+  G.arrow(ctx, v, O, a1, { color: C.accent, width: 2.6 }); G.arrow(ctx, v, O, a2, { color: C.blue, width: 2.6 });
+  for (const [id, p, c] of [[1, a1, C.accent], [2, a2, C.blue]]) { if (S.mode === 'shear' && id === 1) continue; G.dotAt(ctx, v, p, { r: hd.active === id || hd.hover === id ? 6.5 : 5, color: c, alpha: .9 }) }
+  const s1 = v.S(a1), s2 = v.S(a2); lab.set('a1', '\\alpha_1', s1[0], s1[1], { dx: 16, dy: 10, color: C.accent }); lab.set('a2', '\\alpha_2', s2[0], s2[1], { dx: -16, dy: -8, color: C.blue }); lab.end();
+  eq(S.mode === 'shear' ? '\\det(\\alpha_1,\\,\\alpha_2+k\\alpha_1,\\,\\cdots,\\,\\alpha_n)=\\det(\\alpha_1,\\,\\alpha_2,\\,\\cdots,\\,\\alpha_n)' : '\\det(\\alpha_1,\\,\\alpha_2,\\,\\cdots,\\,\\alpha_n)=\\text{signed volume}');
+  return mv || S.playing || hd.active != null;
+});
+cv.kick(); P.reportHeight(document.querySelector('main'));
+window.visualAudit = { state: () => JSON.parse(JSON.stringify(S)) };
+</script></body></html>

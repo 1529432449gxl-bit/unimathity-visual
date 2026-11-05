@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fundamental theorem</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:420px}@media(max-width:520px){.stage canvas{height:360px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="x" type="range" min="0" max="1000" step="1" value="380" aria-label="upper limit"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="area under f up to x and the graph of its accumulation function"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const A = 0, Bx = 6.2;
+const f = t => Math.sin(1.15 * t) + 0.35;
+const F = x => (1 - Math.cos(1.15 * x)) / 1.15 + 0.35 * x; // Φ(x)=∫_0^x f
+const sl = document.getElementById('x'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+const xOf = s => A + 0.05 + (Bx - 0.1) * s / 1000;
+const S = { x: xOf(+sl.value), target: xOf(+sl.value), playing: false };
+const lab = P.labels(stage);
+for (const [t, c] of [['y=f(t)', C.accent], ['\\Phi(x)=\\int_a^x f(t)\\,\\mathrm dt', C.warm], ['\\text{slope }f(x)', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), "\\Phi'(x)=\\dfrac{\\mathrm d}{\\mathrm dx}\\int_a^x f(t)\\,\\mathrm dt=f(x)");
+const top = P.view([-0.25, 6.45, -0.85, 1.55], { l: 14, r: 14, t: 10, b: 0 });
+const bot = P.view([-0.25, 6.45, -0.25, 6.4], { l: 14, r: 14, t: 0, b: 14 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const split = Math.round(h * 0.42), gap = 18;
+  top.w = w; top.h = split; bot.w = w; bot.h = h - split - gap;
+  if (S.playing) { S.target += 0.75 * dt; if (S.target >= Bx - 0.05) { S.target = Bx - 0.05; setPlay(false) } sl.value = (S.target - A - 0.05) / (Bx - 0.1) * 1000; }
+  const moving = P.approach(S, 'x', S.target, dt, 9), x = S.x;
+  K(document.getElementById('lab'), `x=${x.toFixed(2)}`);
+  // 上图：f 与 a 到 x 的有向面积
+  P.axes(ctx, top, { x: true, y: true });
+  const n = 220, up = [], base = [];
+  for (let i = 0; i <= n; i++) { const t = A + (x - A) * i / n; up.push([top.X(t), top.Y(Math.max(0, f(t)))]); base.push([top.X(t), top.Y(0)]) }
+  P.fill(ctx, up, base, C.warm, .24);
+  const dn = []; for (let i = 0; i <= n; i++) { const t = A + (x - A) * i / n; dn.push([top.X(t), top.Y(Math.min(0, f(t)))]) }
+  P.fill(ctx, dn, base, C.blue, .26);
+  P.path(ctx, P.curve(top, f, A, Bx), { color: C.accent, width: 2.4 });
+  P.path(ctx, [[top.X(x), top.Y(0)], [top.X(x), top.Y(f(x))]], { color: C.accent, width: 1.6, alpha: .8 });
+  P.dot(ctx, top.X(x), top.Y(f(x)), { r: 4.4, color: C.accent });
+  // 下图：Φ 的图像只画到 x，并画切线
+  ctx.save(); ctx.translate(0, split + gap);
+  P.axes(ctx, bot, { x: true, y: true });
+  P.path(ctx, P.curve(bot, F, A, Bx), { color: C.warm, width: 1.4, alpha: .18 });
+  P.path(ctx, P.curve(bot, F, A, x), { color: C.warm, width: 2.4 });
+  const k = f(x), y = F(x), e = 0.9;
+  P.path(ctx, [[bot.X(x - e), bot.Y(y - k * e)], [bot.X(x + e), bot.Y(y + k * e)]], { color: C.blue, width: 2 });
+  P.dot(ctx, bot.X(x), bot.Y(y), { r: 4.6, color: C.warm });
+  ctx.restore();
+  // 两图之间的竖直联系线
+  P.path(ctx, [[top.X(x), top.Y(Math.min(0, f(x)))], [bot.X(x), split + gap + bot.Y(y)]], { color: C.mute, width: 1, dash: [3, 4], alpha: .5 });
+  lab.set('a', 'a', top.X(A), top.Y(0), { dx: -8, dy: 11, color: C.soft, size: 13 });
+  lab.set('x', 'x', top.X(x), top.Y(0), { dx: 9, dy: 11, color: C.soft, size: 13 });
+  lab.end();
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target >= Bx - 0.06) { S.target = A + 0.05; S.x = A + 0.05 } setPlay(true) });
+sl.addEventListener('input', () => { setPlay(false); S.target = xOf(+sl.value); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

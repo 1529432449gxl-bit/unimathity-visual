@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Integration by parts</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="1000" step="1" value="1000" aria-label="end point"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="two areas under and beside a curve fill the difference of two rectangles"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+// 单调曲线 (u(t), v(t))，t∈[0,1]
+const U = t => 0.7 + 2.3 * t, V = t => 0.55 + 0.25 * t + 1.6 * t * t * t;
+const T1 = 1, T0 = 0;
+const sl = document.getElementById('t'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+const S = { t: 1, target: 1, playing: false };
+const lab = P.labels(stage);
+for (const [t, c] of [['\\int v\\,\\mathrm du', C.blue], ['\\int u\\,\\mathrm dv', C.warm], ['u_1v_1', C.mute]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), '\\int_{u_1}^{u_2}v\\,\\mathrm du+\\int_{v_1}^{v_2}u\\,\\mathrm dv=u_2v_2-u_1v_1');
+const B = [-0.25, 3.35, -0.22, 2.75];
+const v = P.view(B, { l: 22, r: 14, t: 12, b: 22 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target += 0.32 * dt; if (S.target >= 1) { S.target = 1; setPlay(false) } sl.value = S.target * 1000; }
+  const moving = P.approach(S, 't', S.target, dt, 9);
+  const te = Math.max(0.02, S.t);
+  K(document.getElementById('lab'), `t=${te.toFixed(2)}`);
+  const n = 160, pts = []; for (let i = 0; i <= n; i++) { const s = te * i / n; pts.push([U(s), V(s)]) }
+  const scr = pts.map(([a, b]) => [v.X(a), v.Y(b)]);
+  const u1 = U(0), v1 = V(0), u2 = U(te), v2 = V(te);
+  // 曲线下方（到 u 轴）：∫v du，浅蓝
+  P.fill(ctx, scr, pts.map(([a]) => [v.X(a), v.Y(0)]), C.blue, .22);
+  // 曲线左侧（到 v 轴）：∫u dv，橙色
+  P.fill(ctx, scr, pts.map(([, b]) => [v.X(0), v.Y(b)]), C.warm, .2);
+  // 小矩形 u1 v1，灰色
+  ctx.save(); ctx.fillStyle = P.rgba(C.mute, .14); ctx.fillRect(v.X(0), v.Y(v1), v.X(u1) - v.X(0), v.Y(0) - v.Y(v1)); ctx.restore();
+  P.axes(ctx, v, { x: true, y: true });
+  // 大矩形 u2 v2 的外框
+  P.path(ctx, [[v.X(0), v.Y(v2)], [v.X(u2), v.Y(v2)], [v.X(u2), v.Y(0)]], { color: C.soft, width: 1, dash: [4, 4], alpha: .7 });
+  P.path(ctx, [[v.X(0), v.Y(v1)], [v.X(u1), v.Y(v1)], [v.X(u1), v.Y(0)]], { color: C.mute, width: 1, dash: [3, 4], alpha: .7 });
+  P.path(ctx, scr, { color: C.accent, width: 2.4 });
+  P.dot(ctx, v.X(u1), v.Y(v1), { r: 4, color: C.accent }); P.dot(ctx, v.X(u2), v.Y(v2), { r: 4.6, color: C.accent });
+  lab.set('u1', 'u_1', v.X(u1), v.Y(0), { dy: 12, color: C.soft, size: 13 });
+  lab.set('u2', 'u_2', v.X(u2), v.Y(0), { dy: 12, color: C.soft, size: 13, alpha: u2 - u1 > .25 ? 1 : 0 });
+  lab.set('v1', 'v_1', v.X(0), v.Y(v1), { dx: -13, color: C.soft, size: 13 });
+  lab.set('v2', 'v_2', v.X(0), v.Y(v2), { dx: -13, color: C.soft, size: 13, alpha: v2 - v1 > .2 ? 1 : 0 });
+  lab.end();
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target >= 0.999) { S.target = 0.02; S.t = 0.02 } setPlay(true) });
+sl.addEventListener('input', () => { setPlay(false); S.target = Math.max(0.02, +sl.value / 1000); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

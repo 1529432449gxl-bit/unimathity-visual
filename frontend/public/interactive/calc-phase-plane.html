@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Phase plane</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:520px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="spiral" aria-pressed="true"></button><button type="button" data-m="node" aria-pressed="false"></button><button type="button" data-m="saddle" aria-pressed="false"></button></div>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Phase plane"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const MODES = { spiral: { M: [[-0.25, 1], [-1, -0.25]], t: '\\text{complex roots}' }, node: { M: [[-1, 0.3], [0.3, -0.5]], t: '\\text{real roots}<0' }, saddle: { M: [[0.6, 0.5], [0.5, -0.6]], t: '\\text{real roots of opposite signs}' } };
+const btns = [...document.querySelectorAll('#mode button')]; btns.forEach(b => K(b, MODES[b.dataset.m].t));
+legend([['(X(t),Y(t))', C.warm], ['X(t)', C.accent], ['Y(t)', C.blue]]);
+K(eqEl, "X'=aX+bY,\\qquad Y'=cX+dY", 1);
+const S = { m: 'spiral', p0: [1.6, 1.2], t: 0, playing: true };
+const btn = document.createElement('button'); btn.className = 'tg'; btn.type = 'button'; btn.id = 'play'; document.getElementById('mode').append(btn);
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => { if (!S.playing && S.t >= TMAX) S.t = 0; set(!S.playing) };
+const TMAX = 12;
+let traj = [];
+function integ() { const [[a, b], [c, d]] = MODES[S.m].M; let x = S.p0[0], y = S.p0[1]; traj = [[0, x, y]]; const h = 0.01;
+  for (let i = 1; i <= TMAX / h; i++) { const f = (x, y) => [a * x + b * y, c * x + d * y], k1 = f(x, y), k2 = f(x + h / 2 * k1[0], y + h / 2 * k1[1]), k3 = f(x + h / 2 * k2[0], y + h / 2 * k2[1]), k4 = f(x + h * k3[0], y + h * k3[1]);
+    x += h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]); y += h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]); traj.push([i * h, x, y]) } }
+integ();
+btns.forEach(b => b.addEventListener('click', () => { S.m = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); S.p0 = S.m === 'saddle' ? [1.9, -1.55] : [1.6, 1.2]; integ(); S.t = 0; set(true) }));
+const L = P.view([-2.2, 2.2, -2.2, 2.2], { l: 8, r: 8, t: 8, b: 8 }), R = P.view([0, TMAX, -2.4, 2.4], { l: 8, r: 10, t: 8, b: 8 });
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (S.playing) { S.t += 1.6 * dt; if (S.t >= TMAX) { S.t = TMAX; set(false) } }
+  const narrow = w < 560, side = narrow ? Math.min(w, h * 0.55) : Math.min(w * 0.46, h);
+  // 左（或上）：相平面；右（或下）：时间曲线
+  L.w = side; L.h = side; const lx = narrow ? (w - side) / 2 : 0, ly = 0;
+  R.w = narrow ? w : w - side - 16; R.h = narrow ? h - side - 10 : h; const rx = narrow ? 0 : side + 16, ry = narrow ? side + 10 : 0;
+  const [[a, b], [c, d]] = MODES[S.m].M;
+  ctx.save(); ctx.translate(lx, ly);
+  P.axes(ctx, L, { x: true, y: true });
+  ctx.strokeStyle = P.rgba(C.mute, .5); ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+  for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) { const x = i * .4, y = j * .4, u = a * x + b * y, vv = c * x + d * y, n = Math.hypot(u, vv) || 1, r = 7;
+    ctx.beginPath(); ctx.moveTo(L.X(x), L.Y(y)); ctx.lineTo(L.X(x) + u / n * r, L.Y(y) - vv / n * r); ctx.stroke() }
+  const k = Math.min(traj.length - 1, Math.round(S.t / 0.01)), seg = traj.slice(0, k + 1);
+  P.path(ctx, seg.map(q => [L.X(q[1]), L.Y(q[2])]), { color: C.warm, width: 2.2 });
+  P.dot(ctx, L.X(S.p0[0]), L.Y(S.p0[1]), { r: 3.6, color: C.soft });
+  P.dot(ctx, L.X(traj[k][1]), L.Y(traj[k][2]), { r: 5, color: C.warm });
+  ctx.restore();
+  ctx.save(); ctx.translate(rx, ry);
+  P.axes(ctx, R, { x: true, y: true });
+  P.path(ctx, seg.map(q => [R.X(q[0]), R.Y(q[1])]), { color: C.accent, width: 2.2 });
+  P.path(ctx, seg.map(q => [R.X(q[0]), R.Y(q[2])]), { color: C.blue, width: 2.2 });
+  P.path(ctx, [[R.X(traj[k][0]), 4], [R.X(traj[k][0]), R.h - 4]], { color: C.mute, width: 1, dash: [3, 4], alpha: .6 });
+  P.dot(ctx, R.X(traj[k][0]), R.Y(traj[k][1]), { r: 4, color: C.accent }); P.dot(ctx, R.X(traj[k][0]), R.Y(traj[k][2]), { r: 4, color: C.blue });
+  ctx.restore();
+  lab.set('t', 't', rx + R.X(TMAX), ry + R.Y(0), { dx: -6, dy: 12, color: C.soft, size: 13 }); lab.end();
+  return S.playing;
+});
+canvas.addEventListener('pointerdown', e => { const r = canvas.getBoundingClientRect(), side = L.w, narrow = r.width < 560, lx = narrow ? (r.width - side) / 2 : 0;
+  const px = e.clientX - r.left - lx, py = e.clientY - r.top; if (px < 0 || px > side || py > side) return;
+  S.p0 = [L.b[0] + (px - L.pad.l) / (side - L.pad.l - L.pad.r) * (L.b[1] - L.b[0]), L.b[3] - (py - L.pad.t) / (side - L.pad.t - L.pad.b) * (L.b[3] - L.b[2])]; integ(); S.t = 0; set(true) });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chain rule</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:300px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:280px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Chain rule"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const N = { z: [0.5, 0.12], u: [0.28, 0.5], v: [0.72, 0.5], x: [0.18, 0.88], y: [0.82, 0.88] };
+const E = [['z', 'u', '\\frac{\\partial z}{\\partial u}'], ['z', 'v', '\\frac{\\partial z}{\\partial v}'], ['u', 'x', '\\frac{\\partial u}{\\partial x}'], ['u', 'y', '\\frac{\\partial u}{\\partial y}'], ['v', 'x', '\\frac{\\partial v}{\\partial x}'], ['v', 'y', '\\frac{\\partial v}{\\partial y}']];
+const W = '#ad6844', Bl = '#3f6e8c', G = '#c9cbd1';
+const c = (col, t) => `\\textcolor{${col}}{${t}}`;
+const t1x = '\\frac{\\partial z}{\\partial u}\\frac{\\partial u}{\\partial x}', t2x = '\\frac{\\partial z}{\\partial v}\\frac{\\partial v}{\\partial x}', t1y = '\\frac{\\partial z}{\\partial u}\\frac{\\partial u}{\\partial y}', t2y = '\\frac{\\partial z}{\\partial v}\\frac{\\partial v}{\\partial y}';
+const ph = '\\phantom{' + t1x + '+' + t2x + '}';
+// 每一步：点亮的路径 [边序号, 颜色]，以及公式
+const STEPS = [
+  { on: [], tex: ['\\frac{\\partial z}{\\partial x}=' + ph, '\\frac{\\partial z}{\\partial y}=' + ph] },
+  { on: [[0, W], [2, W]], tex: ['\\frac{\\partial z}{\\partial x}=' + c(W, t1x) + '\\phantom{+' + t2x + '}', '\\frac{\\partial z}{\\partial y}=' + ph] },
+  { on: [[0, W], [2, W], [1, Bl], [4, Bl]], tex: ['\\frac{\\partial z}{\\partial x}=' + c(W, t1x) + '+' + c(Bl, t2x), '\\frac{\\partial z}{\\partial y}=' + ph] },
+  { on: [[0, W], [3, W]], tex: ['\\frac{\\partial z}{\\partial x}=' + t1x + '+' + t2x, '\\frac{\\partial z}{\\partial y}=' + c(W, t1y) + '\\phantom{+' + t2y + '}'] },
+  { on: [[0, W], [3, W], [1, Bl], [5, Bl]], tex: ['\\frac{\\partial z}{\\partial x}=' + t1x + '+' + t2x, '\\frac{\\partial z}{\\partial y}=' + c(W, t1y) + '+' + c(Bl, t2y)] }];
+const render = st => { eqEl.innerHTML = '<div></div><div></div>'; K(eqEl.children[0], st.tex[0], 1); K(eqEl.children[1], st.tex[1], 1) };
+{ let m = 0; for (const st of STEPS) { render(st); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; }
+render(STEPS[0]);
+legend([['\\text{path through }u', C.warm], ['\\text{path through }v', C.blue]]);
+const S = { a: E.map(() => 0) };
+let st;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (!st) return false;
+  const anim = st.tick(dt), cur = STEPS[st.i], p = P.ease.inOut(st.p);
+  const X = q => [w * (0.5 + (q[0] - 0.5) * Math.min(1, 520 / w)), 16 + q[1] * (h - 32)];
+  // 底层：全部边（灰）
+  E.forEach(([a, b, t], k) => { const A = X(N[a]), B = X(N[b]), dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy), r = 22;
+    const s0 = [A[0] + dx / L * r, A[1] + dy / L * r], s1 = [B[0] - dx / L * r, B[1] - dy / L * r];
+    P.path(ctx, [s0, s1], { color: C.rule, width: 1.6 });
+    const on = cur.on.find(e => e[0] === k);
+    if (on) { // 依次画出：同一路径上先画上层边，再画下层边
+      const order = cur.on.filter(e => e[1] === on[1]).findIndex(e => e[0] === k), n2 = cur.on.filter(e => e[1] === on[1]).length;
+      const isNew = st.i > 0 && !STEPS[st.i - 1].on.some(e => e[0] === k && e[1] === on[1]);
+      const pr = isNew ? P.clamp(p * 2 - order * 0.9, 0, 1) : 1;
+      P.path(ctx, [s0, s1], { color: on[1], width: 3, progress: pr });
+      if (pr > .98) { const ux = dx / L, uy = dy / L; ctx.save(); ctx.fillStyle = on[1]; ctx.beginPath(); ctx.moveTo(s1[0], s1[1]); ctx.lineTo(s1[0] - ux * 10 - uy * 5, s1[1] - uy * 10 + ux * 5); ctx.lineTo(s1[0] - ux * 10 + uy * 5, s1[1] - uy * 10 - ux * 5); ctx.closePath(); ctx.fill(); ctx.restore() }
+      lab.set('e' + k, t, (s0[0] + s1[0]) / 2, (s0[1] + s1[1]) / 2, { dx: dx > 0 ? 26 : -26, color: on[1], size: 13, alpha: pr })
+    } else lab.set('e' + k, t, (s0[0] + s1[0]) / 2, (s0[1] + s1[1]) / 2, { dx: dx > 0 ? 26 : -26, color: C.mute, size: 13, alpha: .45 });
+  });
+  for (const k in N) { const q = X(N[k]); ctx.save(); ctx.fillStyle = '#fbfbfa'; ctx.strokeStyle = C.accent; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(q[0], q[1], 20, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+    lab.set('n' + k, k, q[0], q[1], { color: C.accent, size: 17 }) }
+  lab.end(); return anim;
+});
+st = P.stepper(document.getElementById('nav'), { count: STEPS.length, dur: 1.2, hold: 1.4, kick: cv.kick, onChange: s => render(STEPS[s.i]) });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

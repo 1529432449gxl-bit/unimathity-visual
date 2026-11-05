@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tangent plane</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Tangent plane"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const f = (x, y) => 0.6 * Math.sin(1.3 * x + 0.4) * Math.cos(y) + 0.25 * x * x - 0.15 * y * y;
+const fx = (x, y) => 0.78 * Math.cos(1.3 * x + 0.4) * Math.cos(y) + 0.5 * x, fy = (x, y) => -0.6 * Math.sin(1.3 * x + 0.4) * Math.sin(y) - 0.3 * y;
+const x0 = 0.2, y0 = 0.3, z0 = f(x0, y0), A = fx(x0, y0), B = fy(x0, y0);
+const RS = [1.6, 0.9, 0.5, 0.26, 0.13];
+const FULL = V.mesh((x, y) => [x, y, f(x, y)], -1.8, 1.8, -1.8, 1.8, 14, 14);
+legend([['z=f(x,y)', C.accent], ['\\text{tangent plane}', C.warm]]);
+K(eqEl, '\\Delta z=A\\Delta x+B\\Delta y+o(\\rho)', 1);
+const S = { r: RS[0] };
+const cam = V.camera({ az: -0.6, el: 0.4 }); const dr = V.drag(canvas, cam, () => cv.kick());
+let st;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (!st) return false;
+  const anim = st.tick(dt), mv = P.approach(S, 'r', RS[st.i], dt, 4), r = S.r;
+  // 以 P 为中心，视野随 r 缩小而放大
+  cam.sc = Math.min(w, h) / (2.9 * r); const p0 = [x0, y0, z0];
+  const c = cam.P([0, 0, 0]), cp = [cam.sc ? 0 : 0];
+  cam.ox = 0; cam.oy = 0; const q = cam.P(p0); cam.ox = w / 2 - q[0]; cam.oy = h / 2 - q[1];
+  const surf = V.mesh((u, v) => [x0 + u, y0 + v, f(x0 + u, y0 + v)], -r, r, -r, r, 18, 18);
+  const pl = V.mesh((u, v) => [x0 + u, y0 + v, z0 + A * u + B * v], -r, r, -r, r, 6, 6);
+  V.paint(ctx, cam, [{ quads: surf, color: C.accent, alpha: .3, edge: .12 }, { quads: pl, color: C.warm, alpha: .22, edge: .2 }]);
+  const p = cam.P(p0); P.dot(ctx, p[0], p[1], { r: 5, color: C.warm });
+  // 整体小图：完整曲面与当前邻域框
+  const ma = P.clamp((1.4 - r) / 0.5, 0, 1);
+  if (ma > .01) { const W = Math.min(150, w * .3), H = W * .72, bx = 12, by = 10;
+    ctx.save(); ctx.globalAlpha = ma; ctx.fillStyle = 'rgba(251,251,250,.95)'; ctx.strokeStyle = C.faint; ctx.beginPath(); ctx.roundRect(bx, by, W, H, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(bx, by, W, H); ctx.clip();
+    const mc = V.camera({ az: cam.az, el: cam.el, sc: W / 5.2, ox: bx + W / 2, oy: by + H * .55 });
+    V.paint(ctx, mc, [{ quads: FULL, color: C.accent, alpha: .25, edge: .15 }]);
+    const box = []; for (let i = 0; i <= 40; i++) { const t = i / 40 * 4, u = t < 1 ? -r + 2 * r * t : t < 2 ? r : t < 3 ? r - 2 * r * (t - 2) : -r, v = t < 1 ? -r : t < 2 ? -r + 2 * r * (t - 1) : t < 3 ? r : r - 2 * r * (t - 3); box.push([x0 + u, y0 + v, f(x0 + u, y0 + v)]) }
+    V.line(ctx, mc, box, { color: C.hl, width: 1.4 }); const mp = mc.P(p0); P.dot(ctx, mp[0], mp[1], { r: 2.6, color: C.warm, ring: false }); ctx.restore(); }
+  lab.set('P', 'P', p[0], p[1], { dx: 12, dy: -10, color: C.warm, size: 13 }); lab.end();
+  return anim || mv || dr.active;
+});
+st = P.stepper(document.getElementById('nav'), { count: RS.length, dur: 1.2, hold: 1, kick: cv.kick });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>sin x / x squeeze</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="x" type="range" min="0" max="1000" step="1" value="0" aria-label="angle"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="unit circle: triangle, sector and tangent triangle"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="ineq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const XMAX = 1.0, XMIN = 0.06;
+const sl = document.getElementById('x'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+// 滑条按对数刻度映射角度：越接近 0 越细
+const fromSl = s => Math.exp(Math.log(XMAX) + (Math.log(XMIN) - Math.log(XMAX)) * s / 1000);
+const toSl = x => 1000 * (Math.log(x) - Math.log(XMAX)) / (Math.log(XMIN) - Math.log(XMAX));
+const S = { x: XMAX, target: XMAX, playing: false };
+const lab = P.labels(stage);
+for (const [t, c] of [['\\tfrac12\\sin x', C.blue], ['\\tfrac12 x', C.accent], ['\\tfrac12\\tan x', C.warm]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('ineq'), '\\sin x<x<\\tan x\\quad\\Longrightarrow\\quad \\cos x<\\dfrac{\\sin x}{x}<1');
+const smooth = t => t * t * (3 - 2 * t);
+// 镜头：x 较大时看整个单位圆，x 变小时跟到切点 A 附近，保持等比例
+function camera(x, w, h) {
+  const s = Math.tan(x), k = smooth(P.clamp((x - 0.22) / 0.6, 0, 1));
+  const asp = h / w, rf = Math.max(1.32, 1.15 / asp), cf = [0.12, 0.45];
+  const rz = Math.max(1.25 * s, 0.7 * s / asp), cz = [1 - 0.7 * s, 0.5 * s];
+  const r = Math.exp(Math.log(rz) + (Math.log(rf) - Math.log(rz)) * k);
+  const c = [P.lerp(cz[0], cf[0], k), P.lerp(cz[1], cf[1], k)];
+  const ry = r * asp;
+  return { b: [c[0] - r, c[0] + r, c[1] - ry, c[1] + ry], k };
+}
+const v = P.view([-1, 1, -1, 1], { l: 0, r: 0, t: 0, b: 0 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target = Math.max(XMIN, S.target * Math.exp(-0.42 * dt)); sl.value = toSl(S.target); if (S.target <= XMIN + 1e-9) setPlay(false); }
+  const moving = P.approach(S, 'x', S.target, dt, 6);
+  const x = S.x, cam = camera(x, w, h); v.b = cam.b;
+  K(document.getElementById('lab'), `x=${x.toFixed(2)}`);
+  const O = [v.X(0), v.Y(0)], A = [v.X(1), v.Y(0)], Pp = [v.X(Math.cos(x)), v.Y(Math.sin(x))], T = [v.X(1), v.Y(Math.tan(x))];
+  const R = v.X(1) - v.X(0);
+  // 单位圆（细灰）与坐标轴
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, O[1]); ctx.lineTo(w, O[1]); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(O[0], 0); ctx.lineTo(O[0], h); ctx.stroke();
+  ctx.lineWidth = 1.4; ctx.strokeStyle = P.rgba(C.accent, .35); ctx.beginPath(); ctx.arc(O[0], O[1], R, 0, 2 * Math.PI); ctx.stroke(); ctx.restore();
+  const poly = (pts, col, a) => { ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(...pts[0]); for (const p of pts.slice(1)) ctx.lineTo(...p); ctx.closePath(); ctx.fill(); ctx.restore(); };
+  // 切线三角形 OAT
+  poly([O, A, T], C.warm, .16);
+  // 扇形 OAP
+  ctx.save(); ctx.globalAlpha = .17; ctx.fillStyle = C.accent; ctx.beginPath(); ctx.moveTo(...O); ctx.arc(O[0], O[1], R, 0, -x, true); ctx.closePath(); ctx.fill(); ctx.restore();
+  // 三角形 OAP
+  poly([O, A, Pp], C.blue, .26);
+  ctx.save(); ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(...A); ctx.lineTo(...T); ctx.lineTo(...O); ctx.stroke();
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(O[0], O[1], R, 0, -x, true); ctx.stroke();
+  ctx.strokeStyle = C.blue; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(...A); ctx.lineTo(...Pp); ctx.stroke();
+  ctx.strokeStyle = C.soft; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(...O); ctx.lineTo(...A); ctx.stroke();
+  ctx.restore();
+  P.dot(ctx, ...A, { r: 3.6, color: C.soft });
+  P.dot(ctx, ...Pp, { r: 4.4, color: C.blue });
+  P.dot(ctx, ...T, { r: 4.4, color: C.warm });
+  P.dot(ctx, ...O, { r: 3.6, color: C.soft });
+  lab.set('O', 'O', O[0], O[1], { dx: -12, dy: 13, color: C.soft });
+  lab.set('A', 'A', A[0], A[1], { dx: 13, dy: 13, color: C.soft });
+  lab.set('P', 'P', Pp[0], Pp[1], { dx: -14, dy: -10, color: C.blue });
+  lab.set('T', 'T', T[0], T[1], { dx: 14, dy: -8, color: C.warm });
+  if (cam.k > 0.35) lab.set('x', 'x', O[0] + 34 * Math.cos(x / 2), O[1] - 34 * Math.sin(x / 2), { color: C.soft, size: 13, alpha: cam.k });
+  lab.end();
+  // 放大后的整体小图
+  const full = [-1.25, 1.35, -1.15, 1.75];
+  P.minimap(ctx, v, { B: full, alpha: P.clamp((0.75 - cam.k) / 0.4, 0, 1), corner: 'tl', aspect: (full[3] - full[2]) / (full[1] - full[0]), frac: .24,
+    paint: (mx, my, c) => {
+      c.save(); c.strokeStyle = P.rgba(C.accent, .4); c.lineWidth = 1; c.beginPath(); c.ellipse(mx(0), my(0), mx(1) - mx(0), my(0) - my(1), 0, 0, 7); c.stroke();
+      c.globalAlpha = .25; c.fillStyle = C.warm; c.beginPath(); c.moveTo(mx(0), my(0)); c.lineTo(mx(1), my(0)); c.lineTo(mx(1), my(Math.tan(x))); c.closePath(); c.fill(); c.restore();
+    } });
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target <= XMIN + 1e-6) { S.target = XMAX; S.x = XMAX; sl.value = 0 } setPlay(true); });
+sl.addEventListener('input', () => { setPlay(false); S.target = fromSl(+sl.value); cv.kick(); });
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) setPlay(false) }); off.observe(document.querySelector('main'));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

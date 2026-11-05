@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数值微分演示</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/morph.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}main{padding:8px 2px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:6px}.n{min-width:96px}.bar input{flex:1;min-width:140px;accent-color:#223056;min-height:30px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:4px;align-items:center}.key:before{content:"";display:inline-block;width:20px;border-top:2.4px solid var(--c);margin:0 6px 4px 0}.key.dash:before{border-top-style:dashed}
+.vals{display:flex;flex-wrap:wrap;gap:4px 22px;justify-content:center;margin-top:4px}
+canvas{display:block;width:100%;height:300px}
+input:focus-visible{outline:2px solid #223056;outline-offset:2px}@media(max-width:480px){canvas{height:250px}}</style></head>
+<body><main>
+<div class="bar" id="bar"><span class="n" id="nlab"></span><input id="h" type="range" min="0" max="100" step="1" value="30" aria-label="步长"></div>
+<div class="legend" id="legend"></div>
+<canvas id="cv" role="img"></canvas>
+<div class="vals" id="vals"></div>
+</main>
+<script>
+const K=(el,s)=>katex.render(s,el,{throwOnError:false});
+const mode=new URLSearchParams(location.search).get('mode')||'secant';
+const cv=document.getElementById('cv'),hs=document.getElementById('h');
+function setup(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.lineJoin=c.lineCap='round';return{c,w:r.width,h:r.height}}
+function legend(items){const L=document.getElementById('legend');L.innerHTML='';items.forEach(([tex,col,dash])=>{const s=document.createElement('span');s.className='key'+(dash?' dash':'');s.style.setProperty('--c',col);K(s,tex);L.appendChild(s)})}
+const fmt=e=>{const a=Math.abs(e);if(a===0)return'0';if(a<1e-3){const p=Math.floor(Math.log10(a));return (e/10**p).toFixed(2)+'\\times10^{'+p+'}'}return e.toFixed(4)};
+/* 割线逼近切线 */
+function secant(){const f=Math.sin,df=Math.cos,x0=1,h=Morph.s('h',0.05+1.15*(+hs.value)/100,7);K(document.getElementById('nlab'),'h='+h.toFixed(2));
+ legend([['f(x)=\\sin x','#223056'],['\\text{tangent}','#8e9098',1],['\\dfrac{f(x+h)-f(x)}{h}','#b5763a'],['\\dfrac{f(x+h)-f(x-h)}{2h}','#3f6e8c']]);
+ const {c,w,h:H}=setup(),A=-0.4,B=2.6,lo=-0.1,hi=1.35,pad={l:30,r:10,t:10,b:22},pw=w-pad.l-pad.r,ph=H-pad.t-pad.b,X=x=>pad.l+(x-A)*pw/(B-A),Y=y=>pad.t+(hi-y)*ph/(hi-lo);
+ c.font='11px "Microsoft YaHei",sans-serif';c.fillStyle='#7a7c84';c.textAlign='center';[0,1,2].forEach(x=>c.fillText(String(x),X(x),H-6));
+ c.strokeStyle='#d5d7dd';c.lineWidth=1;c.beginPath();c.moveTo(X(A),Y(0));c.lineTo(X(B),Y(0));c.stroke();
+ c.save();c.beginPath();c.rect(pad.l,pad.t,pw,ph);c.clip();
+ const line=(m,px,py,col,dash,wd)=>{c.beginPath();c.moveTo(X(A),Y(py+m*(A-px)));c.lineTo(X(B),Y(py+m*(B-px)));c.strokeStyle=col;c.lineWidth=wd||1.8;c.setLineDash(dash||[]);c.stroke();c.setLineDash([])};
+ c.beginPath();for(let i=0;i<=300;i++){const x=A+(B-A)*i/300;i?c.lineTo(X(x),Y(f(x))):c.moveTo(X(x),Y(f(x)))}c.strokeStyle='#223056';c.lineWidth=2.6;c.stroke();
+ const mf=(f(x0+h)-f(x0))/h,mc=(f(x0+h)-f(x0-h))/(2*h);
+ line(df(x0),x0,f(x0),'#8e9098',[5,4],1.6);line(mf,x0,f(x0),'#b5763a');line(mc,x0+h,f(x0+h),'#3f6e8c');
+ const dot=(x,col)=>{c.beginPath();c.arc(X(x),Y(f(x)),4.2,0,7);c.fillStyle=col;c.fill()};dot(x0-h,'#3f6e8c');dot(x0+h,'#3f6e8c');dot(x0,'#161820');c.restore();
+ const V=document.getElementById('vals');V.innerHTML='<span></span><span></span>';K(V.children[0],`\\text{forward error}=${fmt(mf-df(x0))}`);K(V.children[1],`\\text{central error}=${fmt(mc-df(x0))}`);
+ cv.setAttribute('aria-label',`h=${h.toFixed(2)}，向前差分误差 ${(mf-df(x0)).toExponential(2)}，中心差分误差 ${(mc-df(x0)).toExponential(2)}`)}
+/* 步长与总误差 */
+function errcurve(){const M3=1,eps=1e-8,E=h=>M3/6*h*h+eps/h,hopt=Math.cbrt(3*eps/M3),lgh=Morph.s('lg',-6+5*(+hs.value)/100,7),h=10**lgh;K(document.getElementById('nlab'),`h=10^{${lgh.toFixed(2)}}`);
+ legend([['\\tfrac{M_3}{6}h^2','#b5763a',1],['\\tfrac{\\varepsilon}{h}','#3f6e8c',1],['E(h)','#223056']]);
+ const {c,w,h:H}=setup(),pad={l:44,r:10,t:10,b:24},pw=w-pad.l-pad.r,ph=H-pad.t-pad.b,X=l=>pad.l+(l+6)*pw/5,Y=l=>pad.t+(-2-l)*ph/10;
+ c.font='10px "Microsoft YaHei",sans-serif';c.fillStyle='#7a7c84';c.strokeStyle='#e3e4e8';c.lineWidth=1;c.textAlign='right';
+ for(let l=-12;l<=-2;l+=2){c.fillText('1e'+l,pad.l-4,Y(l)+3)}
+ c.textAlign='center';for(let l=-6;l<=-1;l++)c.fillText('1e'+l,X(l),H-6);
+ c.save();c.beginPath();c.rect(pad.l,pad.t,pw,ph);c.clip();
+ const curve=(g,col,dash,wd)=>{c.beginPath();for(let i=0;i<=200;i++){const l=-6+5*i/200,v=Math.log10(g(10**l));i?c.lineTo(X(l),Y(v)):c.moveTo(X(l),Y(v))}c.strokeStyle=col;c.lineWidth=wd;c.setLineDash(dash||[]);c.stroke();c.setLineDash([])};
+ curve(h=>M3/6*h*h,'#b5763a',[5,4],1.6);curve(h=>eps/h,'#3f6e8c',[5,4],1.6);curve(E,'#223056',null,2.6);
+ c.strokeStyle='#8e9098';c.setLineDash([2,3]);c.beginPath();c.moveTo(X(Math.log10(hopt)),pad.t);c.lineTo(X(Math.log10(hopt)),pad.t+ph);c.stroke();c.setLineDash([]);
+ c.beginPath();c.arc(X(lgh),Y(Math.log10(E(h))),5,0,7);c.fillStyle='#b5763a';c.fill();c.restore();
+ const V=document.getElementById('vals');V.innerHTML='<span></span><span></span>';K(V.children[0],`E(h)=${fmt(E(h))}`);K(V.children[1],`h^*=\\left(\\tfrac{3\\varepsilon}{M_3}\\right)^{1/3}\\approx${fmt(hopt)}`);
+ cv.setAttribute('aria-label',`步长 ${h.toExponential(2)} 时误差上界 ${E(h).toExponential(2)}，最佳步长 ${hopt.toExponential(2)}`)}
+/* 五点模板 */
+function stencil(){document.getElementById('bar').style.display='none';
+ legend([["f'(x)\\approx\\tfrac{1}{12h}\\sum c_kf(x+kh)",'#223056'],["f''(x)\\approx\\tfrac{1}{12h^2}\\sum c_kf(x+kh)",'#b5763a']]);
+ const rows=[[1,-8,0,8,-1],[-1,16,-30,16,-1]],cols=['#223056','#b5763a'];
+ const {c,w,h:H}=setup(),pad={l:20,r:20,t:14,b:30},pw=w-pad.l-pad.r,ph=H-pad.t-pad.b,half=ph/2;
+ c.font='12px "Microsoft YaHei",sans-serif';c.textAlign='center';
+ rows.forEach((r,ri)=>{const y0=pad.t+half*ri+half/2,sc=(half/2-12)/Math.max(...r.map(Math.abs));
+  c.strokeStyle='#b8bbc4';c.lineWidth=1;c.beginPath();c.moveTo(pad.l,y0);c.lineTo(w-pad.r,y0);c.stroke();
+  r.forEach((v,k)=>{const x=pad.l+pw*(k+.5)/5,bw=Math.min(36,pw/10);c.fillStyle=cols[ri];c.globalAlpha=v===0?.25:.85;c.fillRect(x-bw/2,v>0?y0-v*sc:y0,bw,Math.abs(v*sc)||2);c.globalAlpha=1;
+   c.fillStyle='#161820';c.fillText(String(v),x,v>=0?y0-v*sc-4:y0-v*sc+13)})});
+ const labs=['x-2h','x-h','x','x+h','x+2h'];c.fillStyle='#4f525b';labs.forEach((t,k)=>c.fillText(t,pad.l+pw*(k+.5)/5,H-8));
+ document.getElementById('vals').innerHTML='';cv.setAttribute('aria-label','五点中心差分系数：一阶 1,-8,0,8,-1；二阶 -1,16,-30,16,-1')}
+const draw=()=>({secant,error:errcurve,stencil}[mode]||secant)();
+const kick=Morph.bind(draw);hs.addEventListener('input',kick);
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(draw).observe(cv);
+</script></body></html>

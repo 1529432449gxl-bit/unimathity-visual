@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Smith normal form</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const R=['1','2','\\vdots','n'], C=['1','2','\\cdots','n'];
+const g=(name,sup)=>gen(R,C,(r,c,i,j,m)=>m?null:`${name}${sup?'^{('+sup+')}':''}_${sub(r,c)}(\\lambda)`);
+const A=g('a'), B=g('b');
+const A1=A.map(r=>r.slice()); A1[1][0]='r(\\lambda)';
+const B1=B.map(r=>r.slice()); B1[0][0]='r(\\lambda)';
+const E1=gen(R,C,(r,c,i,j,m)=>{ if(i===0&&j===0)return 'd_1(\\lambda)'; if(i===0||j===0)return m?(m==='v'?'0':'0'):'0'; return m?null:`a^{(1)}_${sub(r,c)}(\\lambda)`});
+E1[2][0]='0';E1[0][2]='0';
+const E2=gen(R,C,(r,c,i,j,m)=>{ if(i===0&&j===0)return 'd_1(\\lambda)'; if(i===1&&j===1)return 'd_2(\\lambda)'; if(i<=1||j<=1)return '0'; return m?null:`a^{(2)}_${sub(r,c)}(\\lambda)`});
+const Fn=gen(R,C,(r,c,i,j,m)=>{ if(i===j)return m?'\\ddots':`d_{${r}}(\\lambda)`; return '0'});
+const M=(cells,label)=>({key:'A',label,cells});
+const col=(j,from,cls)=>[...Array(4)].map((_,i)=>i>=from?['A',i,j,cls]:null).filter(Boolean);
+const row=(i,from,cls)=>[...Array(4)].map((_,j)=>j>=from?['A',i,j,cls]:null).filter(Boolean);
+const steps=[
+ {mats:[M(A,'A(\\lambda)')],hi:[],lines:['A(\\lambda)\\ \\text{nonzero}']},
+ {mats:[M(A,'A(\\lambda)')],hi:[['A',0,0,'s']],lines:['\\text{swap rows and columns}:\\ \\deg a_{11}(\\lambda)\\ \\text{minimal}']},
+ {mats:[M(A,'A(\\lambda)')],hi:[['A',0,0,'s'],['A',1,0,'t']],lines:['a_{21}(\\lambda)=q(\\lambda)\\,a_{11}(\\lambda)+r(\\lambda)']},
+ {mats:[M(A1,'A(\\lambda)')],hi:[['A',0,0,'s'],['A',1,0,'t'],...row(1,1,'p')],lines:['r_2-q(\\lambda)\\,r_1:\\qquad \\deg r(\\lambda)<\\deg a_{11}(\\lambda)']},
+ {mats:[M(B1,'B(\\lambda)')],hi:[['A',0,0,'t'],...row(0,1,'p')],lines:['r_1\\leftrightarrow r_2:\\ \\text{the pivot degree drops}']},
+ {mats:[M(E1,'\\cdots')],hi:[['A',0,0,'s'],...col(0,1,'p'),...row(0,1,'p')],lines:['d_1(\\lambda)\\ \\text{divides every entry, row 1 and column 1 cleared}']},
+ {mats:[M(E2,'\\cdots')],hi:[['A',1,1,'s'],...col(1,2,'p'),...row(1,2,'p')],lines:['\\text{repeat on the lower right block}']},
+ {mats:[M(Fn,'\\cdots')],hi:[['A',0,0,'s'],['A',1,1,'s'],['A',3,3,'s']],lines:['\\operatorname{diag}\\{d_1(\\lambda),\\,d_2(\\lambda),\\,\\cdots,\\,d_n(\\lambda)\\}','d_1(\\lambda)\\mid d_2(\\lambda)\\mid\\cdots\\mid d_n(\\lambda),\\quad \\text{monic}']},
+];
+LAS.run({steps,interval:1900});
+</script></body></html>

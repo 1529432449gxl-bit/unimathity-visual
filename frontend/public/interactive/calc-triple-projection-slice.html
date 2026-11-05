@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Projection vs slice</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="100" step="1" value="45" aria-label="cut"></div>
+<div class="legend">
+  <span class="key" style="--c:#223056" id="k1"></span>
+  <span class="key" style="--c:#ad6844" id="k2"></span>
+  <span class="key" style="--c:#3f6e8c" id="k3"></span>
+</div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Projection method versus slice method"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+document.querySelector('canvas').style.height = '360px';
+
+let mode = 'proj';
+const sl = document.getElementById('t'), fx = document.getElementById('fx');
+const S = { u: 0.45 };
+const lab = P.labels(document.getElementById('stage'));
+
+const box = document.getElementById('modes');
+[['proj', '\\text{projection}'], ['slice', '\\text{slice}']].forEach(([id, tex]) => {
+  const bt = document.createElement('button'); bt.type = 'button';
+  bt.setAttribute('aria-pressed', id === mode);
+  const sp = document.createElement('span'); K(sp, tex); bt.appendChild(sp);
+  bt.onclick = () => {
+    mode = id;
+    box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b === bt));
+    legend(); cv.kick();
+  };
+  box.appendChild(bt);
+});
+
+function legend() {
+  if (mode === 'proj') {
+    K(document.getElementById('k1'), 'D\\subset xy');
+    K(document.getElementById('k2'), 'z_1\\to z_2');
+    K(document.getElementById('k3'), '\\Omega');
+  } else {
+    K(document.getElementById('k1'), '\\Omega');
+    K(document.getElementById('k2'), 'D_z');
+    K(document.getElementById('k3'), 'z=\\mathrm{const}');
+  }
+}
+legend();
+
+/* isometric: x right-down, y left-down, z up */
+function iso(x, y, z) {
+  const a = Math.PI / 6;
+  return [(x - y) * Math.cos(a), (x + y) * Math.sin(a) * 0.55 - z];
+}
+function toScreen(v, p, ox, oy, sc) {
+  return [ox + p[0] * sc, oy + p[1] * sc];
+}
+
+function formula(u) {
+  fx.innerHTML = '<div></div>';
+  if (mode === 'proj') {
+    const x = 0.15 + 0.55 * u, y = 0.12 + 0.28 * (1 - u);
+    const z2 = Math.max(0, 1 - x - y);
+    K(fx.children[0], `\\displaystyle\\iiint_{\\Omega}=\\iint_{D}\\!\\Bigl(\\int_{0}^{1-x-y}f\\,\\mathrm{d}z\\Bigr)\\mathrm{d}x\\mathrm{d}y\\quad
+      (x,y)=(${x.toFixed(2)},${y.toFixed(2)}),\\; z\\in[0,${z2.toFixed(2)}]`, true);
+  } else {
+    const z = u * 0.92;
+    const s = Math.max(0, 1 - z);
+    K(fx.children[0], `\\displaystyle\\iiint_{\\Omega}=\\int_{0}^{1}\\!\\Bigl(\\iint_{D_z}f\\,\\mathrm{d}x\\mathrm{d}y\\Bigr)\\mathrm{d}z\\quad
+      z=${z.toFixed(2)},\\; D_z:\\,x\\ge0,\\,y\\ge0,\\,x+y\\le${s.toFixed(2)}`, true);
+  }
+}
+
+function drawWire(ctx, pts, color, width, alpha = 1) {
+  P.path(ctx, pts, { color, width, alpha });
+}
+function fillPoly(ctx, pts, color, alpha) {
+  if (pts.length < 3) return;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = P.approach(S, 'u', +sl.value / 100, dt, 12);
+  const u = S.u;
+  K(document.getElementById('lab'), mode === 'proj' ? `(x,y)` : `z`);
+  formula(u);
+
+  const ox = w * 0.52, oy = h * 0.62, sc = Math.min(w, h) * 0.42;
+  const T = (x, y, z) => toScreen(null, iso(x, y, z), ox, oy, sc);
+
+  /* tetrahedron vertices */
+  const O = T(0, 0, 0), A = T(1, 0, 0), B = T(0, 1, 0), C = T(0, 0, 1);
+  /* faces (back first) */
+  fillPoly(ctx, [O, B, C], C.accent, 0.06);
+  fillPoly(ctx, [O, A, C], C.accent, 0.08);
+  fillPoly(ctx, [A, B, C], C.blue, 0.10);
+  fillPoly(ctx, [O, A, B], C.accent, 0.12);
+  drawWire(ctx, [O, A, B, O], C.accent, 1.6, 0.85);
+  drawWire(ctx, [O, C], C.accent, 1.4, 0.7);
+  drawWire(ctx, [A, C], C.accent, 1.4, 0.7);
+  drawWire(ctx, [B, C], C.accent, 1.4, 0.7);
+
+  /* ground axes hints */
+  const tipX = T(1.25, 0, 0), tipY = T(0, 1.25, 0), tipZ = T(0, 0, 1.2);
+  drawWire(ctx, [O, tipX], C.mute, 1, 0.45);
+  drawWire(ctx, [O, tipY], C.mute, 1, 0.45);
+  drawWire(ctx, [O, tipZ], C.mute, 1, 0.45);
+  lab.set('x', 'x', tipX[0], tipX[1], { dx: 8, dy: 4, color: C.mute });
+  lab.set('y', 'y', tipY[0], tipY[1], { dx: -10, dy: 4, color: C.mute });
+  lab.set('z', 'z', tipZ[0], tipZ[1], { dy: -10, color: C.mute });
+
+  if (mode === 'proj') {
+    const x = 0.15 + 0.55 * u, y = 0.12 + 0.28 * (1 - u);
+    const z2 = Math.max(0.02, 1 - x - y);
+    /* projection D on xy */
+    const d0 = T(0, 0, 0), d1 = T(1, 0, 0), d2 = T(0, 1, 0);
+    fillPoly(ctx, [d0, d1, d2], C.accent, 0.18);
+    drawWire(ctx, [d0, d1, d2, d0], C.accent, 2, 0.9);
+    /* vertical fiber */
+    const p0 = T(x, y, 0), p1 = T(x, y, z2);
+    drawWire(ctx, [p0, p1], C.warm, 3.2, 1);
+    P.dot(ctx, p0[0], p0[1], { r: 3.5, color: C.warm });
+    P.dot(ctx, p1[0], p1[1], { r: 3.5, color: C.warm });
+    /* small footprint on D */
+    const foot = T(x, y, 0);
+    P.dot(ctx, foot[0], foot[1], { r: 3, color: C.accent, ring: false });
+    lab.set('D', 'D', T(0.45, 0.22, 0)[0], T(0.45, 0.22, 0)[1], { dy: 14, color: C.accent });
+    lab.set('seg', 'z', (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, { dx: 12, color: C.warm });
+  } else {
+    const z = u * 0.92;
+    const s = Math.max(0.02, 1 - z);
+    const q0 = T(0, 0, z), q1 = T(s, 0, z), q2 = T(0, s, z);
+    fillPoly(ctx, [q0, q1, q2], C.warm, 0.35);
+    drawWire(ctx, [q0, q1, q2, q0], C.warm, 2.2, 1);
+    /* plane hint lines */
+    drawWire(ctx, [T(-0.05, -0.05, z), T(1.05, -0.05, z)], C.blue, 1, 0.35);
+    drawWire(ctx, [T(-0.05, -0.05, z), T(-0.05, 1.05, z)], C.blue, 1, 0.35);
+    lab.set('Dz', 'D_z', T(s * 0.35, s * 0.2, z)[0], T(s * 0.35, s * 0.2, z)[1], { dy: -12, color: C.warm });
+    lab.set('seg', '', 0, 0, { alpha: 0 });
+    lab.set('D', '', 0, 0, { alpha: 0 });
+  }
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+{ let m = 0; for (const t of [0, 45, 100]) {
+    sl.value = t; S.u = t / 100; formula(S.u);
+    m = Math.max(m, fx.getBoundingClientRect().height);
+  }
+  fx.style.minHeight = Math.ceil(m) + 'px'; sl.value = 45; S.u = 0.45; formula(0.45); }
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

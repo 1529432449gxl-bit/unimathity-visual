@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Directional derivative</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="a" type="range" min="0" max="1000" step="1" value="64" aria-label="direction"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Directional derivative"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+// 等值线：在网格上用 marching squares 求 f=c 的线段
+function contours(f, B, levels, nx, ny) { const out = levels.map(() => []), dx = (B[1] - B[0]) / nx, dy = (B[3] - B[2]) / ny;
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) { const x = B[0] + i * dx, y = B[2] + j * dy, q = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]], fv = q.map(p => f(p[0], p[1]));
+    levels.forEach((c, k) => { const pts = []; for (let e = 0; e < 4; e++) { const a = fv[e] - c, b = fv[(e + 1) % 4] - c; if ((a < 0) !== (b < 0)) { const t = a / (a - b), p1 = q[e], p2 = q[(e + 1) % 4]; pts.push([p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])]) } }
+      if (pts.length >= 2) out[k].push([pts[0], pts[1]]); if (pts.length === 4) out[k].push([pts[2], pts[3]]) }) }
+  return out; }
+function drawContours(ctx, v, segs, color, alpha, width = 1.1) { ctx.save(); ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.beginPath();
+  for (const lv of segs) for (const [a, b] of lv) { ctx.moveTo(v.X(a[0]), v.Y(a[1])); ctx.lineTo(v.X(b[0]), v.Y(b[1])) } ctx.stroke(); ctx.restore(); }
+function arrow2(ctx, x0, y0, x1, y1, color, width = 2.2) { const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy); if (L < 2) return; const ux = dx / L, uy = dy / L, h = Math.min(9, L * .4);
+  ctx.save(); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - ux * h * .7, y1 - uy * h * .7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * h - uy * h * .45, y1 - uy * h + ux * h * .45); ctx.lineTo(x1 - ux * h + uy * h * .45, y1 - uy * h - ux * h * .45); ctx.closePath(); ctx.fill(); ctx.restore(); }
+
+const f = (x, y) => 0.6 * x * x + 0.25 * x * y + 0.35 * y * y - 0.4 * x + 0.3 * y, gx = (x, y) => 1.2 * x + 0.25 * y - 0.4, gy = (x, y) => 0.25 * x + 0.7 * y + 0.3;
+const P0 = [0.9, 0.6], G = [gx(...P0), gy(...P0)];
+const sl = document.getElementById('a'), btn = document.getElementById('play');
+const S = { a: 0.4, target: 0.4, playing: true };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['\\nabla f(P_0)', C.accent], ['\\boldsymbol e_l', C.blue], ['\\dfrac{\\partial f}{\\partial l}=\\nabla f\\cdot\\boldsymbol e_l', C.warm]]);
+K(eqEl, '\\frac{\\partial f}{\\partial l}\\Big|_{P_0}=\\nabla f(P_0)\\cdot\\boldsymbol e_l=|\\nabla f(P_0)|\\cos\\varphi', 1);
+const B = [-0.9, 2.7, -1.1, 2.3], v = P.view(B, { l: 8, r: 8, t: 8, b: 8 });
+let segs = null;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  // 等比例
+  const sx = w / (B[1] - B[0]), sy = h / (B[3] - B[2]), s = Math.min(sx, sy), cx = (B[0] + B[1]) / 2, cy = (B[2] + B[3]) / 2;
+  v.b = [cx - w / s / 2, cx + w / s / 2, cy - h / s / 2, cy + h / s / 2]; v.w = w; v.h = h; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  if (!segs || segs.w !== w) { segs = contours(f, v.b, [-.2, 0, .2, .4, .6, .8, 1, 1.2, 1.4, 1.7, 2], 70, 50); segs.w = w }
+  if (S.playing) { S.target += 0.55 * dt; sl.value = (S.target % (2 * Math.PI)) / (2 * Math.PI) * 1000 }
+  const mv = P.approach(S, 'a', S.target, dt, 9), a = S.a, e = [Math.cos(a), Math.sin(a)], d = G[0] * e[0] + G[1] * e[1];
+  K(document.getElementById('lab'), `\\varphi=${(((Math.atan2(e[1], e[0]) - Math.atan2(G[1], G[0])) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI).toFixed(2)}`);
+  drawContours(ctx, v, segs, C.accent, .28);
+  const X = v.X(P0[0]), Y = v.Y(P0[1]), k = s * 0.75;
+  // 投影所画出的圆：直径为梯度
+  ctx.save(); ctx.strokeStyle = P.rgba(C.warm, .35); ctx.setLineDash([4, 4]); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(X + G[0] * k / 2, Y - G[1] * k / 2, Math.hypot(...G) * k / 2, 0, 7); ctx.stroke(); ctx.restore();
+  P.path(ctx, [[X - e[0] * 2.2 * k, Y + e[1] * 2.2 * k], [X + e[0] * 2.2 * k, Y - e[1] * 2.2 * k]], { color: C.blue, width: 1, alpha: .35 });
+  arrow2(ctx, X, Y, X + G[0] * k, Y - G[1] * k, C.accent, 2.4);
+  // 投影：橙色线段沿 e_l，长度 = d（带符号）
+  P.path(ctx, [[X, Y], [X + e[0] * d * k, Y - e[1] * d * k]], { color: C.warm, width: 5, alpha: .75 });
+  P.path(ctx, [[X + G[0] * k, Y - G[1] * k], [X + e[0] * d * k, Y - e[1] * d * k]], { color: C.mute, width: 1, dash: [3, 3] });
+  arrow2(ctx, X, Y, X + e[0] * .9 * k, Y - e[1] * .9 * k, C.blue, 2);
+  P.dot(ctx, X, Y, { r: 4.4, color: C.accent });
+  lab.set('P', 'P_0', X, Y, { dx: -14, dy: 12, color: C.accent, size: 13 }); lab.end();
+  return mv || S.playing;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000 * 2 * Math.PI; S.a = ((S.a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

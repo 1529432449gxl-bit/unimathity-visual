@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Congruence</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const R=['1','2','\\vdots','n'], C=['1','2','\\cdots','n'], ord=x=>({'1':1,'2':2,'n':9})[x];
+// k：已完成的成对消元次数；half：第 k+1 次只做了行变换
+function st(k,half,final){return gen(R,C,(r,c,i,j,m)=>{const ri=ord(r),cj=ord(c);
+  if(final){ if(m==='v')return j===2?'\\ddots':'0'; if(m==='c')return '0'; return ri===cj?`d_{${r}}`:'0'}
+  const p=k+1;
+  if(m==='v'){ if(cj<=k)return '0'; if(half&&cj===p)return '0'; return null}
+  if(m==='c'){ if(ri<=k)return '0'; return null}
+  if(ri<=k||cj<=k){ if(ri===cj)return ri===1?'a_{11}':`a^{(${ri-1})}_${sub(r,c)}`; return '0'}
+  if(half){ if(cj===p&&ri>p)return '0'; if(ri===p)return p===1?`a_${sub(r,c)}`:`a^{(${k})}_${sub(r,c)}`; return `a^{(${k+1})}_${sub(r,c)}`}
+  return k===0?`a_${sub(r,c)}`:`a^{(${k})}_${sub(r,c)}`})}
+const M=(cells,label)=>({key:'A',label,cells});
+const col=(j,from,cls)=>[...Array(4)].map((_,i)=>i>=from?['A',i,j,cls]:null).filter(Boolean);
+const row=(i,from,cls)=>[...Array(4)].map((_,j)=>j>=from?['A',i,j,cls]:null).filter(Boolean);
+const steps=[
+ {mats:[M(st(0),'A=A^{\\prime}')],hi:[],lines:['f=x^{\\prime}Ax=a_{11}x_1^2+2a_{12}x_1x_2+\\cdots+a_{nn}x_n^2']},
+ {mats:[M(st(0),'A')],hi:[['A',0,0,'s'],...col(0,1,'t')],lines:['r_i-\\dfrac{a_{i1}}{a_{11}}\\,r_1\\qquad(i=2,\\cdots,n)']},
+ {mats:[M(st(0,true),'P_1A')],hi:[...col(0,1,'p'),['A',0,0,'s'],...row(0,1,'t')],lines:['c_j-\\dfrac{a_{1j}}{a_{11}}\\,c_1\\qquad(j=2,\\cdots,n)']},
+ {mats:[M(st(1),'C_1^{\\prime}AC_1')],hi:[...col(0,1,'p'),...row(0,1,'p')],lines:['f=a_{11}\\Big(x_1+\\dfrac{a_{12}}{a_{11}}x_2+\\cdots+\\dfrac{a_{1n}}{a_{11}}x_n\\Big)^2+f^{(1)}(x_2,\\cdots,x_n)']},
+ {mats:[M(st(1),'C_1^{\\prime}AC_1')],hi:[['A',1,1,'s'],...col(1,2,'t'),...row(1,2,'t')],lines:['r_i-\\dfrac{a^{(1)}_{i2}}{a^{(1)}_{22}}\\,r_2,\\qquad c_j-\\dfrac{a^{(1)}_{2j}}{a^{(1)}_{22}}\\,c_2']},
+ {mats:[M(st(2),'C_2^{\\prime}AC_2')],hi:[...col(1,2,'p'),...row(1,2,'p')],lines:['\\text{each step: one row operation and the same column operation}']},
+ {mats:[M(st(0,false,true),'C^{\\prime}AC')],hi:[['A',0,0,'s'],['A',1,1,'s'],['A',3,3,'s']],lines:['C^{\\prime}AC=\\operatorname{diag}\\{d_1,\\,d_2,\\,\\cdots,\\,d_n\\}','f=d_1y_1^2+d_2y_2^2+\\cdots+d_ny_n^2,\\qquad x=Cy']},
+];
+LAS.run({steps,interval:1900});
+</script></body></html>

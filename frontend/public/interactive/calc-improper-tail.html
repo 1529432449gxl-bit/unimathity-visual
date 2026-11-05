@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Improper integral</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}@media(max-width:520px){.stage canvas{height:290px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-p="2" aria-pressed="true"></button><button type="button" data-p="1" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="u" type="range" min="0" max="1000" step="1" value="0" aria-label="upper limit"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="area under 1/x^p from 1 to u as u grows"></canvas></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const UMAX = 60;
+const sl = document.getElementById('u'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+const uOf = s => Math.exp(Math.log(1.6) + (Math.log(UMAX) - Math.log(1.6)) * s / 1000);
+const sOf = u => 1000 * (Math.log(u) - Math.log(1.6)) / (Math.log(UMAX) - Math.log(1.6));
+const S = { p: 2, u: 1.6, target: 1.6, playing: false, fade: 1 };
+const fp = x => Math.pow(x, -S.p), area = u => S.p === 2 ? 1 - 1 / u : Math.log(u);
+const lab = P.labels(stage);
+const btns = [...document.querySelectorAll('#mode button')];
+K(btns[0], 'f(x)=\\dfrac1{x^2}'); K(btns[1], 'f(x)=\\dfrac1{x}');
+const eq = () => K(document.getElementById('eq'), S.p === 2 ? '\\int_1^u\\frac{\\mathrm dx}{x^2}=1-\\frac1u\\ \\longrightarrow\\ 1' : '\\int_1^u\\frac{\\mathrm dx}{x}=\\ln u\\ \\longrightarrow\\ +\\infty');
+eq();
+btns.forEach(bt => bt.addEventListener('click', () => { S.p = +bt.dataset.p; btns.forEach(o => o.setAttribute('aria-pressed', String(o === bt))); eq(); S.fade = 0; cv.kick() }));
+const v = P.view([0, 2, -0.1, 1.15], { l: 14, r: 64, t: 14, b: 24 });
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target *= Math.exp(0.55 * dt); if (S.target >= UMAX) { S.target = UMAX; setPlay(false) } sl.value = sOf(S.target); }
+  let moving = P.approach(S, 'u', S.target, dt, 8); moving = P.approach(S, 'fade', 1, dt, 5) || moving;
+  const u = S.u;
+  // 横向镜头随 u 拉远
+  v.aim([0, Math.max(3, 1.18 * u), -0.1, 1.15]); moving = v.step(dt, 5) || moving;
+  K(document.getElementById('lab'), `u=${u < 10 ? u.toFixed(1) : u.toFixed(0)}`);
+  P.axes(ctx, v, { x: true, y: true });
+  const n = 260, top = [], base = [];
+  for (let i = 0; i <= n; i++) { const x = 1 + (u - 1) * i / n; top.push([v.X(x), v.Y(fp(x))]); base.push([v.X(x), v.Y(0)]) }
+  P.fill(ctx, top, base, C.warm, .26 * S.fade);
+  P.path(ctx, P.curve(v, fp, Math.max(0.55, v.b[0]), v.b[1]), { color: C.accent, width: 2.4, alpha: S.fade });
+  P.path(ctx, [[v.X(u), v.Y(0)], [v.X(u), v.Y(fp(u))]], { color: C.warm, width: 1.4 });
+  // 右侧量筒：已累积的面积
+  const gx = w - 34, gh = h - 38, gy0 = h - 24, scale = gh / 4.4;
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(gx - 9, gy0 - gh, 18, gh, 4); ctx.stroke();
+  const ah = Math.min(gh, area(u) * scale);
+  ctx.fillStyle = P.rgba(C.warm, .55 * S.fade); ctx.beginPath(); ctx.roundRect(gx - 7, gy0 - ah, 14, ah, 3); ctx.fill(); ctx.restore();
+  if (S.p === 2) P.path(ctx, [[gx - 15, gy0 - scale], [gx + 15, gy0 - scale]], { color: C.accent, width: 1.6, dash: [4, 3] });
+  lab.set('one', '1', gx, gy0 - scale, { dx: 22, color: C.accent, size: 13, alpha: S.p === 2 ? 1 : 0 });
+  lab.set('1', '1', v.X(1), v.Y(0), { dy: 12, color: C.soft, size: 13 });
+  lab.set('u', 'u', v.X(u), v.Y(0), { dy: 12, color: C.warm, size: 13 });
+  lab.end();
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target >= UMAX - 1e-6) { S.target = 1.6; S.u = 1.6; v.aim([0, 3, -0.1, 1.15], true) } setPlay(true) });
+sl.addEventListener('input', () => { setPlay(false); S.target = uOf(+sl.value); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

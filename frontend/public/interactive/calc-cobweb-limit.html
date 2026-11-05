@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cobweb iteration</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>.top button.tex{min-width:118px}.controls button.tg{min-width:78px}.nav button.play{min-width:84px}.fx>div{padding:1px 4px}</style></head>
+<body><main>
+<div class="top" id="top"></div>
+<div class="controls"><span class="n" id="lab"></span><input id="x0" type="range" step="0.01" aria-label="initial value"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="cobweb diagram of a recursive sequence"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const K = (el, s, d = false) => katex.render(s, el, { throwOnError: false, displayMode: d });
+const clamp = P.clamp;
+
+// 两个讲义例题：单调有界（根式递推）与压缩映射（分式递推）
+const CASES = {
+  sqrt: {
+    key: 'sqrt', tex: 'x_{n+1}=\\sqrt{2+x_n}',
+    g: x => Math.sqrt(2 + x), x0: 1, min: 0.5, max: 1.6, fp: 2, B: [0.4, 2.35, 0.4, 2.35],
+  },
+  frac: {
+    key: 'frac', tex: 'x_{n+1}=3+\\dfrac{4}{x_n}',
+    g: x => 3 + 4 / x, x0: 3, min: 2.7, max: 3.5, fp: 4, B: [2.5, 4.75, 2.5, 4.75],
+  },
+};
+const N = 8;
+const top = document.getElementById('top'), sl = document.getElementById('x0');
+const fx = document.getElementById('fx'), stage = document.getElementById('stage'), lab = P.labels(stage);
+let c = CASES.sqrt, xs = [], v = P.view(c.B, { l: 12, r: 12, t: 12, b: 12 });
+
+const build = () => { xs = [+sl.value]; for (let k = 0; k < N; k += 1) xs.push(c.g(xs[k])); };
+const inside = x => x > c.B[0] - 0.4 && x < c.B[1] + 0.4;
+
+// 第 i 步镜头：框住相邻两点、不动点与曲线上的点；收敛后逐级放大
+function frameFor(i) {
+  if (i === 0) return c.B.slice();
+  const a = xs[i - 1], b = xs[i], ga = c.g(a);
+  const lo = Math.min(a, b, c.fp, ga), hi = Math.max(a, b, c.fp, ga);
+  const L = Math.min(c.B[1] - c.B[0], Math.max(hi - lo, 1e-5) * 1.9);
+  const ctr = (lo + hi) / 2;
+  const x0 = clamp(ctr - L / 2, c.B[0], c.B[1] - L);
+  const y0 = clamp(ctr - L / 2, c.B[2], c.B[3] - L);
+  return [x0, x0 + L, y0, y0 + L];
+}
+
+function formula(i) {
+  fx.innerHTML = '<div></div><div></div>';
+  K(fx.children[0], c.tex + ',\\qquad x_1=' + xs[0].toFixed(5), true);
+  if (i === 0) {
+    K(fx.children[1], `x_2=g(x_1)=${c.g(xs[0]).toFixed(5)}`, true);
+  } else if (c.key === 'sqrt') {
+    K(fx.children[1], `x_{${i + 1}}=\\sqrt{2+${xs[i - 1].toFixed(5)}}=${xs[i].toFixed(5)}`, true);
+  } else {
+    K(fx.children[1], `x_{${i + 1}}=3+\\dfrac{4}{${xs[i - 1].toFixed(5)}}=${xs[i].toFixed(5)}`, true);
+  }
+}
+
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  const side = Math.min(w, h), sx = (w - side) / 2;
+  v.pad = { l: 12 + sx, r: 12 + sx, t: 12, b: 12 };
+  const moving = st.tick(dt), cam = v.step(dt, 3.2), i = st.i, p = st.p;
+  const Sxy = (x, y) => [v.X(x), v.Y(y)];
+  ctx.save(); ctx.beginPath(); ctx.rect(v.pad.l - 2, 10, w - v.pad.l - v.pad.r + 4, h - 20); ctx.clip();
+
+  // 对角线、曲线、不动点
+  P.path(ctx, [Sxy(c.B[0], c.B[0]), Sxy(c.B[1], c.B[1])], { color: C.mute, width: 1, alpha: 0.55 });
+  P.path(ctx, P.curve(v, c.g, v.b[0], v.b[1]), { color: C.accent, width: 2.4 });
+  P.dot(ctx, ...Sxy(c.fp, c.fp), { r: 3, color: C.accent, alpha: 0.6, ring: false });
+
+  // 蛛网：完成的历史按年龄淡出，当前段先竖后横逐段画出
+  const inView = (x, y) => x > v.b[0] && x < v.b[1] && y > v.b[2] && y < v.b[3];
+  for (let k = 1; k <= i; k += 1) {
+    const a = xs[k - 1], b = xs[k];
+    if (!inside(a) || !inside(b)) continue;
+    const cur = k === i;
+    if (!cur && !(inView(a, a) && inView(a, b) && inView(b, b))) continue;
+    const age = (i - k) / Math.max(1, N);
+    const al = cur ? 1 : 0.22 + 0.55 * (1 - age);
+    const pv = cur ? P.ease.inOut(P.seg(p, 0, 0.5)) : 1;
+    const ph = cur ? P.ease.inOut(P.seg(p, 0.45, 1)) : 1;
+    P.path(ctx, [Sxy(a, a), Sxy(a, b)], { color: C.warm, width: cur ? 2 : 1.4, alpha: al, progress: pv });
+    P.path(ctx, [Sxy(a, b), Sxy(b, b)], { color: C.warm, width: cur ? 2 : 1.4, alpha: al, progress: ph });
+    if (cur) P.dot(ctx, ...Sxy(a, b), { r: 3.4, color: C.accent, scale: P.ease.back(P.seg(p, 0.35, 0.6)) });
+  }
+  const last = xs[i];
+  if (inside(last)) P.dot(ctx, ...Sxy(last, last), { r: 4.2, color: C.warm, scale: i ? P.ease.back(P.seg(p, 0.8, 1)) : 1 });
+  lab.set('fp', 'x^*', ...Sxy(c.fp, c.fp), { dx: 14, dy: -12, color: C.accent, size: 13 });
+  ctx.restore();
+
+  // 放大后角落小图：整体曲线、蛛网与当前镜头框
+  const zoomed = (c.B[1] - c.B[0]) / (v.b[1] - v.b[0]) > 2;
+  const mapMoving = P.approach(c, 'map', zoomed ? 1 : 0, dt, 5);
+  P.minimap(ctx, v, { B: c.B, alpha: c.map || 0, aspect: 1, frac: 0.27, paint: (mx, my, cx) => {
+    P.path(cx, [[mx(c.B[0]), my(c.B[0])], [mx(c.B[1]), my(c.B[1])]], { color: C.mute, width: 1 });
+    P.mapCurve(cx, mx, my, c.g, c.B[0], c.B[1], { width: 1.2 });
+    for (let k = 1; k <= i; k += 1) {
+      const a = xs[k - 1], b = xs[k];
+      P.path(cx, [[mx(a), my(a)], [mx(a), my(b)], [mx(b), my(b)]], { color: C.warm, width: 0.8, alpha: 0.7 });
+    }
+  } });
+  lab.end();
+  return moving || cam || mapMoving;
+});
+
+st = P.stepper(document.getElementById('nav'), { count: N + 1, dur: 1.5, hold: 0.5, kick: cv.kick, onChange: s => { formula(s.i); v.aim(frameFor(s.i)); } });
+
+function makeTop() {
+  top.innerHTML = '';
+  for (const [key, cc] of Object.entries(CASES)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tex'; b.setAttribute('aria-pressed', String(key === c.key));
+    b.setAttribute('aria-label', key === 'sqrt' ? 'square root recursion' : 'fraction recursion');
+    K(b, cc.tex);
+    b.onclick = () => { if (key === c.key) return; stop(); c = CASES[key]; c.map = 0; sl.min = c.min; sl.max = c.max; sl.value = String(c.x0); v = P.view(c.B, { l: 12, r: 12, t: 12, b: 12 }); v.aim(c.B, true); makeTop(); reset(); };
+    top.appendChild(b);
+  }
+}
+function stop() { st.stop(); }
+function reset() {
+  build();
+  K(document.getElementById('lab'), `x_1=${(+sl.value).toFixed(2)}`);
+  st.stop(); st.go(0, false); v.aim(c.B, true);
+  formula(0);
+}
+sl.addEventListener('input', reset);
+
+makeTop();
+sl.min = String(c.min); sl.max = String(c.max); sl.value = String(c.x0);
+reset();
+// 预排两个例子的全部步骤公式，锁定高度，切换例子与播放时界面不跳
+{
+  const savedCase = c, savedVal = sl.value, savedMin = sl.min, savedMax = sl.max;
+  let m = 0;
+  for (const key of Object.keys(CASES)) {
+    c = CASES[key]; sl.min = c.min; sl.max = c.max; sl.value = String(c.x0); build();
+    for (let i = 0; i <= N; i += 1) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height); }
+  }
+  c = savedCase; sl.min = savedMin; sl.max = savedMax; sl.value = savedVal; build();
+  fx.style.minHeight = Math.ceil(m) + 'px';
+  formula(st.i);
+}
+P.reportHeight(document.querySelector('main'));
+
+// 验收接口
+window.cobweb = {
+  xs: () => xs.slice(),
+  state: () => ({ i: st.i, case: c.key, x: xs.slice() }),
+  setCase(key) { const b = [...top.children].find((el, idx) => Object.keys(CASES)[idx] === key); if (b) b.click(); },
+};
+</script></body></html>

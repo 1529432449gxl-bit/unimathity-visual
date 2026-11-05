@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Integral test</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}@media(max-width:520px){.stage canvas{height:280px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="rectangles of heights f(k) above and below the curve"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const f = x => 1.6 / Math.pow(x, 0.8);
+const NMAX = 10;
+const stage = document.getElementById('stage'), lab = P.labels(stage);
+for (const [t, c] of [['y=f(x)', C.accent], ['f(k)\\ \\text{on}\\ [k,k+1]', C.warm], ['f(k+1)\\ \\text{on}\\ [k,k+1]', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), '\\sum_{k=2}^{n}f(k)\\ \\leqslant\\ \\int_1^n f(x)\\,\\mathrm dx\\ \\leqslant\\ \\sum_{k=1}^{n-1}f(k)');
+const v = P.view([0.5, NMAX + 0.6, -0.08, 1.85], { l: 12, r: 12, t: 12, b: 24 });
+const S = { m: 1, intro: 0 };
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (!st) return false; v.w = w; v.h = h;
+  const anim = st.tick(dt), mv = P.approach(S, 'm', st.i + 1, dt, 5), intro = P.approach(S, 'intro', 1, dt, 4);
+  const m = S.m;            // 已铺设的区间数（连续量，最后一个区间渐入）
+  const n = 1 + m;
+  // 曲线下面积（浅色）
+  const top = [], base = [];
+  for (let i = 0; i <= 200; i++) { const x = 1 + (n - 1) * i / 200; top.push([v.X(x), v.Y(f(x))]); base.push([v.X(x), v.Y(0)]) }
+  P.fill(ctx, top, base, C.accent, .08 * S.intro);
+  for (let k = 1; k < Math.ceil(n); k++) {
+    const a = P.clamp(n - k, 0, 1);
+    const x0 = v.X(k), x1 = v.X(k + 1), yu = v.Y(f(k)), yl = v.Y(f(k + 1)), y0 = v.Y(0);
+    ctx.save(); ctx.globalAlpha = a * S.intro;
+    ctx.fillStyle = P.rgba(C.warm, .14); ctx.fillRect(x0, yu, x1 - x0, y0 - yu);
+    ctx.fillStyle = P.rgba(C.blue, .3); ctx.fillRect(x0, yl, x1 - x0, y0 - yl);
+    ctx.strokeStyle = C.warm; ctx.lineWidth = 1.3; ctx.strokeRect(x0, yu, x1 - x0, y0 - yu);
+    ctx.strokeStyle = C.blue; ctx.lineWidth = 1.1; ctx.strokeRect(x0, yl, x1 - x0, y0 - yl);
+    ctx.restore();
+  }
+  P.axes(ctx, v, { x: true, ticks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] });
+  P.path(ctx, P.curve(v, f, 0.85, NMAX + 0.5), { color: C.accent, width: 2.4, progress: P.ease.out(S.intro) });
+  lab.end();
+  return anim || mv || intro;
+});
+st = P.stepper(document.getElementById('nav'), { count: NMAX - 1, dur: .8, hold: .5, kick: cv.kick });
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting) st.stop() }); off.observe(document.querySelector('main'));
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

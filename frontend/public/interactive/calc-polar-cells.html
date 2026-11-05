@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Polar area element</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:320px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:240px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="r" type="range" min="0" max="1000" step="1" value="200" aria-label="radius"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Polar area element"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const NR = 6, NT = 16, R = 1.5, dr = R / NR, dth = Math.PI / 2 / (NT / 4) / 2;
+const sl = document.getElementById('r'), btn = document.getElementById('play');
+const S = { k: 1, target: 1, playing: true, dir: 1 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['\\Delta r', C.blue], ['r\\,\\Delta\\theta', C.warm], ['\\Delta\\sigma\\approx r\\,\\Delta r\\,\\Delta\\theta', C.accent]]);
+K(eqEl, '\\mathrm d\\sigma=r\\,\\mathrm dr\\,\\mathrm d\\theta', 1);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  const sc = Math.min((w - 30) / (2 * R + .3), (h - 20) / (R + .35)), ox = w / 2, oy = h - 14;
+  if (S.playing) { S.target += S.dir * 1.1 * dt; if (S.target > NR - 1) { S.target = NR - 1; S.dir = -1 } if (S.target < 0) { S.target = 0; S.dir = 1 } sl.value = S.target / (NR - 1) * 1000 }
+  const mv = P.approach(S, 'k', S.target, dt, 8), k = S.k, r0 = k * dr, r1 = r0 + dr, rm = r0 + dr / 2;
+  K(document.getElementById('lab'), `r=${rm.toFixed(2)}`);
+  ctx.save(); ctx.strokeStyle = P.rgba(C.mute, .45); ctx.lineWidth = 1;
+  for (let i = 1; i <= NR; i++) { ctx.beginPath(); ctx.arc(ox, oy, i * dr * sc, Math.PI, 2 * Math.PI); ctx.stroke() }
+  for (let j = 0; j <= NT; j++) { const t = Math.PI * j / NT; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + R * sc * Math.cos(t), oy - R * sc * Math.sin(t)); ctx.stroke() }
+  ctx.restore();
+  // 同一角宽 Δθ 的一列格子：越外越宽
+  const t0 = Math.PI * 9 / NT, t1 = Math.PI * 10 / NT;
+  for (let i = 0; i < NR; i++) { ctx.save(); ctx.fillStyle = P.rgba(C.accent, .06 + .05 * i); ctx.beginPath(); ctx.arc(ox, oy, (i + 1) * dr * sc, -t1, -t0); ctx.arc(ox, oy, i * dr * sc, -t0, -t1, true); ctx.closePath(); ctx.fill(); ctx.restore() }
+  // 当前格
+  ctx.save(); ctx.fillStyle = P.rgba(C.accent, .4); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(ox, oy, r1 * sc, -t1, -t0); ctx.arc(ox, oy, r0 * sc, -t0, -t1, true); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  const Pp = (r, t) => [ox + r * sc * Math.cos(t), oy - r * sc * Math.sin(t)];
+  P.path(ctx, [Pp(r0, t0), Pp(r1, t0)], { color: C.blue, width: 3 });
+  ctx.save(); ctx.strokeStyle = C.warm; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(ox, oy, r1 * sc, -t1, -t0); ctx.stroke(); ctx.restore();
+  P.path(ctx, [[ox, oy], Pp(rm, (t0 + t1) / 2)], { color: C.soft, width: 1, dash: [3, 4] });
+  const a = Pp(r1 + .12, (t0 + t1) / 2), b = Pp(rm, t0);
+  lab.set('rt', 'r\\Delta\\theta', a[0], a[1], { color: C.warm, size: 13 }); lab.set('dr', '\\Delta r', b[0], b[1], { dx: 14, dy: 8, color: C.blue, size: 13 });
+  lab.set('O', 'O', ox, oy, { dy: -10, dx: -10, color: C.soft, size: 13 }); lab.end();
+  return mv || S.playing;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000 * (NR - 1); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

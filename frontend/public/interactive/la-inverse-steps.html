@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inverse by row operations</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/lasteps.js"></script>
+</head><body><main></main>
+<script>
+const {gen,sub,isV,isC}=LAS;
+const R=['1','2','\\vdots','n'], C=['1','2','\\cdots','n'], ord=x=>({'1':1,'2':2,'n':9})[x];
+function left(k,upper){return gen(R,C,(r,c,i,j,m)=>{
+  const ri=ord(r),cj=ord(c);
+  if(upper){ if(m==='v')return cj<=2?'0':null; if(m==='c')return ri===9?null:null; if(cj<ri)return '0'; return `u_${sub(r,c)}`}
+  if(m==='v'){return cj<=k?'0':null} if(m)return null;
+  if(cj<=k&&ri>cj)return '0'; const s=Math.min(ri-1,k); return s?`a^{(${s})}_${sub(r,c)}`:`a_${sub(r,c)}`})}
+function right(k,full){return gen(R,C,(r,c,i,j,m)=>{
+  const ri=ord(r),cj=ord(c);
+  if(full){return m?null:`p_${sub(r,c)}`}
+  if(m==='v'){return cj<=k?null:(cj===1?'0':'0')} if(m==='c'){return ri===9&&k>=9?null:null}
+  if(ri===cj)return '1'; if(ri>cj&&cj<=k)return `p_${sub(r,c)}`; return '0'})}
+const M=(L,Rt,label)=>({key:'A',label,cells:L.map((row,i)=>[...row,...Rt[i]]),aug:4});
+const rowsT=(from,cls)=>[...Array(4)].flatMap((_,i)=>i<from?[]:[...Array(8)].map((_,j)=>['A',i,j,cls]));
+const colT=(j,from,cls)=>[...Array(4)].map((_,i)=>i>=from?['A',i,j,cls]:null).filter(Boolean);
+const steps=[];
+steps.push({mats:[M(left(0),right(0),'(A\\ \\ E)')],hi:[],lines:['(A\\ \\ E)\\ \\xrightarrow{\\ \\text{row}\\ }\\ (E\\ \\ A^{-1})']});
+steps.push({mats:[M(left(0),right(0),'(A\\ \\ E)')],hi:[...rowsT(1,'p'),['A',0,0,'s'],...colT(0,1,'t'),...colT(4,1,'t')],lines:['r_i-\\dfrac{a_{i1}}{a_{11}}\\,r_1\\quad\\text{on both blocks}']});
+steps.push({mats:[M(left(1),right(1),'(P_1A\\ \\ P_1)')],hi:[...colT(0,1,'p'),...colT(4,1,'t')],lines:['P_1=E_{k_1}\\cdots E_1']});
+steps.push({mats:[M(left(1),right(1),'(P_1A\\ \\ P_1)')],hi:[['A',1,1,'s'],...colT(1,2,'t'),...colT(4,2,'t'),...colT(5,2,'t')],lines:['r_i-\\dfrac{a^{(1)}_{i2}}{a^{(1)}_{22}}\\,r_2']});
+steps.push({mats:[M(left(2),right(2),'(P_2A\\ \\ P_2)')],hi:[...colT(1,2,'p')],lines:['P_2A\\ \\text{and}\\ P_2\\ \\text{built together}']});
+steps.push({mats:[M(left(0,true),right(9),'(PA\\ \\ P)')],hi:[['A',0,0,'s'],['A',1,1,'s'],['A',3,3,'s']],lines:['PA=U\\ \\text{upper triangular},\\quad u_{11}u_{22}\\cdots u_{nn}\\neq0']});
+steps.push({mats:[M(left(0,true),right(9),'(PA\\ \\ P)')],hi:[['A',3,3,'s'],['A',0,3,'t'],['A',1,3,'t']],lines:['\\dfrac{1}{u_{nn}}\\,r_n,\\qquad r_i-u_{in}\\,r_n\\quad(i<n)']});
+const I=gen(R,C,(r,c,i,j,m)=>m?null:(r===c?'1':'0'));
+I[2][2]='\\ddots';
+steps.push({mats:[M(I,right(0,true),'(E\\ \\ P)')],hi:[[0,0],[1,1],[3,3]].map(([i,j])=>['A',i,j,'s']).concat([0,1,3].flatMap(i=>[4,5,7].map(j=>['A',i,j,'t']))),lines:['PA=E\\ \\Longrightarrow\\ P=A^{-1}']});
+LAS.run({steps,interval:1800});
+</script></body></html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not uniformly continuous</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{cursor:grab;height:340px}.stage canvas:active{cursor:grabbing}@media(max-width:520px){.stage canvas{height:290px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="d" type="range" min="0.01" max="0.1" step="0.001" value="0.05" aria-label="delta"><button type="button" class="tg" id="play" aria-pressed="true">Pause</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="a window of fixed width sliding along y = 1/x towards 0"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const f = x => 1 / x, EPS = 1, X0 = 0.035, X1 = 1;
+const sl = document.getElementById('d'), btn = document.getElementById('play'), stage = document.getElementById('stage'), canvas = document.getElementById('cv');
+const S = { d: 0.05, dT: 0.05, a: 0.95, aT: 0.95, dir: -1, playing: true, drag: false, wait: 0 };
+const yTop = a => Math.max(2.4, 1.18 * f(a));
+const v = P.view([-0.04, 1.08, -0.08 * 2.4, 2.4], { l: 30, r: 12, t: 14, b: 24 });
+const lab = P.labels(stage);
+for (const [t, c] of [['y=1/x', C.accent], ['|f(x_1)-f(x_2)|', C.warm], ['\\varepsilon=1', C.blue]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+K(document.getElementById('eq'), '|f(x_1)-f(x_2)|=\\dfrac{\\delta}{x_1x_2}');
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let moving = P.approach(S, 'd', S.dT, dt, 8);
+  const lo = X0, hi = X1 - S.d;
+  if (S.playing) {
+    if (S.wait > 0) S.wait -= dt;
+    else {
+      // 越靠近 0 走得越慢，便于看清窗口被拉高
+      S.aT += S.dir * (0.05 + 0.32 * S.aT) * dt;
+      if (S.aT < lo) { S.aT = lo; S.dir = 1; S.wait = 1.2 } if (S.aT > hi) { S.aT = hi; S.dir = -1; S.wait = 0.6 }
+    }
+    S.a = S.aT;
+  } else { S.aT = P.clamp(S.aT, lo, hi); moving = P.approach(S, 'a', S.aT, dt, 14) || moving; }
+  const a = P.clamp(S.a, lo, hi), b = a + S.d, ya = f(a), yb = f(b), osc = ya - yb, mid = (ya + yb) / 2;
+  // 镜头：纵向随窗口高度缓动，保证窗口始终在画面内
+  const top = yTop(a); v.aim([-0.04, 1.08, -0.08 * top, top]); moving = v.step(dt, 5) || moving;
+  K(document.getElementById('lab'), `\\delta=${S.d.toFixed(3)}`);
+  P.axes(ctx, v, { x: true, y: true });
+  const bad = osc > EPS;
+  // 实际窗口：宽 δ，高 = 函数值之差
+  const bx0 = v.X(a), bx1 = v.X(b), byT = v.Y(ya), byB = v.Y(yb);
+  ctx.save(); ctx.fillStyle = C.hlBg; ctx.globalAlpha = .75; ctx.beginPath(); ctx.roundRect(bx0, byT, Math.max(2, bx1 - bx0), byB - byT, 2); ctx.fill();
+  ctx.globalAlpha = 1; ctx.strokeStyle = C.hl; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+  // ε 允许的高度：以窗口中点为中心的浅蓝虚框
+  const ey0 = v.Y(mid + EPS / 2), ey1 = v.Y(mid - EPS / 2);
+  ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = C.blue; ctx.lineWidth = 1.4; ctx.globalAlpha = .9;
+  ctx.strokeRect(bx0 - 6, ey0, bx1 - bx0 + 12, ey1 - ey0); ctx.restore();
+  // 纵轴上的两段对照：橙色为实际差，浅蓝为 ε
+  const ax = v.X(0);
+  P.path(ctx, [[ax, byT], [ax, byB]], { color: C.warm, width: 4, alpha: .85 });
+  P.path(ctx, [[ax + 7, ey0], [ax + 7, ey1]], { color: C.blue, width: 4, alpha: .7 });
+  P.path(ctx, [[ax, byT], [bx0, byT]], { color: C.hl, width: 1, dash: [3, 4], alpha: .5 });
+  P.path(ctx, [[ax, byB], [bx1, byB]], { color: C.hl, width: 1, dash: [3, 4], alpha: .5 });
+  P.path(ctx, P.curve(v, f, Math.max(X0, 1 / (v.b[3] * 1.05)), 1.06), { color: C.accent, width: 2.4 });
+  P.dot(ctx, bx0, byT, { r: 4, color: C.warm }); P.dot(ctx, bx1, byB, { r: 4, color: C.warm });
+  lab.set('x1', 'x_1', bx0, v.Y(0), { dy: 13, dx: -7, color: C.soft, size: 12, alpha: bx1 - bx0 > 14 ? 1 : 0 });
+  lab.set('x2', 'x_2', bx1, v.Y(0), { dy: 13, dx: 7, color: C.soft, size: 12, alpha: bx1 - bx0 > 14 ? 1 : 0 });
+  lab.set('ep', '\\varepsilon', ax + 7, (ey0 + ey1) / 2, { dx: 14, color: C.blue, size: 13, alpha: bad ? 1 : 0 });
+  lab.end();
+  return moving || S.playing || S.drag;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => setPlay(!S.playing));
+sl.addEventListener('input', () => { S.dT = +sl.value; cv.kick(); });
+const toX = e => { const r = canvas.getBoundingClientRect(); return v.b[0] + (e.clientX - r.left - v.pad.l) / (r.width - v.pad.l - v.pad.r) * (v.b[1] - v.b[0]); };
+canvas.addEventListener('pointerdown', e => { setPlay(false); S.drag = true; canvas.setPointerCapture(e.pointerId); S.aT = toX(e) - S.d / 2; cv.kick(); });
+canvas.addEventListener('pointermove', e => { if (!S.drag) return; S.aT = toX(e) - S.d / 2; cv.kick(); });
+const up = () => { S.drag = false; cv.kick(); };
+canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+const off = new IntersectionObserver(e => { if (!e[0].isIntersecting && S.playing) { S.was = true; setPlay(false) } else if (e[0].isIntersecting && S.was) { S.was = false; setPlay(true) } });
+off.observe(document.querySelector('main'));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

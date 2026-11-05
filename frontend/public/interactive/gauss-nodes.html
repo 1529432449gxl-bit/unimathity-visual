@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>高斯点与求积权重</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}main{padding:8px 2px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:6px}.seg{display:flex;gap:6px}
+button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:3px 12px;background:transparent;cursor:pointer}button[aria-pressed="true"]{background:#223056;color:#fff}
+.n{min-width:60px}.bar input{flex:1;min-width:140px;accent-color:#223056;min-height:30px}.sum{min-width:150px;text-align:right}
+canvas{display:block;width:100%;height:300px}
+button:focus-visible,input:focus-visible{outline:2px solid #223056;outline-offset:2px}@media(max-width:480px){canvas{height:250px}}</style></head>
+<body><main>
+<div class="bar"><div class="seg" id="kind"></div><span class="n" id="nlab"></span><input id="n" type="range" min="2" max="11" step="1" value="4" aria-label="节点数"><span class="sum" id="sum"></span></div>
+<canvas id="cv" role="img"></canvas>
+</main>
+<script>
+const K=(el,s)=>katex.render(s,el,{throwOnError:false});
+const leg=(n,x)=>{let a=1,b=x;if(n===0)return 1;for(let k=1;k<n;k++){const c=((2*k+1)*x*b-k*a)/(k+1);a=b;b=c}return b};
+function gauss(m){const xs=[],ws=[];for(let k=1;k<=m;k++){let x=Math.cos(Math.PI*(k-.25)/(m+.5));for(let it=0;it<100;it++){const p=leg(m,x),q=leg(m-1,x),d=m*(x*p-q)/(x*x-1),dx=p/d;x-=dx;if(Math.abs(dx)<1e-15)break}
+ const p=leg(m-1,x),d=m*(x*leg(m,x)-p)/(x*x-1);xs.push(x);ws.push(2/((1-x*x)*d*d))}return[xs,ws]}
+function cotes(m){const xs=[...Array(m)].map((_,i)=>-1+2*i/(m-1));const A=xs.map((_,j)=>xs.map(x=>x**j)),r=xs.map((_,j)=>j%2?0:2/(j+1));
+ const n=m,M=A.map((row,i)=>[...row,r[i]]);for(let k=0;k<n;k++){let p=k;for(let i=k+1;i<n;i++)if(Math.abs(M[i][k])>Math.abs(M[p][k]))p=i;[M[k],M[p]]=[M[p],M[k]];for(let i=k+1;i<n;i++){const f=M[i][k]/M[k][k];for(let j=k;j<=n;j++)M[i][j]-=f*M[k][j]}}
+ const w=Array(n);for(let i=n-1;i>=0;i--){let s=M[i][n];for(let j=i+1;j<n;j++)s-=M[i][j]*w[j];w[i]=s/M[i][i]}return[xs,w]}
+let kind='G';
+function draw(){const m=+document.getElementById('n').value;K(document.getElementById('nlab'),'n+1='+m);
+ const [xs,ws]=kind==='G'?gauss(m):cotes(m),sabs=ws.reduce((s,v)=>s+Math.abs(v),0);
+ K(document.getElementById('sum'),`\\sum_k|A_k|=${sabs.toFixed(3)}`);
+ const cv=document.getElementById('cv'),r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=w*d;cv.height=h*d;const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);
+ const lo=Math.min(-.4,...ws)*1.15,hi=Math.max(1.05,...ws)*1.1,pad={l:36,r:14,t:12,b:24},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,X=x=>pad.l+(x+1)*pw/2,Y=y=>pad.t+(hi-y)*ph/(hi-lo);
+ c.font='11px "Microsoft YaHei",sans-serif';c.fillStyle='#4f525b';c.strokeStyle='#e3e4e8';c.lineWidth=1;c.textAlign='right';
+ [lo<-.5?-1:-.5,0,.5,1].forEach(v=>{if(v<lo||v>hi)return;c.beginPath();c.moveTo(pad.l,Y(v));c.lineTo(w-pad.r,Y(v));c.stroke();c.fillText(String(v),pad.l-5,Y(v)+4)});
+ c.textAlign='center';[-1,-.5,0,.5,1].forEach(x=>c.fillText(String(x),X(x),h-6));
+ c.strokeStyle='#4f525b';c.lineWidth=1.4;c.beginPath();c.moveTo(X(-1),Y(0));c.lineTo(X(1),Y(0));c.stroke();
+ xs.forEach((x,i)=>{const v=ws[i],col=v<0?'#a4493f':(kind==='G'?'#223056':'#b5763a');c.strokeStyle=col;c.lineWidth=3;c.beginPath();c.moveTo(X(x),Y(0));c.lineTo(X(x),Y(v));c.stroke();
+  c.beginPath();c.arc(X(x),Y(v),5,0,7);c.fillStyle=col;c.fill();c.beginPath();c.arc(X(x),Y(0),3.2,0,7);c.fillStyle='#161820';c.fill()});
+ cv.setAttribute('aria-label',`${m} 个节点，权重绝对值之和 ${sabs.toFixed(3)}`)}
+const box=document.getElementById('kind');[['G','Gauss'],['C','Newton–Cotes']].forEach(([id,name])=>{const b=document.createElement('button');b.type='button';b.textContent=name;b.setAttribute('aria-pressed',id===kind);b.onclick=()=>{kind=id;box.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));draw()};box.appendChild(b)});
+document.getElementById('n').addEventListener('input',draw);
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(draw).observe(document.getElementById('cv'));
+window.gn=(k,m)=>k==='G'?gauss(m):cotes(m);
+</script></body></html>

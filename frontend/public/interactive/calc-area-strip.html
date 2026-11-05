@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Area element</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}.fx{min-height:58px;justify-content:center}@media(max-width:520px){.stage canvas{height:300px}.fx{min-height:70px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="x" aria-pressed="true"></button><button type="button" data-m="y" aria-pressed="false"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="450" aria-label="strip position"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="area between y^2=2x and y=x-4 swept by vertical or horizontal strips"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const btns = [...document.querySelectorAll('#mode button')];
+K(btns[0], '\\text{strip }\\mathrm dx'); K(btns[1], '\\text{strip }\\mathrm dy');
+for (const [t, c] of [['y^2=2x', C.accent], ['y=x-4', C.blue], ['\\mathrm dA', C.warm]]) {
+  const e = document.createElement('span'); e.className = 'key'; e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e);
+}
+const EQ = { x: 'A=\\int_0^2 2\\sqrt{2x}\\,\\mathrm dx+\\int_2^8\\left(\\sqrt{2x}-x+4\\right)\\mathrm dx',
+             y: 'A=\\int_{-2}^{4}\\left(y+4-\\frac{y^2}{2}\\right)\\mathrm dy' };
+const eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+{ let m = 0; for (const k in EQ) { K(eqEl, EQ[k], 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; }
+const sl = document.getElementById('s'), btn = document.getElementById('play'), stage = document.getElementById('stage');
+const S = { m: 'x', t: .45, target: .45, playing: false, fade: 1 };
+// 区域的上下（左右）边界
+const R = { x: [0, 8], y: [-2, 4] };
+const top = x => Math.sqrt(2 * x), bot = x => x <= 2 ? -Math.sqrt(2 * x) : x - 4;
+const left = y => y * y / 2, right = y => y + 4;
+const lab = P.labels(stage);
+const v = P.view([-1, 9.2, -3.1, 4.9], { l: 12, r: 12, t: 10, b: 12 });
+const setMode = m => { S.m = m; btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m))); K(eqEl, EQ[m], 1); S.fade = 0; S.target = 1; S.t = 0; setPlay(true); };
+btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+K(eqEl, EQ.x, 1);
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target = Math.min(1, S.target + 0.22 * dt); if (S.target >= 1) setPlay(false); sl.value = S.target * 1000; }
+  let moving = P.approach(S, 't', S.target, dt, 10); moving = P.approach(S, 'fade', 1, dt, 5) || moving;
+  const m = S.m, [lo, hi] = R[m], c = lo + (hi - lo) * S.t, d = (hi - lo) / 40;
+  K(document.getElementById('lab'), m === 'x' ? `x=${c.toFixed(2)}` : `y=${c.toFixed(2)}`);
+  // 整个区域浅底
+  const n = 200, Ltop = [], Lbot = [];
+  for (let i = 0; i <= n; i++) { const y = -2 + 6 * i / n; Ltop.push([v.X(right(y)), v.Y(y)]); Lbot.push([v.X(left(y)), v.Y(y)]) }
+  P.fill(ctx, Ltop, Lbot, C.accent, .06);
+  // 已扫过的部分
+  const sw1 = [], sw2 = [];
+  if (m === 'x') { for (let i = 0; i <= n; i++) { const x = lo + (c - lo) * i / n; sw1.push([v.X(x), v.Y(top(x))]); sw2.push([v.X(x), v.Y(bot(x))]) } }
+  else { for (let i = 0; i <= n; i++) { const y = lo + (c - lo) * i / n; sw1.push([v.X(right(y)), v.Y(y)]); sw2.push([v.X(left(y)), v.Y(y)]) } }
+  P.fill(ctx, sw1, sw2, C.warm, .18 * S.fade);
+  P.axes(ctx, v, { x: true, y: true });
+  // 边界曲线；x 方向时下边界在 x=2 处换成直线，用颜色区分
+  const par = []; for (let i = 0; i <= 200; i++) { const y = -3 + 7.6 * i / 200; par.push([v.X(y * y / 2), v.Y(y)]) }
+  P.path(ctx, par, { color: C.accent, width: 2.4 });
+  P.path(ctx, [[v.X(-0.8), v.Y(-4.8)], [v.X(9.0), v.Y(5)]], { color: C.blue, width: 2 });
+  if (m === 'x') {
+    P.path(ctx, [[v.X(2), v.Y(-2)], [v.X(2), v.Y(2)]], { color: C.mute, width: 1, dash: [4, 4], alpha: .8 * S.fade });
+    // 下边界：左段为抛物线下支、右段为直线，加粗提示需分段
+    P.path(ctx, P.curve(v, x => -Math.sqrt(2 * x), 0, 2), { color: C.accent, width: 5, alpha: .22 * S.fade });
+    P.path(ctx, [[v.X(2), v.Y(-2)], [v.X(8), v.Y(4)]], { color: C.blue, width: 5, alpha: .22 * S.fade });
+  }
+  // 当前条形微元
+  ctx.save(); ctx.fillStyle = P.rgba(C.warm, .55); ctx.strokeStyle = C.warm; ctx.lineWidth = 1.4; ctx.globalAlpha = S.fade;
+  if (m === 'x') { const x = P.clamp(c, lo + d / 2, hi - d / 2), a = Math.max(0, x - d / 2), b2 = x + d / 2, t1 = top(x), b1 = bot(x);
+    ctx.beginPath(); ctx.rect(v.X(a), v.Y(t1), v.X(b2) - v.X(a), v.Y(b1) - v.Y(t1)); ctx.fill(); ctx.stroke();
+    lab.set('d', '\\mathrm dx', v.X(x), v.Y(b1), { dy: 14, color: C.warm, size: 13, alpha: S.fade }); lab.set('d2', '', 0, 0, { alpha: 0 }); }
+  else { const y = P.clamp(c, lo + d / 2, hi - d / 2), a = y - d / 2, b2 = y + d / 2, l1 = left(y), r1 = right(y);
+    ctx.beginPath(); ctx.rect(v.X(l1), v.Y(b2), v.X(r1) - v.X(l1), v.Y(a) - v.Y(b2)); ctx.fill(); ctx.stroke();
+    lab.set('d', '\\mathrm dy', v.X(r1), v.Y(y), { dx: 18, color: C.warm, size: 13, alpha: S.fade }); }
+  ctx.restore();
+  for (const [x, y] of [[2, -2], [8, 4]]) P.dot(ctx, v.X(x), v.Y(y), { r: 3.6, color: C.soft });
+  lab.end();
+  return moving || S.playing;
+});
+function setPlay(on) { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) cv.kick(); }
+btn.addEventListener('click', () => { if (S.playing) { setPlay(false); return } if (S.target >= 1) { S.target = 0; S.t = 0 } setPlay(true) });
+sl.addEventListener('input', () => { setPlay(false); S.target = +sl.value / 1000; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPlay(false) });
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

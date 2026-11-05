@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Curvature circle</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="x0" type="range" min="-180" max="180" step="1" value="0" aria-label="x0"></div>
+<div class="legend"><span class="key" style="--c:#223056" id="kf"></span><span class="key" style="--c:#ad6844" id="kc"></span><span class="key" style="--c:#3f6e8c" id="kr"></span></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Osculating circle"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const f = x => 0.5 * x * x, df = x => x, d2 = () => 1;
+function rho(x) { const s = 1 + df(x) * df(x); return Math.pow(s, 1.5) / Math.abs(d2(x)); }
+function center(x) {
+  const yp = df(x), ypp = d2(x), s = 1 + yp * yp;
+  return [x - yp * s / ypp, f(x) + s / ypp];
+}
+const sl = document.getElementById('x0'), fx = document.getElementById('fx');
+const S = { x: 0 };
+const v = P.view([-2.6, 2.6, -0.35, 4.3], { l: 16, r: 16, t: 16, b: 26 });
+const lab = P.labels(document.getElementById('stage'));
+K(document.getElementById('kf'), 'y=x^2/2');
+K(document.getElementById('kc'), 'osculating\\ circle');
+K(document.getElementById('kr'), '\\rho');
+function targetFromSl() { return (+sl.value) / 100; }
+function formula(x) {
+  fx.innerHTML = '<div></div>';
+  const r = rho(x), [cx, cy] = center(x), Kcur = 1 / r;
+  K(fx.children[0], `K=\\dfrac{|y''|}{(1+(y')^2)^{3/2}}=${Kcur.toFixed(3)},\\quad \\rho=\\dfrac{1}{K}=${r.toFixed(3)},\\quad C=(${cx.toFixed(2)},\\ ${cy.toFixed(2)})`, true);
+}
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  const moving = P.approach(S, 'x', targetFromSl(), dt, 10);
+  const x = S.x, r = rho(x), [cx, cy] = center(x);
+  K(document.getElementById('lab'), `x=${x.toFixed(2)}`);
+  formula(x);
+  P.axes(ctx, v, { x: true, ticks: [-2, -1, 0, 1, 2] });
+  P.path(ctx, P.curve(v, f, -2.4, 2.4), { color: C.accent, width: 2.4 });
+  const pts = [];
+  for (let i = 0; i <= 120; i++) {
+    const th = 2 * Math.PI * i / 120;
+    pts.push([v.X(cx + r * Math.cos(th)), v.Y(cy + r * Math.sin(th))]);
+  }
+  P.path(ctx, pts, { color: C.warm, width: 2, alpha: 0.95 });
+  P.path(ctx, [[v.X(cx), v.Y(cy)], [v.X(x), v.Y(f(x))]], { color: C.blue, width: 1.4, dash: [4, 3], alpha: 0.85 });
+  P.dot(ctx, v.X(cx), v.Y(cy), { r: 3.5, color: C.blue, ring: false });
+  P.dot(ctx, v.X(x), v.Y(f(x)), { r: 5, color: C.accent });
+  const m = df(x), x0 = x - 0.7, x1 = x + 0.7;
+  P.path(ctx, [[v.X(x0), v.Y(f(x) + m * (x0 - x))], [v.X(x1), v.Y(f(x) + m * (x1 - x))]], { color: C.mute, width: 1.2, alpha: 0.55 });
+  lab.set('p', 'M', v.X(x), v.Y(f(x)), { dy: -14, color: C.accent });
+  lab.set('c', 'C', v.X(cx), v.Y(cy), { dy: 14, color: C.blue });
+  lab.set('rho', '\\rho', (v.X(cx) + v.X(x)) / 2, (v.Y(cy) + v.Y(f(x))) / 2, { dx: 10, color: C.blue });
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+{ let m = 0; for (const t of [-180, 0, 180]) { sl.value = t; S.x = targetFromSl(); formula(S.x); m = Math.max(m, fx.getBoundingClientRect().height); }
+  fx.style.minHeight = Math.ceil(m) + 'px'; sl.value = 0; S.x = 0; }
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spherical coordinates region</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:330px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="r" aria-pressed="false"></button><button type="button" data-m="ph" aria-pressed="false"></button><button type="button" data-m="th" aria-pressed="true"></button></div>
+<div class="controls"><span class="n" id="lab"></span><input id="s" type="range" min="0" max="1000" step="1" value="600" aria-label="parameter"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Spherical coordinates region"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const btns = [...document.querySelectorAll('#mode button')]; K(btns[0], '\\rho'); K(btns[1], '\\varphi'); K(btns[2], '\\theta');
+legend([['\\rho=R', C.accent], ['\\varphi=\\varphi_0', C.warm], ['\\theta=\\text{const}', C.blue]]);
+K(eqEl, '\\Omega:\\ 0\\leqslant\\rho\\leqslant R,\\quad 0\\leqslant\\varphi\\leqslant\\varphi_0,\\quad 0\\leqslant\\theta\\leqslant\\theta_0', 1);
+const sl = document.getElementById('s'), btn = document.getElementById('play');
+const S = { R: 1.3, ph: 1.0, th: 4.4, m: 'th', playing: true, tt: 0 };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+const RANGE = { r: [0.3, 1.4, 'R'], ph: [0.2, 1.45, 'ph'], th: [0.4, 2 * Math.PI, 'th'] };
+const keyOf = { r: 'R', ph: 'ph', th: 'th' };
+btns.forEach(b => b.addEventListener('click', () => { S.m = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); const [a, c] = RANGE[S.m]; sl.value = (S[keyOf[S.m]] - a) / (c - a) * 1000; cv.kick() }));
+const cam = V.camera({ az: -0.5, el: 0.36 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const sph = (r, p, t) => [r * Math.sin(p) * Math.cos(t), r * Math.sin(p) * Math.sin(t), r * Math.cos(p)];
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.6, h / 3.1); cam.ox = w / 2; cam.oy = h * 0.6;
+  if (S.playing) { S.tt += dt; const [a, c] = RANGE[S.m], k = keyOf[S.m]; S[k] = a + (c - a) * (0.5 - 0.5 * Math.cos(S.tt * 0.8)); sl.value = (S[k] - a) / (c - a) * 1000 }
+  K(document.getElementById('lab'), { r: `R=${S.R.toFixed(2)}`, ph: `\\varphi_0=${S.ph.toFixed(2)}`, th: `\\theta_0=${S.th.toFixed(2)}` }[S.m]);
+  const { R, ph, th } = S, items = [];
+  items.push({ quads: V.mesh((p, t) => sph(R, p, t), 0.001, ph, 0, th, 10, 28), color: C.accent, alpha: .3, edge: .12 });
+  items.push({ quads: V.mesh((r, t) => sph(r, ph, t), 0.001, R, 0, th, 6, 28), color: C.warm, alpha: .26, edge: .1 });
+  if (th < 2 * Math.PI - 0.01) for (const t of [0, th]) items.push({ quads: V.mesh((r, p) => sph(r, p, t), 0.001, R, 0.001, ph, 6, 10), color: C.blue, alpha: .24, edge: .1 });
+  V.axes(ctx, cam, [1.8, 1.8, 1.7], { alpha: .45 });
+  V.paint(ctx, cam, items);
+  lab.end(); return S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); const [a, c] = RANGE[S.m]; S[keyOf[S.m]] = a + (c - a) * +sl.value / 1000; cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

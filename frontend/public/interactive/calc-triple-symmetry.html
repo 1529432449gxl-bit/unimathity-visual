@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Symmetry of triple integral</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="100" step="1" value="55" aria-label="z"></div>
+<div class="legend">
+  <span class="key" style="--c:#223056" id="k1"></span>
+  <span class="key" style="--c:#ad6844" id="k2"></span>
+  <span class="key" style="--c:#3f6e8c" id="k3"></span>
+</div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Odd even symmetry for triple integral"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+document.querySelector('canvas').style.height = '360px';
+
+let mode = 'odd';
+const sl = document.getElementById('t'), fx = document.getElementById('fx');
+const S = { u: 0.55, flash: 0 };
+const lab = P.labels(document.getElementById('stage'));
+
+const box = document.getElementById('modes');
+[['odd', 'f\\text{ odd in }z'], ['even', 'f\\text{ even in }z']].forEach(([id, tex]) => {
+  const bt = document.createElement('button'); bt.type = 'button';
+  bt.setAttribute('aria-pressed', id === mode);
+  const sp = document.createElement('span'); K(sp, tex); bt.appendChild(sp);
+  bt.onclick = () => {
+    mode = id;
+    box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b === bt));
+    S.flash = 1;
+    legend(); cv.kick();
+  };
+  box.appendChild(bt);
+});
+
+function legend() {
+  K(document.getElementById('k1'), 'B');
+  K(document.getElementById('k2'), mode === 'odd' ? 'f\\text{ cancel}' : '2\\times\\{z\\ge 0\\}');
+  K(document.getElementById('k3'), 'z=0');
+}
+legend();
+
+function iso(x, y, z) {
+  const a = Math.PI / 6;
+  return [(x - y) * Math.cos(a), (x + y) * Math.sin(a) * 0.5 - z];
+}
+function Scr(ox, oy, sc, x, y, z) {
+  const p = iso(x, y, z); return [ox + p[0] * sc, oy + p[1] * sc];
+}
+function fillPoly(ctx, pts, color, alpha) {
+  if (pts.length < 3) return;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+
+function formula() {
+  fx.innerHTML = '<div></div>';
+  if (mode === 'odd') {
+    K(fx.children[0], `\\Omega=B:\\,x^{2}+y^{2}+z^{2}\\le1\\text{ symmetric in }z,\\quad
+      f(x,y,-z)=-f(x,y,z)\\;\\Rightarrow\\;\\iiint_{B}f\\,\\mathrm{d}V=0`, true);
+  } else {
+    K(fx.children[0], `\\Omega=B\\text{ symmetric in }z,\\quad
+      f(x,y,-z)=f(x,y,z)\\;\\Rightarrow\\;\\iiint_{B}f=2\\iiint_{B\\cap\\{z\\ge0\\}}f\\,\\mathrm{d}V`, true);
+  }
+}
+
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  let moving = P.approach(S, 'u', +sl.value / 100, dt, 12);
+  if (S.flash > 0.01) { S.flash = Math.max(0, S.flash - dt * 1.2); moving = true; }
+  else S.flash = 0;
+
+  const ox = w * 0.5, oy = h * 0.55, sc = Math.min(w, h) * 0.32;
+  const T = (x, y, z) => Scr(ox, oy, sc, x, y, z);
+  const zCut = -0.85 + 1.7 * S.u;
+
+  K(document.getElementById('lab'), `z`);
+  formula();
+
+  /* unit ball wireframe: meridians + equator */
+  function ballStroke(zSignFilter, color, width, alpha) {
+    for (let m = 0; m < 6; m++) {
+      const th = m * Math.PI / 6;
+      const pts = [];
+      for (let i = 0; i <= 48; i++) {
+        const ph = Math.PI * i / 48;
+        const x = Math.sin(ph) * Math.cos(th), y = Math.sin(ph) * Math.sin(th), z = Math.cos(ph);
+        if (zSignFilter && zSignFilter(z) === false) continue;
+        pts.push(T(x, y, z));
+      }
+      if (pts.length > 1) P.path(ctx, pts, { color, width, alpha });
+    }
+    const eq = [];
+    for (let i = 0; i <= 64; i++) {
+      const a = 2 * Math.PI * i / 64;
+      eq.push(T(Math.cos(a), Math.sin(a), 0));
+    }
+    P.path(ctx, eq, { color: C.blue, width: 1.6, alpha: 0.7 });
+  }
+
+  /* filled hemispheres suggestion via disks at ±z */
+  function diskAt(z, color, alpha) {
+    const r = Math.sqrt(Math.max(0, 1 - z * z));
+    if (r < 0.02) return;
+    const pts = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = 2 * Math.PI * i / 48;
+      pts.push(T(r * Math.cos(a), r * Math.sin(a), z));
+    }
+    fillPoly(ctx, pts, color, alpha);
+    P.path(ctx, pts.concat([pts[0]]), { color, width: 1.4, alpha: Math.min(1, alpha + 0.3) });
+  }
+
+  ballStroke(null, C.accent, 1.2, 0.35);
+
+  /* equatorial plane */
+  {
+    const pts = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = 2 * Math.PI * i / 48;
+      pts.push(T(1.05 * Math.cos(a), 1.05 * Math.sin(a), 0));
+    }
+    fillPoly(ctx, pts, C.blue, 0.08);
+    P.path(ctx, pts.concat([pts[0]]), { color: C.blue, width: 1.2, alpha: 0.5, dash: [4, 3] });
+  }
+
+  const hi = Math.min(0.92, Math.abs(zCut) < 0.05 ? 0.35 : Math.abs(zCut));
+  if (mode === 'odd') {
+    diskAt(hi, C.warm, 0.28 + 0.15 * S.flash);
+    diskAt(-hi, C.warm, 0.28 + 0.15 * S.flash);
+    /* cancel arrows via labels + connecting dash */
+    const pU = T(0, 0, hi), pD = T(0, 0, -hi);
+    P.path(ctx, [pU, pD], { color: C.warm, width: 2, alpha: 0.7, dash: [5, 4] });
+    P.dot(ctx, pU[0], pU[1], { r: 4, color: C.warm });
+    P.dot(ctx, pD[0], pD[1], { r: 4, color: C.warm });
+    lab.set('up', '+f', pU[0], pU[1], { dx: 12, dy: -8, color: C.warm });
+    lab.set('dn', '-f', pD[0], pD[1], { dx: 12, dy: 12, color: C.warm });
+    lab.set('res', '=0', T(1.35, 0, 0)[0], T(1.35, 0, 0)[1], { color: C.hl });
+  } else {
+    diskAt(hi, C.warm, 0.32 + 0.12 * S.flash);
+    diskAt(-hi, C.accent, 0.12);
+    /* emphasize upper half double */
+    ballStroke(z => z >= -0.02, C.warm, 1.6, 0.55);
+    const pU = T(0, 0, hi);
+    P.dot(ctx, pU[0], pU[1], { r: 4, color: C.warm });
+    lab.set('up', 'z\\ge0', pU[0], pU[1], { dx: 12, dy: -8, color: C.warm });
+    lab.set('dn', '', 0, 0, { alpha: 0 });
+    lab.set('res', '\\times 2', T(1.35, 0, 0.2)[0], T(1.35, 0, 0.2)[1], { color: C.hl });
+  }
+
+  lab.set('B', 'B', T(0.7, 0.7, 0.55)[0], T(0.7, 0.7, 0.55)[1], { color: C.accent });
+  lab.set('eq', 'z=0', T(1.15, 0, 0)[0], T(1.15, 0, 0)[1], { dy: 14, color: C.blue });
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+{ let m = 0;
+  for (const md of ['odd', 'even']) { mode = md; formula(); m = Math.max(m, fx.getBoundingClientRect().height); }
+  mode = 'odd'; legend();
+  fx.style.minHeight = Math.ceil(m) + 'px'; formula(); }
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

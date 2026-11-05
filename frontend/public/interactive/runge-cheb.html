@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>等距节点与切比雪夫节点</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/morph.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:14px/1.6 "Microsoft YaHei",sans-serif}main{padding:8px 2px}button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:4px 12px;background:transparent;cursor:pointer}.controls{display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap}.controls .n{flex:none;min-width:100px}.controls input[type=range]{flex:1;min-width:140px;accent-color:#223056;min-height:30px}.legend{display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:4px;align-items:center}.legend label{display:flex;align-items:center;gap:4px;cursor:pointer}.legend input{accent-color:#223056}.key:before{content:"";display:inline-block;width:20px;border-top:2.4px solid var(--c,#223056);margin:0 6px 4px 0}.key.dash:before{border-top-style:dashed}.err{margin-left:auto;font-variant-numeric:tabular-nums;color:#4f525b}canvas{display:block;width:100%;height:330px}button:focus-visible,input:focus-visible{outline:2px solid #223056;outline-offset:3px}@media(max-width:420px){canvas{height:280px}.err{margin-left:0}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="nlab"></span><input id="count" type="range" min="3" max="21" step="1" value="7" aria-label="节点数"><button id="play" type="button">Play</button></div>
+<div class="legend"><span class="key" id="kf"></span><label class="key" style="--c:#ad6844"><input type="checkbox" id="sE" checked>Equispaced</label><label class="key dash" style="--c:#3f6e8c"><input type="checkbox" id="sC" checked>Chebyshev</label></div>
+<canvas id="plot" role="img"></canvas>
+<div class="legend"><span id="eE" class="err" style="margin-left:0"></span><span id="eC" class="err" style="margin-left:0"></span></div>
+</main>
+<script>
+const T=(el,s)=>katex.render(s,el,{throwOnError:false});
+const f=x=>1/(1+25*x*x),PX=Array.from({length:1601},(_,i)=>-1+2*i/1600);
+function bary(nodes){const ys=nodes.map(f),w=nodes.map((a,i)=>1/nodes.reduce((p,b,j)=>j===i?p:p*(a-b),1));return x=>{let s=0,t=0;for(let i=0;i<nodes.length;i++){const d=x-nodes[i];if(Math.abs(d)<1e-14)return ys[i];const q=w[i]/d;s+=q*ys[i];t+=q}return s/t}}
+const eqN=m=>Array.from({length:m},(_,i)=>-1+2*i/(m-1)),chN=m=>Array.from({length:m},(_,k)=>Math.cos((2*k+1)*Math.PI/(2*m)));
+const slider=document.getElementById('count'),sE=document.getElementById('sE'),sC=document.getElementById('sC');let model;
+function compute(m){const e=eqN(m),c=chN(m),pe=bary(e),pc=bary(c);return{m,e,c,pe,pc,me:Math.max(...PX.map(x=>Math.abs(pe(x)-f(x)))),mc:Math.max(...PX.map(x=>Math.abs(pc(x)-f(x))))}}
+function draw(){const m=model,cv=document.getElementById('plot'),r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=Math.round(w*d);cv.height=Math.round(h*d);const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.lineJoin=c.lineCap='round';const B=[-.6,1.6],pad={l:36,r:8,t:8,b:22},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,X=x=>pad.l+(x+1)*pw/2,Y=y=>pad.t+(B[1]-y)*ph/(B[1]-B[0]);
+ c.clearRect(0,0,w,h);c.font='11px "Microsoft YaHei",sans-serif';c.strokeStyle='#d5d7dd';c.lineWidth=1;c.beginPath();c.moveTo(pad.l,Y(0));c.lineTo(w-pad.r,Y(0));c.stroke();c.fillStyle='#7a7c84';c.textAlign='right';for(const y of[0,1])c.fillText(String(y),pad.l-5,Y(y)+4);c.textAlign='center';for(const x of[-1,-.5,0,.5,1])c.fillText(String(x),X(x),h-6);
+ c.save();c.beginPath();c.rect(pad.l,pad.t,pw,ph);c.clip();const L=(fn,col,wd,dash,key)=>{const ys=PX.map(x=>Math.max(-3,Math.min(4,fn(x)))),zs=key?Morph.v(key,ys):ys;c.beginPath();PX.forEach((x,i)=>{const y=zs[i];i?c.lineTo(X(x),Y(y)):c.moveTo(X(x),Y(y))});c.strokeStyle=col;c.lineWidth=wd;c.setLineDash(dash||[]);c.stroke();c.setLineDash([])};
+ L(f,'#223056',2.6);if(sE.checked)L(m.pe,'#ad6844',2.2,null,'e');if(sC.checked)L(m.pc,'#3f6e8c',2.2,[6,4],'c');
+ const D=(xs,col,y0)=>xs.forEach(x=>{c.beginPath();c.arc(X(x),Y(f(x)),3.6,0,7);c.fillStyle=col;c.fill();c.strokeStyle='#fbfbfa';c.lineWidth=1;c.stroke();c.beginPath();c.arc(X(x),Y(y0),3,0,7);c.fill()});
+ if(sE.checked)D(m.e,'#ad6844',-.5);if(sC.checked)D(m.c,'#3f6e8c',-.42);c.restore()}
+function set(m){model=compute(m);T(document.getElementById('nlab'),`n+1=${m}`);T(document.getElementById('eE'),`\\text{Equispaced}\\quad\\|f-L_n\\|_\\infty=${model.me.toPrecision(4)}`);T(document.getElementById('eC'),`\\text{Chebyshev}\\quad\\|f-L_n\\|_\\infty=${model.mc.toPrecision(4)}`);document.getElementById('plot').setAttribute('aria-label',`${m} 个节点，等距插值最大误差 ${model.me.toPrecision(4)}，切比雪夫节点最大误差 ${model.mc.toPrecision(4)}`);kick()}
+const kick=Morph.bind(()=>draw());
+T(document.getElementById('kf'),'f(x)=\\dfrac{1}{1+25x^2}');
+let timer=null;const play=document.getElementById('play');function stop(){clearInterval(timer);timer=null;play.textContent='Play'}
+play.onclick=()=>{if(timer){stop();return}if(+slider.value>=21)slider.value=3;play.textContent='Pause';set(+slider.value);timer=setInterval(()=>{const n=+slider.value+1;if(n>21){stop();return}slider.value=n;set(n)},800)};
+slider.addEventListener('input',()=>{stop();set(+slider.value)});sE.onchange=draw;sC.onchange=draw;
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(()=>{if(model)draw()}).observe(document.getElementById('plot'));document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});
+set(+slider.value);
+</script></body></html>

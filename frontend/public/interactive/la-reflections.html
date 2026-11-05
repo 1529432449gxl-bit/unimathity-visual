@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Two reflections make a rotation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}@media(max-width:520px){.stage canvas{height:300px}}</style></head>
+<body><main>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Two reflections make a rotation"></canvas></div>
+<div class="controls"><input id="t" type="range" min="0" max="1000" step="1" value="625" aria-label="angle"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="legend" id="lg"></div>
+<div class="fx"><div id="eq"></div></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as G from './vendor/la2d.js';
+P.style();
+const { C } = P, stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), lg = document.getElementById('lg');
+const v = G.plane(1.25); v.cx = .2; v.cy = 0;
+const shape = [[0.45, -0.12], [1.15, -0.12], [1.15, 0.0], [0.62, 0.0], [0.62, 0.06], [0.95, 0.06], [0.95, 0.15], [0.62, 0.15], [0.62, 0.2], [0.45, 0.2]].map(p => G.apply(G.rot(-1.3), p));
+const ref = phi => { const c = Math.cos(2 * phi), s = Math.sin(2 * phi); return [[c, s], [s, -c]] };
+const phi1 = -0.12;
+const S = { th: 0.75, thT: 0.75, s: 0, playing: false, wait: 0 };
+const sl = document.getElementById('t'), set = G.playToggle(document.getElementById('play'), S, () => cv.kick());
+sl.addEventListener('input', () => { S.thT = 0.25 + 0.8 * (+sl.value / 1000); cv.kick() });
+G.legend(lg, [['\\ell_1,\\ \\ell_2', C.blue], ['H_1x', C.blue, 1], ['H_2H_1x', C.accent], ['\\text{rotation by }2\\theta', C.warm, 1]]);
+const eq = G.formulas(document.getElementById('eq'), ['H_2H_1=\\text{rotation by }2\\theta']);
+eq('H_2H_1=\\text{rotation by }2\\theta');
+const arc = (r, a0, a1) => [...Array(41)].map((_, i) => { const a = a0 + (a1 - a0) * i / 40; return [r * Math.cos(a), r * Math.sin(a)] });
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.fit(w, h);
+  if (S.playing) { if (S.s < 3) S.s = Math.min(3, S.s + dt * 0.55); else { S.wait += dt; if (S.wait > 1.5) { S.wait = 0; S.s = 0 } } }
+  const mv = P.approach(S, 'th', S.thT, dt, 9);
+  const th = S.th, phi2 = phi1 + th, H1 = ref(phi1), H2 = ref(phi2), d1 = [Math.cos(phi1), Math.sin(phi1)], d2 = [Math.cos(phi2), Math.sin(phi2)];
+  G.fullLine(ctx, v, d1, { color: C.blue, alpha: .6, width: 1.4 }); G.fullLine(ctx, v, d2, { color: C.blue, alpha: .6, width: 1.4 });
+  P.path(ctx, arc(.32, phi1, phi2).map(v.S), { color: C.soft, width: 1.2, alpha: .8 });
+  const tf = Mx => shape.map(p => G.apply(Mx, p)), seg = (a, b) => P.clamp(S.s - a, 0, b - a) / (b - a);
+  const e = t => t * t * (3 - 2 * t);
+  G.poly(ctx, v, shape, { fill: C.mute, fillAlpha: .14, stroke: C.mute, width: 1.4 });
+  const f1 = e(seg(0, 1)), f2 = e(seg(1, 2)), f3 = e(seg(2, 3));
+  if (f1 > 0) G.poly(ctx, v, tf(H1), { fill: C.blue, fillAlpha: .12 * f1, stroke: C.blue, width: 1.3, alpha: f1 });
+  if (f2 > 0) G.poly(ctx, v, tf(G.mm(H2, H1)), { fill: C.accent, fillAlpha: .2 * f2, stroke: C.accent, width: 1.8, alpha: f2 });
+  if (f3 > 0) { const R = G.rot(2 * th * f3); G.poly(ctx, v, tf(R), { stroke: C.warm, width: 1.8, alpha: .9 }); P.path(ctx, arc(.4, -1.3, -1.3 + 2 * th * f3).map(v.S), { color: C.warm, width: 1.4, alpha: .8 }) }
+  const m = v.S([.42 * Math.cos(phi1 + th / 2), .42 * Math.sin(phi1 + th / 2)]); lab.set('th', '\\theta', m[0], m[1], { color: C.soft, size: 13 });
+  const q1 = v.S(G.mul(1.4, d1)), q2 = v.S(G.mul(1.35, d2)); lab.set('l1', '\\ell_1', q1[0], q1[1], { dy: 12, color: C.blue }); lab.set('l2', '\\ell_2', q2[0], q2[1], { dx: 14, color: C.blue }); lab.end();
+  return mv || S.playing;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

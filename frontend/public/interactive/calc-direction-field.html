@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Direction field</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:360px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Direction field"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const f = (x, y) => x - y;                       // y' = x − y
+legend([["y'=x-y", C.mute], ['\\text{solution}', C.warm]]);
+K(eqEl, "y'=x-y,\\qquad y=x-1+C\\mathrm e^{-x}", 1);
+const v = P.view([-3, 3.4, -3, 3.2], { l: 10, r: 10, t: 10, b: 10 });
+const seeds = [[-2.5, 2.6], [-2.6, -2.4], [0, 0.6], [-1.5, -0.5], [0.5, 2.8], [-2.8, 0.8]];
+const S = { seed: seeds[0], prog: 0, playing: true, k: 0, wait: 0, old: [] };
+const btn = document.createElement('button'); btn.className = 'tg'; btn.type = 'button';
+const ctl = document.createElement('div'); ctl.className = 'controls'; ctl.append(btn); document.querySelector('main').prepend(ctl);
+const set = playBtn(btn, S, () => cv.kick()); set(true);
+btn.onclick = () => set(!S.playing);
+function trace(x0, y0) { const out = [], h = 0.02; for (const dir of [-1, 1]) { let x = x0, y = y0; const seg = [[x, y]];
+  for (let i = 0; i < 600; i++) { const k1 = f(x, y), k2 = f(x + dir * h / 2, y + dir * h / 2 * k1), k3 = f(x + dir * h / 2, y + dir * h / 2 * k2), k4 = f(x + dir * h, y + dir * h * k3);
+    y += dir * h / 6 * (k1 + 2 * k2 + 2 * k3 + k4); x += dir * h; if (x < v.b[0] - .2 || x > v.b[1] + .2 || Math.abs(y) > 5) break; seg.push([x, y]) }
+  out.push(seg) } return out[0].reverse().concat(out[1].slice(1)); }
+let path = trace(...S.seed);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.w = w; v.h = h; let mv = false;
+  if (S.prog < 1) { S.prog = Math.min(1, S.prog + 0.7 * dt); mv = true }
+  else if (S.playing) { S.wait += dt; if (S.wait > 1.2) { S.wait = 0; S.old.push(path); if (S.old.length > 4) S.old.shift(); S.k = (S.k + 1) % seeds.length; S.seed = seeds[S.k]; path = trace(...S.seed); S.prog = 0 } mv = true }
+  P.axes(ctx, v, { x: true, y: true });
+  // 方向场：每点一小段，斜率 f(x,y)
+  const nx = Math.round(w / 34), ny = Math.round(h / 34);
+  ctx.save(); ctx.strokeStyle = P.rgba(C.mute, .55); ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+  for (let i = 0; i <= nx; i++) for (let j = 0; j <= ny; j++) { const x = v.b[0] + (v.b[1] - v.b[0]) * (i + .5) / (nx + 1), y = v.b[2] + (v.b[3] - v.b[2]) * (j + .5) / (ny + 1);
+    const sx = 1, sy = f(x, y), px = sx * (v.w / (v.b[1] - v.b[0])), py = -sy * (v.h / (v.b[3] - v.b[2])), L = Math.hypot(px, py), r = 9;
+    ctx.beginPath(); ctx.moveTo(v.X(x) - px / L * r, v.Y(y) - py / L * r); ctx.lineTo(v.X(x) + px / L * r, v.Y(y) + py / L * r); ctx.stroke() }
+  ctx.restore();
+  S.old.forEach((p, i) => P.path(ctx, p.map(q => [v.X(q[0]), v.Y(q[1])]), { color: C.warm, width: 1.6, alpha: .18 + .1 * i }));
+  P.path(ctx, path.map(q => [v.X(q[0]), v.Y(q[1])]), { color: C.warm, width: 2.4, progress: P.ease.inOut(S.prog) });
+  P.dot(ctx, v.X(S.seed[0]), v.Y(S.seed[1]), { r: 5, color: C.warm });
+  lab.set('p', '(x_0,y_0)', v.X(S.seed[0]), v.Y(S.seed[1]), { dx: 30, dy: -10, color: C.warm, size: 13 }); lab.end();
+  return mv || S.playing;
+});
+canvas.addEventListener('pointerdown', e => { const r = canvas.getBoundingClientRect(); const x = v.b[0] + (e.clientX - r.left - v.pad.l) / (r.width - v.pad.l - v.pad.r) * (v.b[1] - v.b[0]), y = v.b[3] - (e.clientY - r.top - v.pad.t) / (r.height - v.pad.t - v.pad.b) * (v.b[3] - v.b[2]);
+  set(false); S.old.push(path); if (S.old.length > 4) S.old.shift(); S.seed = [x, y]; path = trace(x, y); S.prog = 0; cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

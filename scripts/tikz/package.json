@@ -1,0 +1,12 @@
+{
+  "name": "mathapp-tikz-renderer",
+  "private": true,
+  "type": "module",
+  "description": "把正文里的 @tikz 源码编译成 SVG，只在录入内容的机器上需要",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "node-tikzjax": "^1.0.2"
+  }
+}

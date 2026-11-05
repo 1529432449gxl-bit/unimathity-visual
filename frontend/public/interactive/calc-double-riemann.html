@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Double integral</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Double integral"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const f = (x, y) => 0.55 + 0.35 * Math.sin(1.6 * x) * Math.cos(1.3 * y) + 0.18 * x;
+const NS = [2, 3, 4, 6, 8, 12, 16];
+legend([['z=f(x,y)', C.accent], ['f(\\xi_i,\\eta_i)\\,\\Delta\\sigma_i', C.warm]]);
+K(eqEl, '\\iint_D f(x,y)\\,\\mathrm d\\sigma=\\lim_{\\lambda\\to0}\\sum_{i=1}^{n}f(\\xi_i,\\eta_i)\\,\\Delta\\sigma_i', 1);
+const cam = V.camera({ az: -0.62, el: 0.5 }); const dr = V.drag(canvas, cam, () => cv.kick());
+const surf = V.mesh((x, y) => [x, y, f(x, y)], -1, 1, -1, 1, 20, 20);
+const S = { k: 0, a: 1 };
+let st;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (!st) return false;
+  cam.sc = Math.min(w / 3.6, h / 2.9); cam.ox = w / 2; cam.oy = h * 0.66;
+  const anim = st.tick(dt), n = NS[st.i], d = 2 / n, grow = P.ease.out(st.p);
+  const items = [];
+  // 小柱体：取中心点的高度；新的一步从底面升起
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = -1 + i * d, y = -1 + j * d, z = f(x + d / 2, y + d / 2) * grow;
+    const b = [[x, y, 0], [x + d, y, 0], [x + d, y + d, 0], [x, y + d, 0]], t = b.map(p => [p[0], p[1], z]);
+    items.push(V.poly(t, C.warm, .32)); for (let k = 0; k < 4; k++) items.push(V.poly([b[k], b[(k + 1) % 4], t[(k + 1) % 4], t[k]], C.warm, .16)) }
+  V.line(ctx, cam, [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 0]], { color: C.mute, width: 1 });
+  V.paint(ctx, cam, items.concat([{ quads: surf, color: C.accent, alpha: .14, edge: .14 }]));
+  lab.end(); return anim || dr.active;
+});
+st = P.stepper(document.getElementById('nav'), { count: NS.length, dur: 1.1, hold: .9, kick: cv.kick });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

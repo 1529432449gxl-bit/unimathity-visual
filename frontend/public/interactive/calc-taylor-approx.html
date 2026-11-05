@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Taylor approximation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="n" type="range" min="0" max="10" step="1" value="2" aria-label="order"></div>
+<div class="legend"><span class="key" style="--c:#223056" id="kf"></span><span class="key" style="--c:#ad6844" id="kt"></span><span class="key" style="--c:#3f6e8c" id="kr"></span></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Taylor polynomial approximation"></canvas></div>
+<div class="fx" id="fx"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const f = Math.cos;
+const fact = [1]; for (let k = 1; k <= 12; k++) fact[k] = fact[k - 1] * k;
+function Tn(x, n) {
+  let s = 0;
+  for (let k = 0; 2 * k <= n; k++) s += ((k % 2 ? -1 : 1) * Math.pow(x, 2 * k)) / fact[2 * k];
+  return s;
+}
+function remBound(x, n) { return Math.pow(Math.abs(x), n + 1) / fact[n + 1]; }
+function TnTex(n) {
+  // compact Maclaurin of cos up to degree floor terms
+  const parts = [];
+  for (let k = 0; 2 * k <= n; k++) {
+    const sign = k === 0 ? '' : (k % 2 ? '-' : '+');
+    if (k === 0) parts.push('1');
+    else if (2 * k === 2) parts.push(`${sign}\\dfrac{x^{2}}{2!}`);
+    else parts.push(`${sign}\\dfrac{x^{${2 * k}}}{(${2 * k})!}`);
+  }
+  return parts.join('');
+}
+const sl = document.getElementById('n'), fx = document.getElementById('fx');
+const S = { n: 2 };
+const v = P.view([-3.4, 3.4, -2.2, 2.2], { l: 16, r: 16, t: 16, b: 26 });
+const lab = P.labels(document.getElementById('stage'));
+K(document.getElementById('kf'), 'f=\\cos x');
+K(document.getElementById('kt'), 'T_n');
+K(document.getElementById('kr'), '|R_n|\\ \\text{band}');
+function formula(n) {
+  fx.innerHTML = '<div></div>';
+  // one continuous formula: f = T_n + R_n, with Lagrange remainder form
+  K(fx.children[0], `\\cos x=T_n(x)+R_n(x),\\quad T_n(x)=${TnTex(n)},\\quad R_n(x)=\\dfrac{\\cos^{(n+1)}(\\xi)}{(n+1)!}x^{n+1}`, true);
+}
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  const moving = P.approach(S, 'n', +sl.value, dt, 14);
+  const n = Math.round(S.n);
+  K(document.getElementById('lab'), `n=${n}`);
+  formula(n);
+  P.axes(ctx, v, { x: true, ticks: [-2, 0, 2] });
+  const xs = []; for (let i = 0; i <= 240; i++) xs.push(-3.3 + 6.6 * i / 240);
+  const top = xs.map(x => f(x) + remBound(x, n));
+  const bot = xs.map(x => f(x) - remBound(x, n));
+  P.fill(ctx, P.samples(v, top, xs), P.samples(v, bot, xs), C.blue, 0.18);
+  P.path(ctx, P.curve(v, f, -3.3, 3.3), { color: C.accent, width: 2.4 });
+  P.path(ctx, P.curve(v, x => Tn(x, n), -3.3, 3.3), { color: C.warm, width: 2.2 });
+  P.dot(ctx, v.X(0), v.Y(1), { r: 3.5, color: C.accent, ring: false });
+  lab.set('o', 'x_0=0', v.X(0), v.Y(0), { dy: 16, color: C.mute });
+  lab.set('f', 'f', v.X(2.2), v.Y(f(2.2)), { dy: -12, color: C.accent });
+  lab.set('T', `T_{${n}}`, v.X(2.2), v.Y(Tn(2.2, n)), { dy: 14, color: C.warm });
+  lab.end();
+  return moving;
+});
+sl.addEventListener('input', () => cv.kick());
+{ let m = 0; for (let n = 0; n <= 10; n++) { formula(n); m = Math.max(m, fx.getBoundingClientRect().height); }
+  fx.style.minHeight = Math.ceil(m) + 'px'; formula(2); }
+cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

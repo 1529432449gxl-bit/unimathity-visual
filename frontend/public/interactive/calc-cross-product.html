@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cross product</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="1000" step="1" value="180" aria-label="angle"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Cross product"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const sl = document.getElementById('t'), btn = document.getElementById('play');
+const tOf = s => 0.15 + (2 * Math.PI - 0.3) * s / 1000;
+const S = { t: tOf(+sl.value), target: tOf(+sl.value), playing: false };
+const set = playBtn(btn, S, () => cv.kick());
+legend([['\\boldsymbol a', C.accent], ['\\boldsymbol b', C.blue], ['\\boldsymbol a\\times\\boldsymbol b', C.warm]]);
+K(eqEl, '|\\boldsymbol a\\times\\boldsymbol b|=|\\boldsymbol a|\\,|\\boldsymbol b|\\sin\\theta', 1);
+const cam = V.camera({ az: -0.75, el: 0.42 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const a = [1.5, 0, 0];
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.4, h / 3.6); cam.ox = w / 2; cam.oy = h * 0.6;
+  if (S.playing) { S.target += 0.6 * dt; if (S.target > 2 * Math.PI - .15) S.target = .15; sl.value = (S.target - .15) / (2 * Math.PI - .3) * 1000 }
+  const mv = P.approach(S, 't', S.target, dt, 9), t = S.t;
+  const b = [1.2 * Math.cos(t), 1.2 * Math.sin(t), 0], c = V.cross(a, b), ab = [a[0] + b[0], a[1] + b[1], 0];
+  K(document.getElementById('lab'), `\\theta=${t.toFixed(2)}`);
+  V.axes(ctx, cam, [2, 2, 2], { alpha: .45 });
+  const up = c[2] >= 0;
+  V.paint(ctx, cam, [V.poly([[0, 0, 0], a, ab, b], up ? C.warm : C.blue, .22)]);
+  V.line(ctx, cam, [a, ab, b], { color: C.mute, width: 1, dash: [4, 4] });
+  // 平面内从 a 转到 b 的弧
+  const arc = []; for (let i = 0; i <= 40; i++) { const s = t * i / 40; arc.push([0.45 * Math.cos(s), 0.45 * Math.sin(s), 0]) }
+  V.line(ctx, cam, arc, { color: C.soft, width: 1.2, alpha: .7 });
+  V.arrow(ctx, cam, [0, 0, 0], a, { color: C.accent }); V.arrow(ctx, cam, [0, 0, 0], b, { color: C.blue });
+  V.arrow(ctx, cam, [0, 0, 0], c, { color: C.warm, width: 2.6 });
+  const q = cam.P(a), r = cam.P(b), s = cam.P(c), m = cam.P([0.55 * Math.cos(t / 2), 0.55 * Math.sin(t / 2), 0]);
+  lab.set('a', '\\boldsymbol a', q[0], q[1], { dx: 12, dy: 8, color: C.accent }); lab.set('b', '\\boldsymbol b', r[0], r[1], { dx: 12, dy: -8, color: C.blue });
+  lab.set('c', '\\boldsymbol a\\times\\boldsymbol b', s[0], s[1], { dx: 30, color: C.warm, alpha: Math.abs(c[2]) > .25 ? 1 : 0 });
+  lab.set('th', '\\theta', m[0], m[1], { color: C.soft, size: 13 }); lab.end();
+  return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = tOf(+sl.value); cv.kick() });
+btn.onclick = () => set(!S.playing);
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

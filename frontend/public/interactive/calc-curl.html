@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Curl and circulation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="a" type="range" min="0" max="1000" step="1" value="0" aria-label="tilt"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Curl and circulation"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const k = 0.6, A = p => [-k * p[1], k * p[0], 0.25 * p[1]];      // rot A = (0.25, 0, 2k)
+const ROT = [0.25, 0, 2 * k];
+const sl = document.getElementById('a'), btn = document.getElementById('play');
+const S = { a: 0, target: 0, playing: true };
+const set = playBtn(btn, S, () => cv.kick()); set(true); btn.onclick = () => set(!S.playing);
+legend([['\\boldsymbol A', C.blue], ['\\operatorname{rot}\\boldsymbol A', C.warm], ['\\boldsymbol n_0', C.accent]]);
+K(eqEl, '\\operatorname{rot}\\boldsymbol A\\cdot\\boldsymbol n_0=\\lim_{D\\to M_0}\\frac{1}{\\mu(D)}\\oint_L\\boldsymbol A\\cdot\\boldsymbol\\tau\\,\\mathrm ds', 1);
+const cam = V.camera({ az: -0.55, el: 0.38 }); const drg = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const grid = []; for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) for (const z of [-0.8, 0.8]) grid.push([x * 0.95, y * 0.95, z]);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 3.6, h / 3.0); cam.ox = w / 2; cam.oy = h * 0.55;
+  if (S.playing) { S.target += 0.4 * dt; sl.value = ((S.target % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI) * 1000 }
+  const mv = P.approach(S, 'a', S.target, dt, 9), a = S.a;
+  const n = [Math.sin(a), 0, Math.cos(a)], e1 = [Math.cos(a), 0, -Math.sin(a)], e2 = [0, 1, 0], Rr = 0.75;
+  const val = V.dot3(ROT, n);
+  for (const p of grid) { const v = A(p); V.arrow(ctx, cam, p, [p[0] + v[0] * .45, p[1] + v[1] * .45, p[2] + v[2] * .45], { color: C.blue, width: 1.2, alpha: .4, head: 6 }) }
+  const disk = V.mesh((r, t) => [r * (Math.cos(t) * e1[0] + Math.sin(t) * e2[0]), r * (Math.cos(t) * e1[1] + Math.sin(t) * e2[1]), r * (Math.cos(t) * e1[2] + Math.sin(t) * e2[2])], 0.001, Rr, 0, 2 * Math.PI, 2, 36);
+  V.paint(ctx, cam, [{ quads: disk, color: val >= 0 ? C.warm : C.blue, alpha: .14 + .1 * Math.min(1, Math.abs(val)) }]);
+  // 圆周上的切向分量
+  for (let i = 0; i < 16; i++) { const t = 2 * Math.PI * i / 16, c = Math.cos(t), s = Math.sin(t);
+    const p = [Rr * (c * e1[0] + s * e2[0]), Rr * (c * e1[1] + s * e2[1]), Rr * (c * e1[2] + s * e2[2])], tau = [-s * e1[0] + c * e2[0], -s * e1[1] + c * e2[1], -s * e1[2] + c * e2[2]];
+    const at = V.dot3(A(p), tau), L = 0.55 * at;
+    V.arrow(ctx, cam, p, [p[0] + tau[0] * L, p[1] + tau[1] * L, p[2] + tau[2] * L], { color: at >= 0 ? C.warm : C.blue, width: 2, head: 7 }) }
+  const circ = []; for (let i = 0; i <= 72; i++) { const t = 2 * Math.PI * i / 72; circ.push([Rr * (Math.cos(t) * e1[0] + Math.sin(t) * e2[0]), Rr * Math.sin(t), Rr * Math.cos(t) * e1[2]]) }
+  V.line(ctx, cam, circ, { color: C.soft, width: 1.2, alpha: .7 });
+  V.arrow(ctx, cam, [0, 0, 0], [n[0] * .9, n[1] * .9, n[2] * .9], { color: C.accent, width: 2.2 });
+  V.arrow(ctx, cam, [0, 0, 0], ROT.map(c => c * .9), { color: C.warm, width: 2.6 });
+  const pn = cam.P(n.map(c => c * .9)); lab.set('n', '\\boldsymbol n_0', pn[0], pn[1], { dx: 14, dy: -6, color: C.accent, size: 13 });
+  const o = cam.P([0, 0, 0]); lab.set('M', 'M_0', o[0], o[1], { dx: -16, dy: 12, color: C.soft, size: 13 });
+  lab.end(); return mv || S.playing || drg.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = +sl.value / 1000 * 2 * Math.PI; S.a = ((S.a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); cv.kick() });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Triple product</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:320px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="t" type="range" min="0" max="1000" step="1" value="850" aria-label="height"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Triple product"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const sl = document.getElementById('t'), btn = document.getElementById('play');
+const tOf = s => -1.1 + 2.2 * s / 1000;
+const S = { t: tOf(+sl.value), target: tOf(+sl.value), playing: false, dir: -1 };
+const set = playBtn(btn, S, () => cv.kick());
+legend([['\\boldsymbol a,\\ \\boldsymbol b', C.accent], ['\\boldsymbol c', C.warm], ['\\boldsymbol a\\times\\boldsymbol b', C.blue]]);
+K(eqEl, '[\\boldsymbol a,\\boldsymbol b,\\boldsymbol c]=(\\boldsymbol a\\times\\boldsymbol b)\\cdot\\boldsymbol c=|\\boldsymbol a\\times\\boldsymbol b|\\,\\mathrm{Prj}_{\\boldsymbol a\\times\\boldsymbol b}\\,\\boldsymbol c', 1);
+const cam = V.camera({ az: -0.85, el: 0.38 }); const dr = V.drag(canvas, cam, () => cv.kick(), { onStart: () => set(false) });
+const a = [1.4, 0, 0], b = [0.45, 1.1, 0], n = V.cross(a, b), nu = V.unit(n);
+const add = (...vs) => vs.reduce((s, v) => [s[0] + v[0], s[1] + v[1], s[2] + v[2]], [0, 0, 0]);
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.2, h / 3.6); cam.ox = w * 0.46; cam.oy = h * 0.58;
+  if (S.playing) { S.target += S.dir * 0.5 * dt; if (S.target < -1.1) { S.target = -1.1; S.dir = 1 } if (S.target > 1.1) { S.target = 1.1; S.dir = -1 } sl.value = (S.target + 1.1) / 2.2 * 1000 }
+  const mv = P.approach(S, 't', S.target, dt, 9), hgt = S.t;
+  const c = [0.55, 0.35, hgt], pos = hgt >= 0, col = pos ? C.warm : C.soft;
+  // 平行六面体的六个面
+  const O = [0, 0, 0], A = a, B = b, AB = add(a, b), Cc = c, AC = add(a, c), BC = add(b, c), ABC = add(a, b, c);
+  V.axes(ctx, cam, [2, 2, 1.6], { alpha: .35 });
+  V.paint(ctx, cam, [V.poly([O, A, AB, B], C.accent, .2), V.poly([Cc, AC, ABC, BC], col, .16), V.poly([O, A, AC, Cc], col, .1), V.poly([B, AB, ABC, BC], col, .1), V.poly([O, B, BC, Cc], col, .1), V.poly([A, AB, ABC, AC], col, .1)]);
+  for (const [p, q] of [[Cc, AC], [AC, ABC], [ABC, BC], [BC, Cc], [A, AC], [B, BC], [AB, ABC]]) V.line(ctx, cam, [p, q], { color: col, width: 1, alpha: .6 });
+  // 高：c 在法向上的投影
+  const hp = V.dot3(c, nu), foot = [c[0] - hp * nu[0], c[1] - hp * nu[1], c[2] - hp * nu[2]];
+  V.line(ctx, cam, [foot, c], { color: col, width: 2.6, alpha: .85 });
+  V.line(ctx, cam, [O, foot], { color: C.mute, width: 1, dash: [3, 4] });
+  V.arrow(ctx, cam, O, a, { color: C.accent }); V.arrow(ctx, cam, O, b, { color: C.accent });
+  V.arrow(ctx, cam, O, [nu[0] * .9, nu[1] * .9, nu[2] * .9], { color: C.blue, width: 1.8 });
+  V.arrow(ctx, cam, O, c, { color: C.warm, width: 2.4 });
+  K(document.getElementById('lab'), `h=${hp.toFixed(2)}`);
+  const pa = cam.P(a), pb = cam.P(b), pc = cam.P(c);
+  lab.set('a', '\\boldsymbol a', pa[0], pa[1], { dx: 10, dy: 10, color: C.accent }); lab.set('b', '\\boldsymbol b', pb[0], pb[1], { dx: 10, dy: -6, color: C.accent });
+  lab.set('c', '\\boldsymbol c', pc[0], pc[1], { dx: 12, dy: -4, color: C.warm }); lab.end();
+  return mv || S.playing || dr.active;
+});
+sl.addEventListener('input', () => { set(false); S.target = tOf(+sl.value); cv.kick() });
+btn.onclick = () => set(!S.playing);
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

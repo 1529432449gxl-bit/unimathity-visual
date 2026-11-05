@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>对数螺线的切线与向径</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>main{max-width:850px;margin:auto}.controls{min-height:40px}.controls .n{min-width:100px}.stage canvas{height:360px}.fx{min-height:82px;height:82px;justify-content:center}.fx>div{min-height:29px}.nav{height:40px}.key{font-size:13px}.legend{min-height:27px}@media(max-width:520px){.stage canvas{height:310px}.controls{gap:6px}.fx{font-size:13px}.legend{gap:4px 10px}.nav{gap:8px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lab"></span><input id="theta" type="range" min="-0.5" max="2" step="0.01" value="-0.5" aria-label="极角"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="对数螺线的向径与切线夹角"></canvas></div>
+<div class="legend" id="legend"></div><div class="fx" id="fx"><div id="formula"></div><div id="angle"></div></div><div class="nav" id="nav"></div>
+</main><script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+// plotfx mount handles devicePixelRatio, visibilitychange and animation frames.
+const {C}=P, steps=Array.from({length:11},(_,i)=>-.5+i*.25), slider=document.getElementById('theta');
+const tex=(e,t)=>{if(e.dataset.tex!==t||!e.querySelector('.katex')){katex.render(t,e,{throwOnError:true});e.dataset.tex=t}};
+const num=x=>Math.abs(x)<.0005?'0':Number(x.toFixed(3)).toString();
+const point=t=>{const r=Math.exp(t/2);return [r*Math.cos(t),r*Math.sin(t)]}, psi=Math.atan(2);
+const S={value:-.5,target:-.5,intro:0}, v=P.view([-3.7,3.7,-3.7,3.7]);
+const stage=document.getElementById('stage'), lab=P.labels(stage), main=document.querySelector('main');
+for(const [label,color,dash] of [[String.raw`r=e^{\theta/2}`,C.accent,false],[String.raw`OP`,C.blue,false],[String.raw`T`,C.warm,false]]){
+ let e=document.createElement('span');e.className='key'+(dash?' dash':'');e.style.setProperty('--c',color);tex(e,label);document.getElementById('legend').append(e)}
+function formula(t){tex(document.getElementById('lab'),String.raw`\theta=${num(t)}`);tex(document.getElementById('formula'),String.raw`r=e^{\theta/2}\approx${num(Math.exp(t/2))}`);tex(document.getElementById('angle'),String.raw`\tan\varphi=\frac{r}{\mathrm dr/\mathrm d\theta}=2,\quad\varphi=\arctan 2`)}
+let st,last=99,pointScreen=[];
+const cv=P.mount(document.getElementById('cv'),(ctx,w,h,dt)=>{
+ if(!st)return false;
+ const side=Math.min(w-36,h-36),px=(w-side)/2,py=(h-side)/2;
+ v.w=w;v.h=h;v.pad={l:px,r:px,t:py,b:py};
+ const playing=st.tick(dt),moving=P.approach(S,'value',S.target,dt,6),intro=P.approach(S,'intro',1,dt,4);
+ const t=S.value,[x,y]=point(t),O=[v.X(0),v.Y(0)],Q=[v.X(x),v.Y(y)],dir=[Math.cos(t+psi),Math.sin(t+psi)],rad=[Math.cos(t),Math.sin(t)];
+ pointScreen=[{x:Q[0],y:Q[1],r:5},{x:O[0],y:O[1],r:3}];
+ ctx.save();ctx.beginPath();ctx.rect(px,py,side,side);ctx.clip();P.axes(ctx,v,{x:true,y:true});
+ const n=Math.max(250,Math.round(side*1.3)),pts=[];for(let i=0;i<=n;i++){let q=-5+7.3*i/n;const [X,Y]=point(q);pts.push([v.X(X),v.Y(Y)])}
+ P.path(ctx,pts,{color:C.accent,width:2.4,progress:P.ease.out(S.intro)});
+ P.path(ctx,[O,[v.X(x+.5*rad[0]),v.Y(y+.5*rad[1])]],{color:C.blue,width:1.5,alpha:S.intro});
+ P.path(ctx,[[v.X(x-1.35*dir[0]),v.Y(y-1.35*dir[1])],[v.X(x+1.35*dir[0]),v.Y(y+1.35*dir[1])]],{color:C.warm,width:1.8,alpha:S.intro});
+ ctx.save();ctx.strokeStyle=C.warm;ctx.lineWidth=1.5;ctx.globalAlpha=S.intro;ctx.beginPath();ctx.arc(Q[0],Q[1],25,-t,-t-psi,true);ctx.stroke();ctx.restore();
+ P.dot(ctx,...O,{color:C.ink,r:3,scale:P.ease.out(S.intro)});P.dot(ctx,...Q,{color:C.accent,r:4.5,scale:P.ease.out(S.intro)});ctx.restore();
+ lab.set('o','O',...O,{dx:-22,dy:20,color:C.soft,size:13});
+ lab.set('p','P',...Q,{dx:Math.cos(t)>=0?22:-22,dy:Math.sin(t)>=0?-20:20,color:C.accent,size:13});
+ const mid=t+psi/2;lab.set('phi',String.raw`\varphi`,Q[0]+38*Math.cos(mid),Q[1]-38*Math.sin(mid),{color:C.warm,size:14});lab.end();
+ if(Math.abs(t-last)>.0005||!moving){formula(t);last=t}
+ const ct=document.querySelector('.ct');tex(ct,String.raw`${st.i}\,/\,${steps.length-1}`);
+ return playing||moving||intro;
+});
+// stepper provides reset, back, next and play controls.
+st=P.stepper(document.getElementById('nav'),{count:steps.length,dur:.8,hold:.7,kick:cv.kick,onChange:s=>{S.target=steps[s.i];slider.value=S.target;formula(S.target)}});
+slider.addEventListener('input',()=>{st.stop();const requested=+slider.value,idx=steps.reduce((b,x,i)=>Math.abs(x-requested)<Math.abs(steps[b]-requested)?i:b,0);st.go(idx,false);S.target=requested;slider.value=requested;cv.kick()});
+const off=new IntersectionObserver(es=>{if(!es[0].isIntersecting)st.stop()});off.observe(main);
+const hidden=()=>{if(document.hidden)st.stop()};document.addEventListener('visibilitychange',hidden);
+const cleanup=()=>{off.disconnect();document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',cleanup)};window.addEventListener('pagehide',cleanup,{once:true});
+Steady.sweep([document.getElementById('fx')],steps.length,i=>formula(steps[i]),()=>formula(steps[0]));Steady.hold(document.getElementById('fx'));
+window.__mathviz={'calc-polar-spiral':{getState:()=>({theta:S.target,shown:S.value,step:st.i,playing:st.playing}),setState:s=>{st.stop();if(s.step!==undefined)st.go(P.clamp(+s.step,0,steps.length-1),true);if(s.theta!==undefined){S.target=P.clamp(+s.theta,-.5,2);slider.value=S.target}cv.kick()},report:()=>{const base=stage.getBoundingClientRect(),labels=[...stage.querySelectorAll('span[data-t]')].filter(e=>+getComputedStyle(e).opacity>.5).map(e=>{const r=e.getBoundingClientRect();return{text:e.dataset.t,x:r.x-base.x,y:r.y-base.y,w:r.width,h:r.height}}),issues=[];for(const q of labels){if(q.x<0||q.y<0||q.x+q.w>base.width||q.y+q.h>base.height)issues.push({kind:'outside',label:q.text});for(const p of pointScreen)if(p.x+p.r>q.x&&p.x-p.r<q.x+q.w&&p.y+p.r>q.y&&p.y-p.r<q.y+q.h)issues.push({kind:'rect',label:q.text,amount:1})}return{labels,issues,protectCount:pointScreen.length}}}};
+window.visualAudit={point,psi,steps};P.reportHeight(main);formula(S.target);cv.kick();
+</script></body></html>

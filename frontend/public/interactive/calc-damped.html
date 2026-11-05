@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Damped oscillation</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:320px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:270px}}</style></head>
+<body><main>
+
+<div class="controls"><span class="n" id="lab"></span><input id="p" type="range" min="0" max="1000" step="1" value="120" aria-label="damping"><button type="button" class="tg" id="play" aria-pressed="false">Play</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Damped oscillation"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const sl = document.getElementById('p'), btn = document.getElementById('play');
+const pOf = s => 0.15 + 3.35 * s / 1000;
+const S = { p: pOf(+sl.value), target: pOf(+sl.value), ys: null, playing: false };
+const set = playBtn(btn, S, () => cv.kick());
+legend([['y(x)', C.warm], ['\\pm\\mathrm e^{-px/2}', C.blue, 1]]);
+const T = ['p^2<4:\\ \\ y=\\mathrm e^{-px/2}\\left(\\cos\\beta x+\\tfrac{p}{2\\beta}\\sin\\beta x\\right),\\ \\ \\beta=\\tfrac{\\sqrt{4-p^2}}2',
+ 'p^2=4:\\ \\ y=(1+x)\\,\\mathrm e^{-x}', 'p^2>4:\\ \\ y=\\dfrac{r_2\\mathrm e^{r_1x}-r_1\\mathrm e^{r_2x}}{r_2-r_1},\\ \\ r_{1,2}=\\tfrac{-p\\pm\\sqrt{p^2-4}}2'];
+lockEq(T);
+// y''+py'+y=0, y(0)=1, y'(0)=0
+function sol(p, x) { const D = p * p - 4;
+  if (Math.abs(D) < 1e-6) return (1 + x) * Math.exp(-x);
+  if (D < 0) { const b = Math.sqrt(-D) / 2; return Math.exp(-p * x / 2) * (Math.cos(b * x) + p / (2 * b) * Math.sin(b * x)) }
+  const r1 = (-p + Math.sqrt(D)) / 2, r2 = (-p - Math.sqrt(D)) / 2; return (r2 * Math.exp(r1 * x) - r1 * Math.exp(r2 * x)) / (r2 - r1); }
+const X1 = 16, v = P.view([-0.3, X1, -1.1, 1.15], { l: 12, r: 12, t: 12, b: 12 });
+let lastT = -1;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  if (S.playing) { S.target += 0.35 * dt; if (S.target >= 3.5) { S.target = 3.5; set(false) } sl.value = (S.target - .15) / 3.35 * 1000 }
+  let mv = P.approach(S, 'p', S.target, dt, 8);
+  const p = S.p, n = Math.max(300, Math.round(w)), xs = []; for (let i = 0; i <= n; i++) xs.push(X1 * i / n);
+  const tg = xs.map(x => sol(p, x)); if (!S.ys) S.ys = tg.slice(); mv = P.approach(S, 'ys', tg, dt, 14) || mv;
+  const ti = Math.abs(p - 2) < 0.03 ? 1 : p < 2 ? 0 : 2; if (ti !== lastT) { lastT = ti; K(eqEl, T[ti], 1) }
+  K(document.getElementById('lab'), `p=${p.toFixed(2)}`);
+  P.axes(ctx, v, { x: true, y: true });
+  if (p < 2) { const ea = P.clamp((2 - p) / 0.4, 0, 1); for (const s of [1, -1]) P.path(ctx, P.curve(v, x => s * Math.exp(-p * x / 2), 0, X1), { color: C.blue, width: 1.4, dash: [5, 5], alpha: .7 * ea }) }
+  P.path(ctx, xs.map((x, i) => [v.X(x), v.Y(S.ys[i])]), { color: C.warm, width: 2.4 });
+  P.dot(ctx, v.X(0), v.Y(1), { r: 4, color: C.warm });
+  lab.end(); return mv || S.playing;
+});
+sl.addEventListener('input', () => { set(false); S.target = pOf(+sl.value); cv.kick() });
+btn.onclick = () => { if (S.playing) { set(false); return } if (S.target >= 3.49) { S.target = .15 } set(true) };
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

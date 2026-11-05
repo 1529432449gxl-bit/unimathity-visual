@@ -1,0 +1,63 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Math visualization</title><link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><style>
+*{box-sizing:border-box}body{margin:0;background:var(--paper)}
+
+.matrix-module .mv-stage{padding:8px 0}.matrix-module canvas,.matrix-module .mv-labels{display:none}.matrix-panels{display:flex;flex-wrap:wrap;justify-content:center;gap:18px 28px;align-items:flex-start}.panel{display:flex;flex-direction:column;align-items:center;max-width:100%;gap:12px}.matrix{display:grid;gap:3px;padding:5px 8px;position:relative}.matrix:before,.matrix:after{content:"";position:absolute;top:0;bottom:0;width:6px;border:1px solid var(--inkSoft)}.matrix:before{left:0;border-right:0}.matrix:after{right:0;border-left:0}.cell{width:39px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:13px}.cell.rhs{margin-left:9px;border-left:1px dashed var(--rule);padding-left:5px}.cell.used{outline:2px solid var(--accent);background:var(--input-bg)}.cell.active{outline:2px solid #b5763a;background:var(--active-bg);font-weight:600}.cell.history{width:74px;font-size:12px}.cell.empty{color:var(--rule)}.cell.rowlabel{width:25px}.history-grid:before,.history-grid:after{display:none}.counter{min-width:64px;text-align:center;font-size:13px}.panel-title{min-height:22px}.matrix-module .mv-formula{font-size:13px!important}.matrix-module .mv-readout{min-height:72px}.mv-stage{min-width:0}@media(max-width:480px){.matrix-panels{gap:14px}.cell{width:38px;height:31px}.cell.history{width:72px;font-size:11px}.matrix-module .mv-formula{font-size:12px!important}}
+</style></head><body><div id="app"></div><script type="module">
+const MV = await import('./vendor/mathviz-kit.js');
+
+const {THEME,ROLE,alpha}=MV;
+for(const [k,v] of Object.entries(THEME))if(typeof v==='string'&&v.startsWith('#'))document.documentElement.style.setProperty('--'+k,v);
+const tex=(el,t)=>katex.render(t,el,{throwOnError:true,strict:'error'});
+const num=v=>Math.abs(v)<5e-9?'0':Number(v.toFixed(6)).toString();
+function embedHeight(fig){const ro=new ResizeObserver(()=>parent.postMessage({type:'runge-height',height:Math.ceil(document.body.getBoundingClientRect().height)},location.origin));ro.observe(fig.host);fig.addCleanup(()=>ro.disconnect());}
+function traceControls(fig,getPlayer,anim,onReset){
+ const stop=()=>{getPlayer().pause();anim.cancelAll();sync()};
+ const previous=MV.button(fig,'◀',()=>{stop();getPlayer().previous();fig.drawNow()});previous.setAttribute('aria-label','Previous');
+ const next=MV.button(fig,'▶',()=>{stop();getPlayer().next();fig.drawNow()});next.setAttribute('aria-label','Next');
+ const play=MV.button(fig,'Play',()=>{if(getPlayer().snapshot().playing){stop();return}if(getPlayer().snapshot().index===getPlayer().snapshot().count-1)getPlayer().reset();getPlayer().play();sync();anim.loop(dt=>{getPlayer().advance(dt);sync();return getPlayer().snapshot().playing})},{primary:true});
+ MV.button(fig,'Reset',()=>{stop();onReset();fig.drawNow()});
+ const counter=document.createElement('span');counter.className='counter';fig.bar.append(counter);
+ function sync(){const p=getPlayer().snapshot();play.textContent=p.playing?'Pause':'Play';play.setAttribute('aria-pressed',String(p.playing));previous.disabled=p.index===0;next.disabled=p.index===p.count-1;tex(counter,String.raw`${p.index}\,/\,${p.count-1}`)}
+ fig.on(document,'visibilitychange',()=>{if(document.hidden)stop()});
+ fig.on(window,'keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)&&e.target.type!=='range'){e.preventDefault();stop();e.key==='ArrowRight'?getPlayer().next():getPlayer().previous();fig.drawNow()}});
+ const io=new IntersectionObserver(es=>{if(!es[0].isIntersecting)stop()});io.observe(fig.host);fig.addCleanup(()=>io.disconnect());fig.addCleanup(stop);
+ return {stop,sync};
+}
+
+const A=[[4,-1,0,0],[-1,4,-1,0],[0,-1,4,-1],[0,0,-1,4]],b=[3,2,2,3];
+function buildTrace(){
+ const hist=Array.from({length:4},()=>[0,...Array(6).fill(null)]),steps=[{hist:structuredClone(hist),i:-1,k:0,refs:[],generic:String.raw`Ax=b,\qquad x^0=0`,numeric:''}];
+ for(let k=1;k<=6;k++)for(let i=0;i<4;i++){
+  const refs=[['a',i,i],['a',i,4]],vals=[],sym=[];let sum=0;
+  for(let j=0;j<4;j++)if(j!==i&&A[i][j]!==0){const col=j<i?k:k-1;sum+=A[i][j]*hist[j][col];vals.push(num(hist[j][col]));sym.push(`x_{${j+1}}^{${col}}`);refs.push(['a',i,j],['h',j,col])}
+  const old=hist[i][k-1],candidate=(b[i]-sum)/A[i][i];hist[i][k]=-.1*old+1.1*candidate;
+  refs.push(['h',i,k-1]);
+  const frac=String.raw`\frac{${b[i]}+${vals.join('+')}}{4}`;
+  const generic=String.raw`x_{${i+1}}^{${k}}=(1-\omega)x_{${i+1}}^{${k-1}}+\omega\widehat x_{${i+1}},\quad\omega=1.1`;
+  const numeric=String.raw`\begin{aligned}x_{${i+1}}^{${k}}&\approx-0.1(${num(old)})+1.1${frac}\\&\approx${num(hist[i][k])}\end{aligned}`;
+  steps.push({hist:structuredClone(hist),i,k,refs,generic,numeric});
+ }
+ return {steps,termination:{reason:'max_iter',rounds:6}};
+}
+const trace=buildTrace();let player=MV.createTracePlayer(trace.steps,{intervalMs:1200});
+const fig=MV.createModule('#app',{name:'sor-steps',height:1});fig.host.classList.add('matrix-module');const anim=MV.createAnimator(fig);
+document.documentElement.style.setProperty('--input-bg','#eeeff4');document.documentElement.style.setProperty('--active-bg','#f3e3d2');
+const panels=document.createElement('div');panels.className='matrix-panels';fig.canvas.parentElement.append(panels);
+const controls=traceControls(fig,()=>player,anim,()=>player.reset());
+function makeCell(t,key,cls=''){const el=document.createElement('div');el.className='cell '+cls;el.dataset.key=key;tex(el,t);return el}
+function panel(title,grid){const el=document.createElement('div');el.className='panel';const lab=document.createElement('div');lab.className='panel-title';tex(lab,title);el.append(lab,grid);panels.append(el)}
+fig.onDraw(()=>{
+ const s=player.snapshot().step;panels.replaceChildren();const ag=document.createElement('div');ag.className='matrix';ag.style.gridTemplateColumns='repeat(5,auto)';
+ A.forEach((row,i)=>[...row,b[i]].forEach((v,j)=>{const el=makeCell(String(v),`a,${i},${j}`,j===4?'rhs':'');el.style.color=THEME.ink;ag.append(el)}));panel(String.raw`[A\mid b]`,ag);
+ const hg=document.createElement('div');hg.className='matrix history-grid';hg.style.gridTemplateColumns='25px repeat(3,auto)';const start=Math.max(0,s.k-2),end=start+2;
+ hg.append(makeCell('','blank','rowlabel'));for(let k=start;k<=end;k++)hg.append(makeCell(`x^{${k}}`,`col,${k}`,'history'));
+ s.hist.forEach((row,i)=>{hg.append(makeCell(`x_{${i+1}}`,`row,${i}`,'rowlabel'));for(let k=start;k<=end;k++)hg.append(makeCell(row[k]==null?String.raw`\cdot`:num(row[k]),`h,${i},${k}`,'history '+(row[k]==null?'empty':'')))});panel('x^k',hg);
+ for(const ref of s.refs)panels.querySelector(`[data-key="${ref.join(',')}"]`)?.classList.add('used');
+ if(s.i>=0)panels.querySelector(`[data-key="h,${s.i},${s.k}"]`).classList.add('active');
+ fig.formula(s.generic);fig.readout(s.numeric||String.raw`x^0=(0,0,0,0)^T`);controls.sync();
+});
+fig.on(window,'resize',()=>fig.redraw());
+MV.expose(fig,{getState:()=>({step:player.snapshot().index,playing:player.snapshot().playing,method:'sor-steps'}),setState:s=>{controls.stop();player.seek(MV.clamp(Number(s.step)||0,0,trace.steps.length-1));fig.drawNow()}});
+window.visualAudit={trace:()=>structuredClone(trace),snapshot:()=>player.snapshot()};embedHeight(fig);fig.drawNow();MV.stabilize(fig,trace.steps.length,i=>player.seek(i),()=>player.seek(0));
+
+</script></body></html>

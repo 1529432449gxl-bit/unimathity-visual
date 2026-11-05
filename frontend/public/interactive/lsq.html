@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>最小二乘拟合</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/morph.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#fbfbfa;color:#161820;font:15px/1.7 "Microsoft YaHei",sans-serif}main{padding:8px 2px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}h2{font-size:18px;font-weight:400;margin:0}button{font:inherit;font-size:13px;border:1px solid #223056;border-radius:4px;color:#223056;padding:4px 12px;background:transparent;cursor:pointer}button[aria-pressed="true"]{background:#223056;color:#fff}.seg{display:flex;flex-wrap:wrap;gap:6px}.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:13px}.seg{margin-right:8px}.bar input{accent-color:#223056}canvas{display:block;width:100%;height:340px;touch-action:none;cursor:crosshair}.out{font-size:14px;margin-top:8px;font-variant-numeric:tabular-nums}.out b{font-weight:400;color:#ad6844}.warn{color:#a4493f;font-size:13px;min-height:0}.hint{font-size:12px;color:#4f525b;margin:6px 0 0}button:focus-visible,input:focus-visible{outline:2px solid #223056;outline-offset:3px}@media(max-width:420px){canvas{height:290px}h2{font-size:16px}button{padding:5px 9px}}</style></head>
+<body><main>
+<div class="bar"><div class="seg" id="modes" role="group" aria-label="拟合模型"></div><button id="reset" type="button">Reset</button><button id="outlier" type="button">Outlier</button><label><input type="checkbox" id="res" checked> Residuals</label></div>
+<canvas id="plot" role="img"></canvas>
+<div class="out" id="out"></div><div class="warn" id="warn"></div>
+</main>
+<script>
+const INIT=[[0,1],[1,1.8],[2,3.2],[3,3.9],[4,5.1]];
+let P=INIT.map(p=>p.slice()),mode='line',drag=-1;
+const B={x:[-0.5,5.5],y:[-1,7]};
+const MODES=[{id:'line',tex:'a+bx'},{id:'quad',tex:'a+bx+cx^2'},{id:'exp',tex:'ae^{bx}'}];const T=(el,s)=>katex.render(s,el,{throwOnError:false});
+function solve(A,b){const n=b.length;A=A.map((r,i)=>[...r,b[i]]);for(let k=0;k<n;k++){let p=k;for(let i=k+1;i<n;i++)if(Math.abs(A[i][k])>Math.abs(A[p][k]))p=i;[A[k],A[p]]=[A[p],A[k]];if(Math.abs(A[k][k])<1e-12)return null;for(let i=k+1;i<n;i++){const f=A[i][k]/A[k][k];for(let j=k;j<=n;j++)A[i][j]-=f*A[k][j]}}const x=Array(n).fill(0);for(let i=n-1;i>=0;i--){let s=A[i][n];for(let j=i+1;j<n;j++)s-=A[i][j]*x[j];x[i]=s/A[i][i]}return x}
+function polyfit(xs,ys,deg){const G=[],r=[];for(let i=0;i<=deg;i++){G.push([]);for(let j=0;j<=deg;j++)G[i].push(xs.reduce((s,x)=>s+x**(i+j),0));r.push(xs.reduce((s,x,k)=>s+ys[k]*x**i,0))}return solve(G,r)}
+function fit(){const xs=P.map(p=>p[0]),ys=P.map(p=>p[1]);
+ if(mode==='exp'){if(ys.some(y=>y<=0))return{err:'Exponential fit needs y > 0.'};const c=polyfit(xs,ys.map(Math.log),1);if(!c)return{err:'Normal equations are singular.'};const a=Math.exp(c[0]),b=c[1];return{f:x=>a*Math.exp(b*x),txt:`y=${a.toFixed(4)}\\,e^{${b.toFixed(4)}x}`,note:''}}
+ const deg=mode==='line'?1:2;if(P.length<=deg)return{err:`Need at least ${deg+1} points.`};const c=polyfit(xs,ys,deg);if(!c)return{err:'Normal equations are singular.'};
+ const f=x=>c.reduce((s,a,i)=>s+a*x**i,0);const sg=v=>(v<0?'-':'+')+Math.abs(v).toFixed(4);
+ return{f,txt:'y='+c[0].toFixed(4)+sg(c[1])+'x'+(deg===2?sg(c[2])+'x^2':''),note:''}}
+let geo;
+function draw(){const cv=document.getElementById('plot'),r=cv.getBoundingClientRect(),d=devicePixelRatio||1,w=r.width,h=r.height;cv.width=Math.round(w*d);cv.height=Math.round(h*d);const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);const pad={l:36,r:12,t:12,b:26},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;const X=x=>pad.l+(x-B.x[0])*pw/(B.x[1]-B.x[0]),Y=y=>pad.t+(B.y[1]-y)*ph/(B.y[1]-B.y[0]);geo={X,Y,iX:px=>B.x[0]+(px-pad.l)*(B.x[1]-B.x[0])/pw,iY:py=>B.y[1]-(py-pad.t)*(B.y[1]-B.y[0])/ph};
+ c.clearRect(0,0,w,h);c.lineJoin=c.lineCap='round';c.font='11px "Microsoft YaHei",sans-serif';c.strokeStyle='#d5d7dd';c.lineWidth=1;c.beginPath();c.moveTo(pad.l,Y(0));c.lineTo(w-pad.r,Y(0));c.moveTo(X(0),pad.t);c.lineTo(X(0),pad.t+ph);c.stroke();c.fillStyle='#7a7c84';c.textAlign='right';for(let y=0;y<=6;y+=2)c.fillText(String(y),pad.l-6,Y(y)+4);c.textAlign='center';for(let x=0;x<=5;x++)c.fillText(String(x),X(x),h-8)
+ c.save();c.beginPath();c.rect(pad.l,pad.t,pw,ph);c.clip();
+ const F=fit(),out=document.getElementById('out'),warn=document.getElementById('warn');
+ if(F.f){if(document.getElementById('res').checked){c.strokeStyle='#ad6844';c.setLineDash([4,3]);c.lineWidth=1.4;P.forEach(([x,y])=>{c.beginPath();c.moveTo(X(x),Y(y));c.lineTo(X(x),Y(F.f(x)));c.stroke()});c.setLineDash([])}
+  const ys=Morph.v('fit',Array.from({length:401},(_,i)=>Math.max(-100,Math.min(100,F.f(B.x[0]+(B.x[1]-B.x[0])*i/400)))),drag>=0?40:9);c.beginPath();for(let i=0;i<=400;i++){const x=B.x[0]+(B.x[1]-B.x[0])*i/400,y=ys[i];i?c.lineTo(X(x),Y(y)):c.moveTo(X(x),Y(y))}c.strokeStyle='#223056';c.lineWidth=2.4;c.stroke();
+  const ss=P.reduce((s,[x,y])=>s+(F.f(x)-y)**2,0);T(out,`${F.txt}\\qquad\\textstyle\\sum\\delta_i^2=${ss.toFixed(4)}`);warn.textContent=F.note;cv.setAttribute('aria-label',`${P.length} 个数据点，${F.txt}，残差平方和 ${ss.toFixed(4)}`)}
+ else{out.textContent='';warn.textContent=F.err}
+ P.forEach(([x,y],i)=>{c.beginPath();c.arc(X(x),Y(y),i===drag?7:5.5,0,7);c.fillStyle='#223056';c.fill();c.strokeStyle='#fbfbfa';c.lineWidth=1.5;c.stroke()});c.restore()}
+const kick=Morph.bind(()=>draw());
+const cv=document.getElementById('plot');
+function hit(e){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;let best=-1,bd=14;P.forEach(([x,y],i)=>{const dd=Math.hypot(geo.X(x)-px,geo.Y(y)-py);if(dd<bd){bd=dd;best=i}});return{best,px,py}}
+const clamp=(v,a)=>Math.max(a[0],Math.min(a[1],v));
+cv.addEventListener('pointerdown',e=>{const{best,px,py}=hit(e);if(best>=0){drag=best;cv.setPointerCapture(e.pointerId)}else if(P.length<15){P.push([+clamp(geo.iX(px),B.x).toFixed(2),+clamp(geo.iY(py),B.y).toFixed(2)]);drag=P.length-1;cv.setPointerCapture(e.pointerId)}kick()});
+cv.addEventListener('pointermove',e=>{if(drag<0)return;const r=cv.getBoundingClientRect();P[drag]=[+clamp(geo.iX(e.clientX-r.left),B.x).toFixed(2),+clamp(geo.iY(e.clientY-r.top),B.y).toFixed(2)];kick()});
+cv.addEventListener('pointerup',()=>{drag=-1;kick()});
+cv.addEventListener('dblclick',e=>{const{best}=hit(e);if(best>=0&&P.length>1){P.splice(best,1);kick()}});
+document.getElementById('reset').onclick=()=>{P=INIT.map(p=>p.slice());kick()};
+document.getElementById('outlier').onclick=()=>{P.push([2.5,6.5]);kick()};
+document.getElementById('res').onchange=draw;
+const box=document.getElementById('modes');MODES.forEach(o=>{const b=document.createElement('button');b.type='button';T(b,o.tex);b.setAttribute('aria-pressed',o.id===mode);b.onclick=()=>{mode=o.id;box.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));kick()};box.appendChild(b)});
+new ResizeObserver(()=>{parent.postMessage({type:'runge-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)},location.origin)}).observe(document.querySelector('main'));
+new ResizeObserver(draw).observe(cv);kick();
+window.lsqModel=(pts,m)=>{P=pts;mode=m;kick();return fit().txt};
+</script></body></html>

@@ -1,0 +1,10 @@
+{
+  "library": "knowledge",
+  "course_code": "real-analysis",
+  "slug_prefix": "real-analysis",
+  "title": "实变函数",
+  "subtitle": "集合、测度、可测函数、积分与函数空间",
+  "audience": "数学专业 / 课程学习 / 复习提高",
+  "description": "集合、测度、可测函数、积分与函数空间，配套定义、定理与例题讲解。",
+  "order": 70
+}

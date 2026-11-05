@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Divergence</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:380px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:330px}}</style></head>
+<body><main>
+<div class="top" id="mode"><button type="button" data-m="src" aria-pressed="true"></button><button type="button" data-m="sink" aria-pressed="false"></button><button type="button" data-m="zero" aria-pressed="false"></button></div>
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Divergence"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const MODES = { src: { k: [0.55, 0.45, 0.4], t: '\\operatorname{div}\\boldsymbol A>0' }, sink: { k: [-0.55, -0.45, -0.4], t: '\\operatorname{div}\\boldsymbol A<0' }, zero: { k: [0.6, -0.35, -0.25], t: '\\operatorname{div}\\boldsymbol A=0' } };
+const btns = [...document.querySelectorAll('#mode button')]; btns.forEach(b => K(b, MODES[b.dataset.m].t));
+legend([['\\text{outflow through a face}', C.warm], ['\\text{inflow through a face}', C.blue]]);
+K(eqEl, '\\operatorname{div}\\boldsymbol A(M)=\\lim_{\\Omega\\to M}\\frac{1}{V}\\oiint_{\\Sigma}\\boldsymbol A\\cdot\\boldsymbol n\\,\\mathrm dS', 1);
+const S = { m: 'src' };
+btns.forEach(b => b.addEventListener('click', () => { S.m = b.dataset.m; btns.forEach(o => o.setAttribute('aria-pressed', String(o === b))); seed(); cv.kick() }));
+const cam = V.camera({ az: -0.6, el: 0.4 }); const drg = V.drag(canvas, cam, () => cv.kick());
+const Aof = p => { const k = MODES[S.m].k; return [k[0] * p[0], k[1] * p[1], k[2] * p[2]] };
+const a = 0.5, L = 1.35, N = 260; let pts = [];
+const rnd = () => (Math.random() * 2 - 1) * L;
+function seed() { pts = []; for (let i = 0; i < N; i++) pts.push({ p: [rnd(), rnd(), rnd()], age: Math.random() * 3 }) }
+seed();
+const FACES = [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]];
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  cam.sc = Math.min(w / 4.2, h / 3.4); cam.ox = w / 2; cam.oy = h / 2;
+  // 粒子随场流动，出界或寿命到时重新放入
+  for (const q of pts) { const v = Aof(q.p); for (let i = 0; i < 3; i++) q.p[i] += v[i] * dt * 0.9; q.age += dt;
+    if (q.age > 3.2 || q.p.some(x => Math.abs(x) > L) || Math.hypot(...q.p) < 0.03) { q.p = S.m === 'sink' ? [0, 1, 2].map(() => (Math.random() < .5 ? -1 : 1) * L * (0.6 + 0.4 * Math.random())) : [rnd() * .6, rnd() * .6, rnd() * .6]; if (S.m === 'zero') q.p = [rnd(), rnd(), rnd()]; q.age = 0 } }
+  const items = [];
+  for (const [k, s] of FACES) { const c = [0, 0, 0]; c[k] = s * a; const o = [0, 1, 2].filter(i => i !== k), ps = [];
+    for (const [i, j] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = c.slice(); p[o[0]] += i * a; p[o[1]] += j * a; ps.push(p) }
+    const fl = s * Aof(c)[k]; items.push(V.poly(ps, fl >= 0 ? C.warm : C.blue, .06 + .14 * Math.min(1, Math.abs(fl) * 3))) }
+  V.paint(ctx, cam, items);
+  const E = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(q => q.map(x => x * a));
+  for (const [i, j] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]) V.line(ctx, cam, [E[i], E[j]], { color: C.soft, width: 1, alpha: .6 });
+  for (const q of pts) { const v = Aof(q.p), sp = cam.P(q.p), inside = q.p.every(x => Math.abs(x) < a), al = Math.min(1, q.age * 2) * Math.min(1, (3.2 - q.age) * 2);
+    const tail = cam.P([q.p[0] - v[0] * .25, q.p[1] - v[1] * .25, q.p[2] - v[2] * .25]);
+    P.path(ctx, [tail, sp], { color: inside ? C.accent : C.blue, width: 1.4, alpha: .55 * al }) }
+  lab.end(); return true;
+});
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

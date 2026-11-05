@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jacobian</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>main{max-width:900px;margin:auto}.stage canvas{height:340px}.fx{justify-content:center}@media(max-width:520px){.stage canvas{height:560px}}</style></head>
+<body><main>
+
+
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Jacobian"></canvas></div>
+<div class="legend" id="legend"></div>
+<div class="fx" id="fx"><div id="eq"></div></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s, d) => katex.render(s, el, { throwOnError: false, displayMode: !!d });
+const stage = document.getElementById('stage'), canvas = document.getElementById('cv'), lab = P.labels(stage), eqEl = document.getElementById('eq'), fxEl = document.getElementById('fx');
+const legend = items => { document.getElementById('legend').innerHTML = ''; for (const [t, c, d] of items) { const e = document.createElement('span'); e.className = 'key' + (d ? ' dash' : ''); e.style.setProperty('--c', c); K(e, t); document.getElementById('legend').append(e) } };
+const lockEq = list => { let m = 0; for (const t of list) { K(eqEl, t, 1); m = Math.max(m, fxEl.getBoundingClientRect().height) } fxEl.style.minHeight = Math.ceil(m) + 'px'; };
+const playBtn = (btn, S, kick) => { const set = on => { S.playing = on; btn.textContent = on ? 'Pause' : 'Play'; btn.setAttribute('aria-pressed', String(on)); if (on) { try { kick() } catch (e) {} } }; document.addEventListener('visibilitychange', () => { if (document.hidden) set(false) }); return set; };
+
+const map = (u, v) => [u + 0.28 * v * v - 0.1, v + 0.22 * Math.sin(2.2 * u) + 0.15 * u];
+const J = (u, v) => { const e = 1e-5; return [[(map(u + e, v)[0] - map(u - e, v)[0]) / (2 * e), (map(u, v + e)[0] - map(u, v - e)[0]) / (2 * e)], [(map(u + e, v)[1] - map(u - e, v)[1]) / (2 * e), (map(u, v + e)[1] - map(u, v - e)[1]) / (2 * e)]] };
+const D = [0.6, 0.55], u0 = 0.55, v0 = 0.6;
+const HS = [0.5, 0.3, 0.18, 0.1, 0.05];
+legend([['\\Delta u\\,\\Delta v', C.blue], ['\\text{image}', C.warm], ['\\boldsymbol r_u\\Delta u,\\ \\boldsymbol r_v\\Delta v', C.accent, 1]]);
+K(eqEl, '\\mathrm dx\\,\\mathrm dy=\\left|\\frac{\\partial(x,y)}{\\partial(u,v)}\\right|\\mathrm du\\,\\mathrm dv', 1);
+const S = { d: HS[0] };
+const LB = [-0.1, 1.5, -0.1, 1.5], RB = [-0.1, 1.9, -0.05, 1.8];
+const L = P.view(LB, { l: 6, r: 6, t: 6, b: 6 }), R = P.view(RB, { l: 6, r: 6, t: 6, b: 6 });
+let st;
+const cv = P.mount(canvas, (ctx, w, h, dt) => {
+  if (!st) return false;
+  const anim = st.tick(dt), mv = P.approach(S, 'd', HS[st.i], dt, 4), d = S.d;
+  const narrow = w < 560, gw = narrow ? w : (w - 30) / 2, gh = narrow ? (h - 20) / 2 : h;
+  // 右图镜头随小块缩小而放大
+  const c = map(u0 + d / 2, v0 + d / 2), sp = Math.max(d * 2.4, .12), zk = P.clamp((0.5 - d) / 0.35, 0, 1);
+  R.b = [P.lerp(RB[0], c[0] - sp, zk), P.lerp(RB[1], c[0] + sp, zk), P.lerp(RB[2], c[1] - sp, zk), P.lerp(RB[3], c[1] + sp, zk)];
+  L.b = [P.lerp(LB[0], u0 + d / 2 - sp, zk), P.lerp(LB[1], u0 + d / 2 + sp, zk), P.lerp(LB[2], v0 + d / 2 - sp, zk), P.lerp(LB[3], v0 + d / 2 + sp, zk)];
+  for (const [vw, ox, oy] of [[L, 0, 0], [R, narrow ? 0 : gw + 30, narrow ? gh + 20 : 0]]) {
+    vw.w = gw; vw.h = gh; const isR = vw === R; ctx.save(); ctx.translate(ox, oy); ctx.beginPath(); ctx.rect(0, 0, gw, gh); ctx.clip();
+    const M = isR ? map : (u, v) => [u, v];
+    // 网格
+    for (let k = 0; k <= 12; k++) { const t = k / 12 * 1.4, a = [], b = []; for (let m = 0; m <= 40; m++) { const s2 = m / 40 * 1.4; a.push(M(t, s2)); b.push(M(s2, t)) }
+      P.path(ctx, a.map(q => [vw.X(q[0]), vw.Y(q[1])]), { color: C.mute, width: 1, alpha: .35 }); P.path(ctx, b.map(q => [vw.X(q[0]), vw.Y(q[1])]), { color: C.mute, width: 1, alpha: .35 }) }
+    // 小块
+    const ring = []; for (let m = 0; m <= 20; m++) ring.push(M(u0 + d * m / 20, v0)); for (let m = 0; m <= 20; m++) ring.push(M(u0 + d, v0 + d * m / 20)); for (let m = 20; m >= 0; m--) ring.push(M(u0 + d * m / 20, v0 + d)); for (let m = 20; m >= 0; m--) ring.push(M(u0, v0 + d * m / 20));
+    const pr = ring.map(q => [vw.X(q[0]), vw.Y(q[1])]);
+    ctx.fillStyle = P.rgba(isR ? C.warm : C.blue, .35); ctx.beginPath(); pr.forEach((q, i) => i ? ctx.lineTo(...q) : ctx.moveTo(...q)); ctx.closePath(); ctx.fill();
+    P.path(ctx, pr, { color: isR ? C.warm : C.blue, width: 1.6 });
+    if (isR) { const p0 = map(u0, v0), j = J(u0, v0), a = [p0[0] + j[0][0] * d, p0[1] + j[1][0] * d], b = [p0[0] + j[0][1] * d, p0[1] + j[1][1] * d], ab = [a[0] + b[0] - p0[0], a[1] + b[1] - p0[1]];
+      P.path(ctx, [p0, a, ab, b, p0].map(q => [vw.X(q[0]), vw.Y(q[1])]), { color: C.accent, width: 1.6, dash: [5, 4] }) }
+    ctx.restore();
+  }
+  lab.set('uv', 'uv', 12, 14, { color: C.soft, size: 13 }); lab.set('xy', 'xy', (narrow ? 0 : gw + 30) + 14, (narrow ? gh + 20 : 0) + 14, { color: C.soft, size: 13 });
+  lab.end(); return anim || mv;
+});
+st = P.stepper(document.getElementById('nav'), { count: HS.length, dur: 1.1, hold: 1, kick: cv.kick });
+cv.kick();
+
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
