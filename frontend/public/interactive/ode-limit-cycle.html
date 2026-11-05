@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Limit cycle and trapping region</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px}@media(max-width:520px){canvas#cv{height:330px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}
+.controls{transition:opacity .35s}.controls.off{opacity:0;pointer-events:none}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-p="1" aria-pressed="true">Annulus</button><button type="button" class="tg" data-p="0" aria-pressed="false">Van der Pol</button></div>
+<div class="controls" id="ctl"><span class="n" id="lab"></span><input id="mu" type="range" min="0.3" max="1.5" step="0.01" value="1" aria-label="parameter mu"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Orbits starting inside and outside the trapping annulus wind onto the closed orbit"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d = true) => katex.render(s, el, { throwOnError: false, displayMode: d });
+// 两个预设：范德波尔 x''-(1-x²)x'+x=0；霍普夫 r'=μr-r³，θ'=1（直角坐标形式）。
+const VF = [
+  (x, y) => [y, (1 - x * x) * y - x],
+  (x, y, mu) => { const r2 = x * x + y * y, k = mu - r2; return [k * x - y, x + k * y] },
+];
+const rk4 = (f, x, y, h, mu) => { const a = f(x, y, mu), b = f(x + h / 2 * a[0], y + h / 2 * a[1], mu), c = f(x + h / 2 * b[0], y + h / 2 * b[1], mu), d = f(x + h * c[0], y + h * c[1], mu);
+  return [x + h / 6 * (a[0] + 2 * b[0] + 2 * c[0] + d[0]), y + h / 6 * (a[1] + 2 * b[1] + 2 * c[1] + d[1])] };
+// 范德波尔：闭轨（积分到稳定后取一周）。它从外侧吸引极快，用轨线围出的外边界会贴在闭轨上，故捕获环域只在 Annulus 预设中画出。
+const VDP = (() => {
+  let [x, y] = [.5, 0]; for (let i = 0; i < 12000; i++) [x, y] = rk4(VF[0], x, y, .005);
+  while (!(x < 0 && rk4(VF[0], x, y, .005)[0] >= 0 && y > 0)) [x, y] = rk4(VF[0], x, y, .005);
+  const cyc = [[x, y]]; let t = 0; do { [x, y] = rk4(VF[0], x, y, .005); t += .005; cyc.push([x, y]) } while (!(t > 1 && cyc[cyc.length - 2][0] < 0 && x >= 0));
+  return { cyc };
+})();
+const st = { p: 1, mu: 1, playing: false, touched: false, intro: 0, parts: [], simT: 0 };
+const sh = { p: 1, mu: 1, lc: 0, R: 2.75 };
+const fx = document.getElementById('fx');
+fx.innerHTML = '<div></div><div></div>'; fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+K(fx.children[0], 'x^{\\prime\\prime}-\\mu\\left(1-x^2\\right)x^{\\prime}+x=0');
+K(fx.children[1], 'r^{\\prime}=\\mu r-r^3,\\quad \\theta^{\\prime}=1,\\qquad D=\\left\\{\\tfrac12\\sqrt\\mu\\leqslant r\\leqslant 2\\sqrt\\mu\\right\\}');
+for (const c of fx.children) { c.style.gridRow = '1'; c.style.gridColumn = '1' }
+const formula = () => { fx.children[0].style.opacity = st.p ? 0 : 1; fx.children[1].style.opacity = st.p ? 1 : 0 };
+const sl = document.getElementById('mu'), nlab = document.getElementById('lab'), ctl = document.getElementById('ctl');
+// 轨线粒子：一半从内边界附近出发（橙色），一半从外边界附近出发（浅蓝）
+function spawn(i, t0 = 0) {
+  const inside = i % 2 === 0, a = Math.random() * Math.PI * 2;
+  let r;
+  if (st.p === 0) r = inside ? .12 + Math.random() * .3 : 2.5 + Math.random() * .25;
+  else { const s = Math.sqrt(st.mu); r = inside ? s * (.52 + Math.random() * .12) : s * (1.8 + Math.random() * .15) }
+  return { x: r * Math.cos(a), y: r * Math.sin(a), inside, tr: [], age: -t0, life: 11 + Math.random() * 3 };
+}
+function reset() { st.parts = Array.from({ length: 6 }, (_, i) => spawn(i, i * .9)); st.simT = 0 }
+const lab = P.labels(document.getElementById('stage'));
+const v = P.view([-3.6, 3.6, -3.6, 3.6], { l: 8, r: 8, t: 8, b: 8 });
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.6);
+  const I = P.ease.inOut(st.intro);
+  anim = P.spring(sh, 'p', st.p, dt, { k: 30, z: .9 }) | P.spring(sh, 'mu', st.mu, dt, { k: 50, z: .8 }) | anim;
+  // 等比例视窗
+  anim = P.spring(sh, 'R', st.p ? 2.2 * Math.sqrt(sh.mu) + .25 : 3.05, dt, { k: 40, z: .9 }) | anim;
+  const R = sh.R, s = Math.min(w, h) / (2 * R); v.w = w; v.h = h; v.b = [-w / 2 / s, w / 2 / s, -h / 2 / s, h / 2 / s]; v.pad = { l: 0, r: 0, t: 0, b: 0 };
+  const X = v.X, Y = v.Y, pt = ([x, y]) => [X(x), Y(y)];
+  const aV = 1 - sh.p, aH = sh.p, sm = Math.sqrt(sh.mu);
+  // 推进粒子
+  if (st.playing) {
+    anim = true; const H = Math.min(dt, .05) * 1.25, n = 6;
+    for (let i = 0; i < st.parts.length; i++) {
+      const q = st.parts[i]; q.age += dt;
+      if (q.age < 0) continue;
+      if (q.age > q.life + 2.2) { st.parts[i] = spawn(i); continue }
+      if (q.age <= q.life) { for (let k = 0; k < n; k++) [q.x, q.y] = rk4(VF[st.p], q.x, q.y, H / n, st.mu); q.tr.push([q.x, q.y, q.age]) }
+      while (q.tr.length && q.age - q.tr[0][2] > 4.2) q.tr.shift();
+    }
+    sh.lc = Math.min(1, sh.lc + dt / 3.5);
+  }
+  // 捕获环域：浅灰底（奇偶填充），内外边界灰色虚线
+  const ring = (pts, a) => P.path(ctx, pts.map(pt), { color: C.mute, width: 1.3, dash: [5, 5], alpha: a });
+  const circle = (r, n = 120) => Array.from({ length: n + 1 }, (_, k) => [r * Math.cos(k / n * 2 * Math.PI), r * Math.sin(k / n * 2 * Math.PI)]);
+  const drawAnnulus = (outer, inner, a) => { if (a < .01) return; ctx.save(); ctx.globalAlpha = a * I; ctx.beginPath();
+    for (const poly of [outer, inner]) { poly.forEach((p, k) => k ? ctx.lineTo(...pt(p)) : ctx.moveTo(...pt(p))); ctx.closePath() }
+    ctx.fillStyle = P.rgba(C.mute, .08); ctx.fill('evenodd'); ctx.restore(); ring(outer, a * I); ring(inner, a * I) };
+  drawAnnulus(circle(2 * sm), circle(.5 * sm), aH);
+  // 边界上的场方向：小箭头指向环域内部
+  const arrow = (x, y, f, a) => { const L = Math.hypot(f[0], f[1]) || 1, ux = f[0] / L, uy = f[1] / L, x0 = X(x), y0 = Y(y), x1 = x0 + ux * 14, y1 = y0 - uy * 14;
+    P.path(ctx, [[x0, y0], [x1, y1]], { color: C.warm, width: 1.4, alpha: a }); const ang = Math.atan2(y1 - y0, x1 - x0);
+    P.path(ctx, [[x1 - 5 * Math.cos(ang - .5), y1 - 5 * Math.sin(ang - .5)], [x1, y1], [x1 - 5 * Math.cos(ang + .5), y1 - 5 * Math.sin(ang + .5)]], { color: C.warm, width: 1.4, alpha: a }) };
+  for (let k = 0; k < 10; k++) { const t = (k + .5) / 10 * 2 * Math.PI;
+    if (aH > .01) { for (const r of [.5 * sm, 2 * sm]) { if (r < 1 * sm && k % 2) continue; const x = r * Math.cos(t), y = r * Math.sin(t); arrow(x, y, VF[1](x, y, sh.mu), .55 * aH * I) } }
+  }
+  // 闭轨：深蓝，播放后逐段画出
+  const lcA = P.ease.inOut(sh.lc) * I;
+  P.path(ctx, VDP.cyc.map(pt), { color: C.accent, width: 2.4, alpha: .9 * aV, progress: lcA });
+  P.path(ctx, circle(sm, 160).map(pt), { color: C.accent, width: 2.4, alpha: .9 * aH, progress: lcA });
+  // 轨线拖尾：按年龄淡出
+  for (const q of st.parts) {
+    if (q.tr.length < 2) continue; const col = q.inside ? C.warm : C.blue, fade = q.age > q.life ? 1 - (q.age - q.life) / 2.2 : 1;
+    for (let k = 1; k < q.tr.length; k++) { const ag = q.age - q.tr[k][2], a = Math.max(0, 1 - ag / 4.2) ** 1.6 * fade;
+      if (a < .02) continue; ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 1.2 + 1.2 * a; ctx.beginPath(); ctx.moveTo(X(q.tr[k - 1][0]), Y(q.tr[k - 1][1])); ctx.lineTo(X(q.tr[k][0]), Y(q.tr[k][1])); ctx.stroke() }
+    ctx.globalAlpha = 1; if (q.age <= q.life) P.dot(ctx, X(q.x), Y(q.y), { r: 4, color: col, alpha: fade });
+  }
+  ctx.globalAlpha = 1;
+  P.dot(ctx, X(0), Y(0), { r: 3, color: C.mute, alpha: I });
+  lab.set('D', 'D', X(1.45 * sm), Y(-1.45 * sm), { color: C.mute, alpha: .9 * I * aH });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (!st.parts.length) reset(); st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; reset(); sh.lc = 0; play() };
+const setP = p => { st.p = p; ctl.classList.toggle('off', p === 0); document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.p === p))); formula(); reset(); sh.lc = 0; cv.kick() };
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { st.touched = true; setP(+b.dataset.p); play() });
+const setMu = () => { st.mu = +sl.value; K(nlab, "\\mu", false) };
+sl.addEventListener('input', () => { st.touched = true; setMu(); cv.kick() });
+sl.addEventListener('change', () => { reset(); play() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 900) } else stop() }, { threshold: .4 }).observe(cvEl);
+if (new URLSearchParams(location.search).get('preset') === 'vdp') { setP(0); sh.p = 0; sh.R = 3.05 }
+setMu(); sh.mu = st.mu; formula(); reset();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
