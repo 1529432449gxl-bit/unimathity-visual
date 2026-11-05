@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Slices of a joint density</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:420px}@media(max-width:520px){canvas#cv{height:350px}}</style></head>
+<body><main>
+<div class="top" id="modes"><button type="button" class="tg" data-m="marginal" aria-pressed="true">Marginal</button><button type="button" class="tg" data-m="conditional" aria-pressed="false">Conditional</button></div>
+<div class="controls" id="ctl"><span class="n" id="lx"></span><input id="x" type="range" min="-2.2" max="2.2" step="0.005" value="-0.6" aria-label="slice position"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Slices of a joint density surface: accumulate a whole slice for the marginal, renormalize one slice for the conditional. Drag to rotate"></canvas></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('lx'), 'x');
+const q = new URLSearchParams(location.search), FUB = q.get('mode') === 'fubini';
+// 二元密度：两个相关正态的混合
+const n2 = (x, y, mx, my, sx, sy, r) => { const u = (x - mx) / sx, v = (y - my) / sy, d = 1 - r * r; return Math.exp(-(u * u - 2 * r * u * v + v * v) / (2 * d)) / (2 * Math.PI * sx * sy * Math.sqrt(d)) };
+const p = (x, y) => .62 * n2(x, y, -.7, -.45, .75, .62, .5) + .38 * n2(x, y, 1, .9, .6, .7, -.3);
+const A = 2.4, G = 121, H = 2 * A / (G - 1), grid = i => -A + i * H;
+const PX = [], PY = []; for (let i = 0; i < G; i++) { let sx = 0, sy = 0; for (let j = 0; j < G; j++) { sx += p(grid(i), grid(j)) * H; sy += p(grid(j), grid(i)) * H } PX.push(sx); PY.push(sy) }
+const interp = (arr, x) => { const t = P.clamp((x + A) / H, 0, G - 1), i = Math.min(G - 2, Math.floor(t)); return P.lerp(arr[i], arr[i + 1], t - i) };
+const cumX = [], cumY = []; { let a = 0, b = 0; for (let i = 0; i < G; i++) { a += PX[i] * H; b += PY[i] * H; cumX.push(a); cumY.push(b) } }
+const S = 1.25 / A, KZ = 3.4, KM = 1.5, KC = .62;            // 坐标比例：面高、边际、条件
+const W3 = (x, y, z) => [x * S, y * S, z];
+const cam = V.camera({ az: -.62, el: .42 });
+const mesh = V.mesh((u, v) => W3(u, v, p(u, v) * KZ), -A, A, -A, A, 34, 34);
+let mode = FUB ? 'fubini' : (q.get('mode') === 'conditional' ? 'conditional' : 'marginal');
+const sl = document.getElementById('x');
+const st = { playing: false, t: 0, touched: false, intro: 0 };
+const sh = { x: +sl.value, m: 0, fa: 0, fb: 0 };
+if (FUB) { document.getElementById('modes').style.display = 'none'; document.getElementById('ctl').style.display = 'none' }
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const slice = (x0, f = 1, dir = 'x') => { const pts = []; for (let j = 0; j <= 80; j++) { const y = -A + 2 * A * j / 80; pts.push(dir === 'x' ? W3(x0, y, p(x0, y) * KZ * f) : W3(y, x0, p(y, x0) * KZ * f)) } return pts };
+let drag;
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.8);
+  if (!drag.active && (st.playing || st.intro < 1)) cam.az += dt * .05;
+  let mt = 0, phase = 0, fx = sh.x;
+  if (st.playing) { st.t += dt; anim = true;
+    if (mode === 'marginal') { sl.value = (-2.2 + 4.4 * ((st.t / 7) % 1)).toFixed(3) }
+    else if (mode === 'conditional') { const T = 4.6, u = st.t % T, c = Math.floor(st.t / T); sl.value = (Math.sin(c * 1.9 + .4) * 1.5).toFixed(3); mt = u < 1 ? 0 : u < 2.4 ? P.ease.inOut((u - 1) / 1.4) : u < 4 ? 1 : 1 - P.ease.inOut((u - 4) / .6) }
+  }
+  if (mode === 'conditional' && !st.playing) mt = 1;
+  if (FUB) { const T = 13, u = st.playing ? st.t % T : (st.done ? T - .1 : 0); phase = u < 5.5 ? 0 : 1; sh.fa = P.clamp(u / 5, 0, 1); sh.fb = P.clamp((u - 6) / 5, 0, 1); fx = -A + 2 * A * (phase ? sh.fb : sh.fa) }
+  else anim = P.spring(sh, 'x', +sl.value, dt, { k: st.playing ? 300 : 90, z: .85 }) | anim, fx = sh.x;
+  anim = P.spring(sh, 'm', mt, dt, { k: 120, z: .85 }) | anim;
+  cam.sc = Math.min(w, h) / 3.5; cam.ox = w / 2; cam.oy = h * .62;
+  const I = P.ease.out(st.intro);
+  // 底面框
+  V.line(ctx, cam, [W3(-A, -A, 0), W3(A, -A, 0), W3(A, A, 0), W3(-A, A, 0), W3(-A, -A, 0)], { color: C.rule, width: 1 });
+  V.paint(ctx, cam, [{ quads: mesh, color: C.accent, alpha: .2 * I, edge: .2 * I, edgeColor: C.accent }]);
+  if (mode === 'marginal') {
+    // 背墙 y=A：边际密度 p_X 随切片位置逐段画出
+    const wall = []; for (let i = 0; i < G; i += 2) { const x = grid(i); if (x > fx) break; wall.push(W3(x, A, PX[i] * KM)) }
+    V.line(ctx, cam, wall, { color: C.accent, width: 2.6 });
+    const sp = slice(fx); V.paint(ctx, cam, [V.poly([W3(fx, -A, 0), ...sp, W3(fx, A, 0)], C.warm, .32 * I)]);
+    V.line(ctx, cam, sp, { color: C.warm, width: 2.4, alpha: I });
+    const top = cam.P(W3(fx, A, interp(PX, fx) * KM)); V.line(ctx, cam, [W3(fx, A, 0), W3(fx, A, interp(PX, fx) * KM)], { color: C.warm, width: 1, dash: [3, 4], alpha: .7 });
+    ctx.save(); ctx.beginPath(); ctx.arc(top[0], top[1], 11, 0, 7); ctx.fillStyle = P.rgba(C.warm, .16); ctx.fill(); ctx.restore(); P.dot(ctx, top[0], top[1], { r: 4.6, color: C.warm });
+    lab.set('m', 'p_X(x)', top[0], top[1], { color: C.accent, size: 13, dx: 30, dy: -10 });
+  } else if (mode === 'conditional') {
+    // 侧墙 x=-A：条件密度 = 切片 / p_X(x)，由切片平移放大而来
+    const c = 1 / interp(PX, fx), m = sh.m, x1 = P.lerp(fx, -A, m), f = P.lerp(1, c * KC / KZ, m);
+    const raw = slice(fx); V.paint(ctx, cam, [V.poly([W3(fx, -A, 0), ...raw, W3(fx, A, 0)], C.warm, .26 * I)]);
+    V.line(ctx, cam, raw, { color: C.warm, width: 2.2, alpha: I });
+    const mv = slice(x1, f); V.line(ctx, cam, mv, { color: C.blue, width: 2.6, alpha: I * P.seg(m, 0, .15) });
+    if (m > .95) V.paint(ctx, cam, [V.poly([W3(-A, -A, 0), ...mv, W3(-A, A, 0)], C.blue, .14)]);
+    const pk = cam.P(mv[40]); lab.set('c', 'p(y\\mid x)', pk[0], pk[1], { color: C.blue, size: 13, dy: -14, alpha: P.seg(m, .8, 1) });
+  } else {
+    // 富比尼：先沿 x 逐片累积，再沿 y 逐片累积，两种次序得到同一个体积
+    const dir = phase ? 'y' : 'x', col = phase ? C.blue : C.warm;
+    for (let k = 0; k < 10; k++) { const x = -A + 2 * A * (k + .5) / 10; if (x > fx) break; V.line(ctx, cam, slice(x, 1, dir), { color: col, width: 1.2, alpha: .35 }) }
+    const sp = slice(fx, 1, dir), base = dir === 'x' ? [W3(fx, -A, 0), W3(fx, A, 0)] : [W3(-A, fx, 0), W3(A, fx, 0)];
+    V.paint(ctx, cam, [V.poly([base[0], ...sp, base[1]], col, .34)]); V.line(ctx, cam, sp, { color: col, width: 2.4 });
+    // 右下角两根柱：两种次序的累积量，最终等高
+    const bh = Math.min(120, h * .3), bw = 16, bx = w - 70, by = h - 26;
+    const va = interp(cumX, -A + 2 * A * sh.fa), vb = interp(cumY, -A + 2 * A * sh.fb), tot = cumX[G - 1];
+    [[va, C.warm, 0], [vb, C.blue, 1]].forEach(([vv, cc, k]) => { const x0 = bx + k * (bw + 14); ctx.fillStyle = P.vgrad(ctx, by - bh, by, cc, .6, .3); ctx.fillRect(x0, by - bh * vv / tot, bw, bh * vv / tot); ctx.strokeStyle = P.rgba(cc, .7); ctx.lineWidth = 1; ctx.strokeRect(x0, by - bh, bw, bh) });
+    lab.set('a', 'dy\\,dx', bx + bw / 2, by + 12, { color: C.warm, size: 11 }); lab.set('b', 'dx\\,dy', bx + bw * 1.5 + 14, by + 12, { color: C.blue, size: 11 });
+  }
+  const ax = cam.P(W3(A, -A, 0)), ay = cam.P(W3(-A, A, 0));
+  lab.set('X', 'x', ax[0], ax[1], { color: C.soft, size: 13, dx: 10, dy: 8 }); lab.set('Y', 'y', ay[0], ay[1], { color: C.soft, size: 13, dx: -10, dy: 8 });
+  lab.end();
+  return anim || drag.active;
+});
+drag = V.drag(cvEl, cam, cv.kick, { onStart: () => {} });
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false'); if (FUB) st.done = st.t > 12; cv.kick() }
+function play() { st.playing = true; if (FUB || mode === 'marginal') st.t = mode === 'marginal' ? ((+sl.value + 2.2) / 4.4) * 7 : 0; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+sl.addEventListener('input', () => { st.touched = true; if (st.playing) stop(); cv.kick() });
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { mode = b.dataset.m; st.t = 0; document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(x === b))); cv.kick() });
+document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.m === mode)));
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched) play() }, 1400) } else if (st.playing) stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

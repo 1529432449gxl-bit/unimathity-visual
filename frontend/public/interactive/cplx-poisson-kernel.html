@@ -22,7 +22,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   ctx.save(); ctx.beginPath(); ker.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); for (let k = N; k >= 0; k--) ctx.lineTo(...base[k]); ctx.closePath(); ctx.fillStyle = P.rgba(C.blue, .2); ctx.fill(); ctx.restore();
   P.path(ctx, ker, { color: C.blue, width: 2, halo: 2 });
   ctx.save(); ctx.beginPath(); base.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.accent, .04); ctx.fill(); ctx.restore();
-  P.path(ctx, base, { color: C.accent, width: 2.4 });
+  P.path(ctx, base, { color: C.accent, width: 2.4, halo: 3 });
   // 从 z 指向最近边界点的细线
   const L = Math.sqrt(r2); if (L > .05) P.path(ctx, [S(z), S([z[0] / L, z[1] / L])], { color: C.warm, width: 1.2, dash: [3, 3], alpha: P.clamp(L * 3, 0, 1) });
   const q = S(z); ctx.save(); ctx.beginPath(); ctx.arc(q[0], q[1], 13, 0, 7); ctx.fillStyle = P.rgba(C.warm, grab ? .2 : .12); ctx.fill(); ctx.restore();

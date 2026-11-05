@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unbiasedness and efficiency</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:430px}@media(max-width:520px){canvas#cv{height:400px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Three estimators are applied to repeated samples; their estimates pile up around or away from the true parameter with different spreads"></canvas></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// 总体 U(0,θ)，θ=1，样本量 n=5。三个估计量：2X̄（无偏，散布宽）、(n+1)/n·X(n)（无偏，散布窄）、X(n)（有偏，偏小）
+const N = 5, TH = 1, XR = [.2, 1.7], NB = 40, bw = (XR[1] - XR[0]) / NB;
+const lgam = z => { const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, .1208650973866179e-2, -.5395239384953e-5];
+  let x = z, y = z, t = x + 5.5; t -= (x + .5) * Math.log(t); let s = 1.000000000190015; for (const v of c) s += v / ++y; return -t + Math.log(2.5066282746310005 * s / x) };
+const binom = (n, k) => Math.exp(lgam(n + 1) - lgam(k + 1) - lgam(n - k + 1));
+const irwin = (n, s) => { if (s < 0 || s > n) return 0; let t = 0; for (let k = 0; k <= Math.floor(s); k++) t += (k % 2 ? -1 : 1) * binom(n, k) * Math.pow(s - k, n - 1); return t / Math.exp(lgam(n)) };
+const c2 = (N + 1) / N;
+const EST = [
+  { tex: '\\hat\\theta_1=2\\bar X', col: C.blue, f: xs => 2 * xs.reduce((a, b) => a + b, 0) / N, pdf: t => N / 2 * irwin(N, N * t / 2) },
+  { tex: '\\hat\\theta_2=\\tfrac{n+1}{n}X_{(n)}', col: C.accent, f: xs => c2 * Math.max(...xs), pdf: t => t < 0 || t > c2 ? 0 : N * Math.pow(t / c2, N - 1) / c2 },
+  { tex: '\\hat\\theta_3=X_{(n)}', col: C.warm, f: xs => Math.max(...xs), pdf: t => t < 0 || t > 1 ? 0 : N * Math.pow(t, N - 1) },
+];
+const YM = 5.4;
+const st = { playing: false, touched: false, clock: 0, next: .4, k: 0, fly: [], total: 0, hold: 0, intro: 0 };
+let rows;
+function reset() { rows = EST.map(() => ({ bins: Array.from({ length: NB }, () => ({ c: 0, h: 0 })), sum: 0, mean: TH, mv: 0 })); st.clock = 0; st.next = .4; st.k = 0; st.fly = []; st.total = 0; st.hold = 0 }
+reset();
+const gap = k => k < 6 ? 1.5 : Math.max(.03, .5 * Math.pow(.9, k - 6));
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.3); const I = P.ease.inOut(st.intro);
+  if (st.playing) {
+    anim = true; st.clock += dt;
+    if (st.total >= 900) { st.hold += dt; if (st.hold > 3) reset() }
+    else while (st.clock >= st.next) { const xs = Array.from({ length: N }, () => TH * Math.random()); st.fly.push({ v: EST.map(e => e.f(xs)), t: 0, d: st.k < 6 ? 1.1 : .5, fast: st.k >= 6 }); st.next += gap(st.k); st.k++ }
+  }
+  for (const f of st.fly) { f.t += dt / f.d; if (f.t >= 1 && !f.done) { f.done = 1; st.total++; f.v.forEach((x, r) => { const i = Math.floor((x - XR[0]) / bw); if (i >= 0 && i < NB) rows[r].bins[i].c++; rows[r].sum += x }) } }
+  st.fly = st.fly.filter(f => f.t < 1);
+  const pl = 16, pr = 16, X = x => pl + (x - XR[0]) / (XR[1] - XR[0]) * (w - pl - pr);
+  const top = 30, rh = (h - top - 8) / 3;
+  // 真值 θ：贯穿三行的灰色竖线
+  P.path(ctx, [[X(TH), top - 8], [X(TH), h - 6]], { color: C.mute, width: 1.2, dash: [4, 5], alpha: I });
+  lab.set('th', '\\theta', X(TH), top - 18, { color: C.soft, alpha: I });
+  EST.forEach((e, r) => {
+    const base = top + (r + 1) * rh - 18, Y = y => base - y / YM * (rh - 34);
+    P.path(ctx, [[X(XR[0]), base], [X(XR[1]), base]], { color: C.rule, width: 1 });
+    const R = rows[r], NN = Math.max(1, st.total);
+    for (let i = 0; i < NB; i++) { const b = R.bins[i]; anim = P.spring(b, 'h', st.total ? b.c / (NN * bw) : 0, dt, { k: 90, z: .62 }) | anim;
+      if (b.h < 1e-3) continue; const x0 = X(XR[0] + i * bw) + .7, x1 = X(XR[0] + (i + 1) * bw) - .7, y = Y(Math.min(b.h, YM));
+      ctx.fillStyle = P.vgrad(ctx, y, base, e.col, .42, .14); ctx.beginPath(); ctx.roundRect(x0, y, x1 - x0, base - y, [2, 2, 0, 0]); ctx.fill() }
+    const pts = []; for (let k = 0; k <= 300; k++) { const x = XR[0] + (XR[1] - XR[0]) * k / 300; pts.push([X(x), Y(Math.min(e.pdf(x), YM))]) }
+    P.path(ctx, pts, { color: e.col, width: 2.2, halo: 2, progress: I, alpha: .9 });
+    // 估计值的平均：三角标记弹簧跟随
+    const target = st.total ? R.sum / st.total : TH; anim = P.spring(R, 'mean', target, dt, { k: 60, z: .7 }) | anim;
+    const mx = X(R.mean); glow(ctx, mx, base + 7, 9, e.col, .14 * I);
+    ctx.save(); ctx.globalAlpha = I; ctx.fillStyle = e.col; ctx.beginPath(); ctx.moveTo(mx, base + 2); ctx.lineTo(mx - 6, base + 12); ctx.lineTo(mx + 6, base + 12); ctx.closePath(); ctx.fill(); ctx.restore();
+    lab.set('e' + r, e.tex, pl + 4, base - rh + 40, { color: e.col, size: 14, dx: w < 520 ? 42 : 52, alpha: I });
+    // 飞行中的估计值：从行顶落入
+    for (const f of st.fly) { const x = f.v[r]; if (x < XR[0] || x > XR[1]) continue; const u = P.ease.inOut(P.seg(f.t, .1 * r, .75 + .08 * r));
+      if (u <= 0) continue; const y = P.lerp(base - rh + 34, base - 4, u); P.dot(ctx, X(x), y, { r: 3.6, color: e.col, alpha: (f.fast ? .6 : 1) * (1 - P.seg(f.t, .9, 1)), scale: P.ease.back(P.seg(f.t, .1 * r, .2 + .1 * r)) }) }
+  });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (st.total >= 900) reset(); st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; reset(); play() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 900) } else stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

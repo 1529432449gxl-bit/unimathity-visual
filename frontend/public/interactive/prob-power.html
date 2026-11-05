@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Power, two error types and p-value</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{touch-action:none}body.pw canvas#cv{height:430px}@media(max-width:520px){body.pw canvas#cv{height:400px}}</style></head>
+<body><main>
+<div id="ctl"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Sampling distributions under the null and the alternative with rejection region, power and p-value"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || !(r > 0)) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+// 右侧检验 H0: θ=0，统计量 X̄ ~ N(θ, σ²/n)；mode=errors|power|pvalue
+const MODE = ['errors', 'power', 'pvalue'].includes(new URLSearchParams(location.search).get('mode')) ? new URLSearchParams(location.search).get('mode') : 'errors';
+if (MODE === 'power') document.body.classList.add('pw');
+const SD = 1.6, Z = 1.6449, MU1 = 1.1;
+const pdf = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+const Phi = x => { const t = 1 / (1 + .2316419 * Math.abs(x)), d = .3989423 * Math.exp(-x * x / 2), p = d * t * (.3193815 + t * (-.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p };
+const SL = { errors: [['c', 'c', -.4, 1.6, .62], ['n', 'n', 4, 30, 8]], power: [['t', '\\theta', -.6, 2.2, .9], ['n', 'n', 4, 30, 8]], pvalue: [['x', '\\bar x', -.6, 2.4, 1.3]] }[MODE];
+const ctl = document.getElementById('ctl'), S = {};
+for (const [id, tex, a, b, v0] of SL) { const d = document.createElement('div'); d.className = 'controls'; d.innerHTML = `<span class="n"></span><input type="range" min="${a}" max="${b}" step="0.005" value="${v0}" aria-label="${id}">`; K(d.firstChild, tex); ctl.appendChild(d); S[id] = d.lastChild }
+const val = id => S[id] ? +S[id].value : id === 'n' ? 10 : 0;
+const st = { c: 1.5, n: 4, t: -.6, x: -.6 };
+let playing = true, clock = 0, drag = false;
+const v = P.view([-1.7, 2.8, -.05, 1.9], { l: 14, r: 14, t: 26, b: 28 });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (playing) { clock += dt; const u = .5 - .5 * Math.cos(clock * .45);
+    if (MODE === 'errors') S.c.value = (-.2 + 1.6 * u).toFixed(3); if (MODE === 'power') S.t.value = (-.4 + 2.4 * u).toFixed(3); if (MODE === 'pvalue') S.x.value = (-.3 + 2.4 * u).toFixed(3) }
+  const rate = playing ? 30 : 9;
+  let mv = P.approach(st, 'n', val('n'), dt, 7);
+  if (MODE === 'errors') mv |= P.approach(st, 'c', val('c'), dt, rate);
+  if (MODE === 'power') mv |= P.approach(st, 't', val('t'), dt, rate);
+  if (MODE === 'pvalue') mv |= P.approach(st, 'x', val('x'), dt, rate);
+  const s = SD / Math.sqrt(MODE === 'pvalue' ? 10 : st.n), c = MODE === 'errors' ? st.c : Z * s, th = MODE === 'power' ? st.t : MU1;
+  const H = MODE === 'power' ? h * .6 : h; v.w = w; v.h = H;
+  const top = pdf(0, 0, s) * 1.22; v.aim([-1.7, 2.8, -top * .03, top]); const mc = v.step(dt, 3.5);
+  const f0 = x => pdf(x, 0, s), f1 = x => pdf(x, th, s), base = x => [v.X(x), v.Y(0)];
+  P.axes(ctx, v, { x: true });
+  const ra = P.curve(v, f0, c, v.b[1], 200);
+  if (MODE === 'errors') { P.fill(ctx, P.curve(v, f1, v.b[0], c, 200), [base(v.b[0]), base(c)], P.rgba(C.blue, .28)); P.fill(ctx, ra, [base(c), base(v.b[1])], P.rgba(C.warm, .45)) }
+  if (MODE === 'power') { P.fill(ctx, P.curve(v, f1, c, v.b[1], 200), [base(c), base(v.b[1])], P.rgba(C.blue, .3)); P.fill(ctx, ra, [base(c), base(v.b[1])], P.rgba(C.warm, .5)) }
+  if (MODE === 'pvalue') { P.fill(ctx, ra, [base(c), base(v.b[1])], P.rgba(C.warm, .4)); const xo = st.x; P.fill(ctx, P.curve(v, f0, xo, v.b[1], 200), [base(xo), base(v.b[1])], P.rgba(C.blue, .38)) }
+  P.path(ctx, P.curve(v, f0), { color: C.accent, width: 2.6, halo: 3 });
+  if (MODE !== 'pvalue') P.path(ctx, P.curve(v, f1), { color: C.blue, width: 2.4, halo: 3 });
+  P.path(ctx, [base(c), [v.X(c), v.Y(v.b[3] * .96)]], { color: C.mute, width: 1.2, dash: [4, 4] });
+  P.path(ctx, [[v.X(c), v.Y(0) + 6], [v.X(v.b[1]), v.Y(0) + 6]], { color: C.warm, width: 3 });
+  lab.set('h0', 'H_0', v.X(0), v.Y(f0(0)) - 13, { color: C.accent });
+  lab.set('c', 'c', v.X(c), v.Y(v.b[3] * .96) - 9, { color: C.soft, size: 13 });
+  lab.set('w', 'W', (v.X(c) + v.X(v.b[1])) / 2, v.Y(0) + 18, { color: C.warm, size: 13 });
+  const xa = c + Math.max(.12, s * .45);
+  lab.set('a', '\\alpha', v.X(xa), v.Y(f0(xa) * .45) - 2, { color: C.warm, alpha: f0(xa) > .06 ? 1 : 0, dx: 10 });
+  if (MODE === 'errors') {
+    glow(ctx, v.X(c), v.Y(0), 14, C.warm, drag ? .26 : .14); P.dot(ctx, v.X(c), v.Y(0), { r: 5.5, color: C.warm });
+    lab.set('h1', 'H_1', v.X(th), v.Y(f1(th)) - 13, { color: C.blue });
+    const xb = c - Math.max(.12, s * .45); lab.set('b', '\\beta', v.X(xb), v.Y(f1(xb) * .45) - 2, { color: C.blue, alpha: f1(xb) > .06 ? 1 : 0, dx: -10 });
+  }
+  if (MODE === 'power') {
+    lab.set('h1', '\\theta', v.X(th), v.Y(f1(th)) - 13, { color: C.blue });
+    // 下方：功效函数 g(θ)=P_θ(X̄>c)
+    const g = t => 1 - Phi((c - t) / s), off = H + 14, vb = P.view([-1.7, 2.8, -.06, 1.08], { l: 14, r: 14, t: 6, b: 22 }); vb.w = w; vb.h = h - off;
+    ctx.save(); ctx.translate(0, off);
+    P.axes(ctx, vb, { x: true });
+    P.path(ctx, [[vb.X(-1.7), vb.Y(.05)], [vb.X(2.8), vb.Y(.05)]], { color: C.warm, width: 1, dash: [4, 4], alpha: .8 });
+    P.path(ctx, [[vb.X(-1.7), vb.Y(1)], [vb.X(2.8), vb.Y(1)]], { color: C.rule, width: 1, dash: [2, 4] });
+    P.path(ctx, P.curve(vb, g, -1.7, 2.8, 300), { color: C.accent, width: 2.6, halo: 3 });
+    P.path(ctx, [[vb.X(th), vb.Y(0)], [vb.X(th), vb.Y(g(th))]], { color: C.blue, width: 1.2, alpha: .7 });
+    glow(ctx, vb.X(th), vb.Y(g(th)), 13, C.blue, .18); P.dot(ctx, vb.X(th), vb.Y(g(th)), { r: 5, color: C.blue });
+    ctx.restore();
+    lab.set('g', 'g(\\theta)', vb.X(2.45), off + vb.Y(g(2.45)) + 16, { color: C.accent, size: 13 });
+    lab.set('al', '\\alpha', vb.X(-1.55), off + vb.Y(.05) - 10, { color: C.warm, size: 12 });
+    lab.set('one', '1', vb.X(-1.55), off + vb.Y(1) - 9, { color: C.mute, size: 12 });
+  }
+  if (MODE === 'pvalue') {
+    const xo = st.x; glow(ctx, v.X(xo), v.Y(0), 14, C.blue, drag ? .28 : .16); P.dot(ctx, v.X(xo), v.Y(0), { r: 5.5, color: C.blue });
+    P.path(ctx, [base(xo), [v.X(xo), v.Y(f0(xo))]], { color: C.blue, width: 1.4 });
+    lab.set('xo', '\\bar x', v.X(xo), v.Y(0) + 18, { color: C.blue, size: 13 });
+    const xp = xo + Math.max(.1, s * .4); lab.set('p', 'p', v.X(xp), v.Y(f0(xp) * .4) - 2, { color: C.blue, alpha: f0(xp) > .05 ? 1 : 0, dx: 8 });
+  }
+  lab.end();
+  return mv || mc || playing;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+for (const el of Object.values(S)) el.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+// 画布上横向拖动：errors 拖临界值，power 拖真实参数，pvalue 拖观测值
+const key = { errors: 'c', power: 't', pvalue: 'x' }[MODE], cvs = document.getElementById('cv');
+const setK = e => { const r = cvs.getBoundingClientRect(); const t = (e.clientX - r.left - v.pad.l) / (r.width - v.pad.l - v.pad.r); S[key].value = P.clamp(v.b[0] + t * (v.b[1] - v.b[0]), +S[key].min, +S[key].max); cv.kick() };
+cvs.addEventListener('pointerdown', e => { drag = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); setK(e) });
+cvs.addEventListener('pointermove', e => { if (drag) setK(e) });
+cvs.addEventListener('pointerup', () => { drag = false; cv.kick() });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sum of squares decomposition</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script><script src="vendor/steady.js"></script>
+<style>canvas#cv{height:400px}@media(max-width:520px){canvas#cv{height:360px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="fx" id="fx"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Each deviation from the grand mean splits into a between-group part and a within-group part, so the total sum of squares splits into two sums"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// r 个水平、每个水平 m 次重复；画面上画出 A_1, A_2, A_3 与 A_r 四组，中间以省略号表示其余水平
+let seed = 23; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()) };
+const M = 6, MEANS = [2.1, 3.3, 2.6, 3.8], COLS = [1, 2, 3, 5], TEX = ['A_1', 'A_2', 'A_3', 'A_r'];
+const G = MEANS.map((mu, i) => Array.from({ length: M }, (_, j) => ({ y: mu + .48 * gauss(), dx: (j - (M - 1) / 2) * .085 })));
+const gm = G.map(g => g.reduce((s, p) => s + p.y, 0) / M), all = G.flat(), Y = all.reduce((s, p) => s + p.y, 0) / all.length;
+const ST = all.reduce((s, p) => s + (p.y - Y) ** 2, 0), SA = G.reduce((s, g, i) => s + M * (gm[i] - Y) ** 2, 0), SE = ST - SA;
+const STEPS = ['Y_{ij},\\quad i=1,\\ldots,r,\\ \\ j=1,\\ldots,m', 'Y_{ij}-\\bar Y', '\\bar Y_{i\\cdot}=\\frac1m\\sum_{j=1}^{m}Y_{ij}', 'Y_{ij}-\\bar Y=(\\bar Y_{i\\cdot}-\\bar Y)+(Y_{ij}-\\bar Y_{i\\cdot})', 'S_T=S_A+S_e'];
+const fx = document.getElementById('fx'); const formula = i => { fx.innerHTML = '<div></div>'; K(fx.children[0], STEPS[i]) };
+const lab = P.labels(document.getElementById('stage'));
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt), s = player.i, p = player.p, e = P.ease.inOut(p);
+  const at = k => s > k ? 1 : s === k ? e : 0;   // 第 k 步完成度
+  const barH = 64, H1 = h - barH - 10, yl = 1, yh = 5;
+  const X = c => 30 + (c - .4) / 5.2 * (w - 50), Yp = y => 12 + (yh - y) / (yh - yl) * (H1 - 40);
+  // 总平均：灰色虚线
+  P.path(ctx, [[X(.5), Yp(Y)], [X(5.5), Yp(Y)]], { color: C.mute, width: 1.2, dash: [5, 5], progress: P.ease.out(P.seg(s ? 1 : p, .35, 1)) });
+  lab.set('Y', '\\bar Y', X(5.5) - 2, Yp(Y) - 12, { color: C.soft, size: 13, alpha: s ? 1 : P.seg(p, .6, 1) });
+  const total = at(1), means = at(2), split = at(3);
+  G.forEach((g, i) => {
+    const cx = COLS[i], ym = gm[i];
+    // 组均值：浅蓝短横线
+    if (means > 0) P.path(ctx, [[X(cx - .32), Yp(ym)], [X(cx + .32), Yp(ym)]], { color: C.blue, width: 2.6, progress: means, halo: 2 });
+    g.forEach((pt, j) => {
+      const x = X(cx + pt.dx), yp = Yp(pt.y);
+      // 总离差：深蓝竖线；拆分后上下两段换成浅蓝（组间）与橙色（组内）
+      if (total > 0) P.path(ctx, [[x, Yp(Y)], [x, yp]], { color: C.accent, width: 1.6, progress: total, alpha: (1 - split) * (s >= 2 && s < 3 ? .45 + .55 * (1 - means) : 1) });
+      if (split > 0) { P.path(ctx, [[x, Yp(Y)], [x, Yp(ym)]], { color: C.blue, width: 2, alpha: split }); P.path(ctx, [[x, Yp(ym)], [x, yp]], { color: C.warm, width: 2, alpha: split }) }
+      const pop = s ? 1 : P.ease.back(P.seg(p, .04 * (i * M + j) / 1.4, .04 * (i * M + j) / 1.4 + .25));
+      P.dot(ctx, x, yp, { r: 3.8, color: C.accent, scale: pop });
+    });
+    lab.set('g' + i, TEX[i], X(cx), H1 - 14, { color: C.soft, size: 13 });
+  });
+  lab.set('dots', '\\cdots', X(4), H1 - 14, { color: C.mute, size: 13 });
+  lab.set('dots2', '\\cdots', X(4), Yp((yl + yh) / 2), { color: C.mute, size: 15 });
+  // 平方和条形：上 S_T，下 S_A 与 S_e 首尾相接，最后两者等长
+  const bx = 52, bw = (w - bx - 26) / ST, b1 = H1 + 12, b2 = H1 + 40, bh = 14;
+  const rr = (x, y, len, col, a) => { if (len < .5) return; ctx.save(); ctx.fillStyle = P.rgba(col, a); ctx.beginPath(); ctx.roundRect(x, y, len, bh, 3); ctx.fill(); ctx.restore() };
+  rr(bx, b1, ST * bw * total, C.accent, .85);
+  const fin = at(4); rr(bx, b2, SA * bw * fin, C.blue, .75); rr(bx + SA * bw * fin, b2, SE * bw * fin, C.warm, .8);
+  if (fin > .98) glow(ctx, bx + ST * bw, b2 + bh / 2, 12, C.warm, .14);
+  lab.set('st', 'S_T', bx - 20, b1 + bh / 2, { color: C.accent, size: 13, alpha: total });
+  lab.set('sa', 'S_A', bx + SA * bw * fin / 2, b2 + bh + 11, { color: C.blue, size: 13, alpha: fin });
+  lab.set('se', 'S_e', bx + (SA + SE / 2) * bw * fin, b2 + bh + 11, { color: C.warm, size: 13, alpha: fin });
+  lab.end();
+  return moving;
+});
+player = P.stepper(document.getElementById('nav'), { count: STEPS.length, dur: 2, hold: 1.1, kick: cv.kick, onChange: s => formula(s.i) });
+Steady.sweep([fx], STEPS.length, formula, () => formula(0));
+let touched = false;
+document.getElementById('nav').addEventListener('click', () => touched = true, true);
+addEventListener('keydown', () => touched = true, true);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !player.playing) setTimeout(() => { if (!touched && !player.playing) { player.go(0, true); player.playing = true; player.wait = 1; document.querySelector('#nav .play').textContent = 'Pause'; document.querySelector('#nav .play').setAttribute('aria-pressed', 'true'); cv.kick() } }, 800) } else player.stop() }, { threshold: .4 }).observe(document.getElementById('cv'));
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

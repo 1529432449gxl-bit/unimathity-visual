@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Complex potential flow</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:300px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Flow past a cylinder: streamlines and equipotential lines cross at right angles while particles drift along the streamlines"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// 复势 f(z)=z+1/z：流函数 ψ=Im f，速度势 φ=Re f，速度为 conj f'(z)
+const psi = (x, y) => { const r2 = x * x + y * y; return y - y / r2 }, phi = (x, y) => { const r2 = x * x + y * y; return x + x / r2 };
+const vel = (x, y) => { const r2 = x * x + y * y, r4 = r2 * r2; return [1 - (x * x - y * y) / r4, -2 * x * y / r4] };   // conj(1-1/z^2)
+let geo = null, paths = null, intro = 0, playing = true;
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const parts = [];
+// 等值线：在网格上做 marching squares，结果缓存为 Path2D（尺寸变化时重算）
+function contours(f, levels, X0, X1, Y0, Y1, n, S) {
+  const m = Math.round(n * (Y1 - Y0) / (X1 - X0)), dx = (X1 - X0) / n, dy = (Y1 - Y0) / m, V = [];
+  for (let j = 0; j <= m; j++) { V.push([]); for (let i = 0; i <= n; i++) { const x = X0 + i * dx, y = Y0 + j * dy; V[j].push(x * x + y * y < 1 ? NaN : f(x, y)) } }
+  const out = new Path2D();
+  for (const L of levels) for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) {
+    const a = V[j][i], b = V[j][i + 1], c = V[j + 1][i + 1], d = V[j + 1][i]; if ([a, b, c, d].some(Number.isNaN)) continue;
+    const x = X0 + i * dx, y = Y0 + j * dy, pts = [], e = (p, q, P0, P1) => { if ((p - L) * (q - L) < 0) { const t = (L - p) / (q - p); pts.push([P.lerp(P0[0], P1[0], t), P.lerp(P0[1], P1[1], t)]) } };
+    e(a, b, [x, y], [x + dx, y]); e(b, c, [x + dx, y], [x + dx, y + dy]); e(c, d, [x + dx, y + dy], [x, y + dy]); e(d, a, [x, y + dy], [x, y]);
+    for (let k = 0; k + 1 < pts.length; k += 2) { const p = S(pts[k]), q = S(pts[k + 1]); out.moveTo(...p); out.lineTo(...q) }
+  }
+  return out;
+}
+const spawn = (p, anywhere) => { const g = geo; p.x = anywhere ? P.lerp(g.X0, g.X1, rnd()) : g.X0 - .1; p.y = P.lerp(g.Y0 + .05, g.Y1 - .05, rnd()); p.tr = []; p.age = 0 };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  intro = Math.min(1, intro + dt / 1.8);
+  if (!geo || geo.w !== w || geo.h !== h) {
+    const X1 = 3.4, s = (w - 24) / (2 * X1), Y1 = (h - 24) / 2 / s, S = ([x, y]) => [w / 2 + x * s, h / 2 - y * s];
+    geo = { w, h, s, S, X0: -X1, X1, Y0: -Y1, Y1 };
+    const lv = (a, b, st) => { const o = []; for (let v = a; v <= b + 1e-9; v += st) o.push(+v.toFixed(6)); return o };
+    paths = { psi: contours(psi, lv(-3, 3, .3).map(v => v + 1e-4), -X1, X1, -Y1, Y1, Math.round(w / 4), S), phi: contours(phi, lv(-6, 6, .5).map(v => v + 1e-4), -X1, X1, -Y1, Y1, Math.round(w / 4), S) };
+    parts.length = 0; for (let k = 0; k < Math.round(w / 6); k++) { const p = {}; spawn(p, true); parts.push(p) }
+  }
+  const g = geo, ip = P.ease.out(intro);
+  ctx.save(); ctx.lineWidth = 1.1; ctx.strokeStyle = P.rgba(C.blue, .55 * ip); ctx.stroke(paths.phi);
+  ctx.lineWidth = 1.6; ctx.strokeStyle = P.rgba(C.accent, .8 * ip); ctx.stroke(paths.psi); ctx.restore();
+  // 圆柱
+  const O = g.S([0, 0]); ctx.save(); ctx.beginPath(); ctx.arc(O[0], O[1], g.s, 0, 7); ctx.fillStyle = '#e9eaee'; ctx.fill(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.mute; ctx.stroke(); ctx.restore();
+  // 粒子：沿速度场推进，尾迹按年龄淡出
+  if (playing) for (const p of parts) {
+    const sp = .55, h2 = Math.min(dt, .05) * sp, v1 = vel(p.x, p.y), m = [p.x + v1[0] * h2 / 2, p.y + v1[1] * h2 / 2], v2 = vel(...m);
+    p.x += v2[0] * h2; p.y += v2[1] * h2; p.age += dt; p.tr.push(g.S([p.x, p.y])); if (p.tr.length > 22) p.tr.shift();
+    if (p.x > g.X1 + .1 || Math.abs(p.y) > g.Y1 || p.x * p.x + p.y * p.y < 1.0 || p.age > 30) spawn(p, false);
+  }
+  const pa = P.seg(intro, .4, 1);
+  for (const p of parts) { const n = p.tr.length; if (n < 2) continue; const fade = Math.min(1, p.age / .6) * pa;
+    for (let k = 1; k < n; k++) P.path(ctx, [p.tr[k - 1], p.tr[k]], { color: C.warm, width: 2, alpha: fade * k / n * .85 });
+    P.dot(ctx, ...p.tr[n - 1], { r: 2.4, color: C.warm, ring: false, alpha: fade }) }
+  return playing || intro < 1;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

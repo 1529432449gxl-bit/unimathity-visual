@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Memorylessness of the exponential distribution</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:340px}@media(max-width:520px){canvas#cv{height:290px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="ls"></span><input id="s" type="range" min="0.2" max="2.4" step="0.005" value="1" aria-label="time already waited"></div>
+<div class="controls"><span class="n" id="ll"></span><input id="l" type="range" min="0.6" max="2" step="0.005" value="1.1" aria-label="rate lambda"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Cut off the time already waited; the remaining tail, shifted back and rescaled, coincides with the original density"></canvas></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('ls'), 's'); K(document.getElementById('ll'), '\\lambda');
+const ss = document.getElementById('s'), sl = document.getElementById('l');
+const st = { playing: false, t: 0, touched: false, intro: 0, cyc: 0 };
+const sh = { s: +ss.value, l: +sl.value, m: 0 };
+const v = P.view([-.25, 5.2, -.06, 2.15], { l: 14, r: 14, t: 14, b: 26 });
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.6);
+  // 播放：截去 → 尾部平移并放大到与原曲线重合 → 停留 → 复原，换一个 s 再来
+  let m = st.mt || 0;
+  if (st.playing) { st.t += dt; anim = true; const T = 6.4, u = st.t % T, c = Math.floor(st.t / T);
+    if (c !== st.cyc) { st.cyc = c; ss.value = (.35 + 1.9 * ((Math.sin(c * 2.3 + 1) + 1) / 2)).toFixed(3) }
+    m = u < 1.4 ? 0 : u < 3.2 ? P.ease.inOut((u - 1.4) / 1.8) : u < 4.8 ? 1 : u < 6 ? 1 - P.ease.inOut((u - 4.8) / 1.2) : 0; st.mt = m }
+  anim = P.spring(sh, 's', +ss.value, dt, { k: 90, z: .78 }) | P.spring(sh, 'l', +sl.value, dt, { k: 90, z: .78 }) | P.spring(sh, 'm', m, dt, { k: 160, z: .9 }) | anim;
+  const { s, l } = sh, f = x => x < 0 ? 0 : l * Math.exp(-l * x), I = P.ease.out(st.intro);
+  P.axes(ctx, v, { x: true });
+  // 已等待部分：灰色淡出
+  const cut = P.curve(v, f, 0, s, 120);
+  P.fill(ctx, cut, [[v.X(0), v.Y(0)], [v.X(s), v.Y(0)]], P.rgba(C.mute, .12 * I));
+  // 剩余尾部：浅蓝面积
+  const tail = P.curve(v, f, s, v.b[1], 200);
+  P.fill(ctx, tail, [[v.X(s), v.Y(0)], [v.X(v.b[1]), v.Y(0)]], P.vgrad(ctx, v.Y(f(s)), v.Y(0), C.blue, .32 * I, .1 * I));
+  // 原密度
+  P.path(ctx, P.curve(v, f, 0, v.b[1], 300), { color: C.accent, width: 2.6, halo: 3, progress: I });
+  P.path(ctx, [[v.X(s), v.Y(0)], [v.X(s), v.Y(f(s))]], { color: C.mute, width: 1.2, dash: [3, 4], alpha: I });
+  // 尾部平移 s 并乘 e^{λs}：橙色曲线，m=1 时与原密度重合
+  const k = Math.exp(l * s * sh.m), d = s * sh.m, g = [];
+  for (let i = 0; i <= 240; i++) { const x = s + (v.b[1] + s - s) * i / 240; if (x - d > v.b[1]) break; const y = f(x) * k; if (y > v.b[3] * 1.2) continue; g.push([v.X(x - d), v.Y(y)]) }
+  P.path(ctx, g, { color: C.warm, width: 2.2, alpha: I * .95, dash: sh.m > .97 ? [6, 6] : null });
+  const ps = [v.X(s - d), v.Y(f(s) * k)];
+  ctx.save(); ctx.beginPath(); ctx.arc(ps[0], ps[1], 12, 0, 7); ctx.fillStyle = P.rgba(C.warm, .15 * I); ctx.fill(); ctx.restore();
+  P.dot(ctx, ...ps, { r: 4.5, color: C.warm, scale: P.ease.back(P.seg(st.intro, .5, 1)) });
+  lab.set('s', 's', v.X(s), v.Y(0) + 14, { color: C.soft, size: 13, alpha: I });
+  lab.set('o', '0', v.X(0), v.Y(0) + 14, { color: C.soft, size: 12, alpha: I });
+  lab.set('f', 'p(x)', v.X(.12), v.Y(f(.12)) - 6, { color: C.accent, size: 13, dx: 30, alpha: I * (1 - sh.m) });
+  lab.set('t', 'p(x+s)\\,e^{\\lambda s}', ps[0], ps[1], { color: C.warm, size: 13, dx: 62, dy: -6, alpha: I * P.seg(sh.m, 0, .3) * (sh.m > .97 ? .0 : 1) });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false'); cv.kick() }
+function play() { st.playing = true; st.t = 0; st.cyc = 0; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+for (const el of [ss, sl]) el.addEventListener('input', () => { st.touched = true; if (st.playing) stop(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched) play() }, 1500) } else if (st.playing) stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

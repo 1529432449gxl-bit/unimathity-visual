@@ -22,13 +22,14 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   const m1 = P.approach(st, 'c', tgt.c, dt, playing ? 6 : 14);
   const ds = SING.map(p => dist(st.c, p)), R = Math.min(...ds), near = ds[0] <= ds[1] ? 0 : 1;
   const m2 = P.approach(st, 'r', R, dt, 7);
-  s0 = Math.min(w / 6.2, h / 4.4); const ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s0, oy - q[1] * s0];
+  s0 = Math.min(w / 5.2, h / 4.4); const ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s0, oy - q[1] * s0];
   P.path(ctx, [S([-3.1, 0]), S([3.1, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.2]), S([0, 2.2])], { color: C.rule, width: 1 });
   const circ = []; for (let k = 0; k <= 160; k++) { const a = 2 * Math.PI * k / 160; circ.push(S([st.c[0] + st.r * Math.cos(a), st.c[1] + st.r * Math.sin(a)])) }
   ctx.save(); ctx.beginPath(); circ.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.blue, .14); ctx.fill(); ctx.restore();
-  P.path(ctx, circ, { color: C.blue, width: 2 });
+  P.path(ctx, circ, { color: C.blue, width: 2.4, halo: 3 });
   SING.forEach((p, k) => P.path(ctx, [S(st.c), S(p)], { color: k === near ? C.warm : C.mute, width: k === near ? 1.6 : 1, dash: k === near ? null : [3, 4], alpha: k === near ? .9 : .6 }));
   SING.forEach((p, k) => { ctx.save(); const q = S(p); ctx.beginPath(); ctx.arc(q[0], q[1], 5.5, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.stroke(); ctx.restore() });
+  { const g = S(st.c); ctx.save(); ctx.beginPath(); ctx.arc(g[0], g[1], 13, 0, 7); ctx.fillStyle = P.rgba(C.accent, grab ? .2 : .1); ctx.fill(); ctx.restore() }
   P.dot(ctx, ...S(st.c), { r: 6, color: C.accent });
   lab.set('z0', 'z_0', ...S(st.c), { color: C.accent, dy: 18 });
   lab.set('i', 'i', ...S(SING[0]), { color: C.warm, dx: 14, dy: -10, size: 13 });
@@ -40,7 +41,7 @@ const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .pl
 const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
 pb.onclick = () => { playing = !playing; if (playing) clock = Math.acos(P.clamp(st.c[0] / 1.5, -1, 1)) / .32; sync(); cv.kick() };
 const toZ = e => { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left - r.width / 2) / s0, -(e.clientY - r.top - r.height / 2) / s0] };
-const place = e => { let q = toZ(e); q = [P.clamp(q[0], -2.8, 2.8), P.clamp(q[1], -1.9, 1.9)]; for (const p of SING) { const d = dist(q, p); if (d < .12) q = [p[0] + (q[0] - p[0]) / (d || 1) * .12, p[1] + (q[1] - p[1]) / (d || 1) * .12] } tgt.c = q; cv.kick() };
+const place = e => { let q = toZ(e); q = [P.clamp(q[0], -2.2, 2.2), P.clamp(q[1], -1.9, 1.9)]; for (const p of SING) { const d = dist(q, p); if (d < .12) q = [p[0] + (q[0] - p[0]) / (d || 1) * .12, p[1] + (q[1] - p[1]) / (d || 1) * .12] } tgt.c = q; cv.kick() };
 cvs.addEventListener('pointerdown', e => { grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
 cvs.addEventListener('pointermove', e => { if (grab) place(e) });
 cvs.addEventListener('pointerup', () => { grab = false });

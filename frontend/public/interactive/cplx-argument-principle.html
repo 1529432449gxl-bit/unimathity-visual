@@ -38,6 +38,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   for (const z of Z) P.dot(ctx, ...S1(z), { r: 5, color: Math.hypot(...z) < r ? C.accent : C.mute });
   for (const p of Pl) ring(ctx, S1(p), Math.hypot(...p) < r ? C.warm : C.mute);
   const a = 2 * Math.PI * t, zt = [r * Math.cos(a), r * Math.sin(a)];
+  { const g = S1(zt); ctx.save(); ctx.beginPath(); ctx.arc(g[0], g[1], 11, 0, 7); ctx.fillStyle = P.rgba(C.warm, .14); ctx.fill(); ctx.restore() }
   P.dot(ctx, ...S1(zt), { r: 5, color: C.warm });
   // 右：w 平面
   const ox = stack ? 0 : Wp, oy = stack ? Hp : 0;

@@ -31,7 +31,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   const c = CURVES[mode], N = 300, all = [], done = [];
   for (let k = 0; k <= N; k++) { const u = k / N, pt = S(pol(c.f(u))); all.push(pt); if (u <= t) done.push(pt) }
   P.path(ctx, all, { color: C.accent, width: 1.4, alpha: .25 });
-  P.path(ctx, done, { color: C.accent, width: 2.4 });
+  P.path(ctx, done, { color: C.accent, width: 2.6, halo: 3 });
   // 累计的辐角：半径缓慢增大的螺旋弧，避免多圈重叠
   const [, p0] = c.f(0), [rho, p] = c.f(t), sp = [];
   for (let k = 0; k <= 160; k++) { const ph = p0 + (p - p0) * k / 160, rr = .36 + .09 * Math.abs(ph - p0) / Math.PI; sp.push(S([rr * Math.cos(ph), rr * Math.sin(ph)])) }
@@ -40,6 +40,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   P.path(ctx, [S([0, 0]), S(end)], { color: C.warm, width: 1.6, alpha: .85 });
   P.path(ctx, [S([0, 0]), S(pol(c.f(0)))], { color: C.mute, width: 1, dash: [3, 4] });
   P.dot(ctx, ...S(pol(c.f(0))), { r: 4, color: C.accent }); P.dot(ctx, ...S(pol(c.f(1))), { r: 4, color: C.accent });
+  { const g = S(end); ctx.save(); ctx.beginPath(); ctx.arc(g[0], g[1], 12, 0, 7); ctx.fillStyle = P.rgba(C.warm, .14); ctx.fill(); ctx.restore() }
   P.dot(ctx, ...S(end), { r: 5.5, color: C.warm });
   P.dot(ctx, ...S([0, 0]), { r: 3, color: C.soft, ring: false });
   lab.set('a', '1-i', ...S(pol(c.f(0))), { color: C.accent, dx: 24, dy: 8, size: 13 });

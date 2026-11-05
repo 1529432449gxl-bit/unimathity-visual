@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Standardizing a normal distribution</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<body><main>
+<div class="controls"><span class="n" id="lm"></span><input id="m" type="range" min="-1.5" max="2" step="0.01" value="1.4" aria-label="location parameter mu"></div>
+<div class="controls"><span class="n" id="ls"></span><input id="s" type="range" min="0.6" max="2" step="0.01" value="1.6" aria-label="scale parameter sigma"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A normal density is shifted to zero and rescaled into the standard normal; the shaded interval keeps its area"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || !(r > 0)) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+K(document.getElementById('lm'), '\\mu'); K(document.getElementById('ls'), '\\sigma');
+const sm = document.getElementById('m'), ss = document.getElementById('s');
+const phi = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+// 区间取 [μ+0.3σ, μ+1.4σ]：标准化后恰为 [0.3, 1.4]
+const A0 = .3, B0 = 1.4, T = 9.4;
+const st = { m: +sm.value, s: +ss.value, u1: 0, u2: 0 };
+let intro = 0, playing = true, clock = 0;
+const v = P.view([-4.4, 6.2, -0.02, 0.74], { l: 14, r: 14, t: 16, b: 30 });
+const lab = P.labels(document.getElementById('stage'));
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; intro = Math.min(1, intro + dt / 1.4); const ip = P.ease.out(intro);
+  if (playing && intro > .6) clock = (clock + dt) % T;
+  // 时间线：停留 → 平移到 0 → 停留 → 伸缩成 N(0,1) → 停留 → 原路返回
+  const c = clock, t1 = c < 4.9 ? P.seg(c, .9, 2.3) : 1 - P.seg(c, 7.9, 9.1), t2 = c < 4.9 ? P.seg(c, 2.8, 4.2) : 1 - P.seg(c, 6.0, 7.4);
+  const mv = P.approach(st, 'm', +sm.value, dt, 8) | P.approach(st, 's', +ss.value, dt, 8)
+    | P.approach(st, 'u1', playing ? P.ease.inOut(t1) : 0, dt, playing ? 40 : 6) | P.approach(st, 'u2', playing ? P.ease.inOut(t2) : 0, dt, playing ? 40 : 6);
+  const { m, s, u1, u2 } = st, sc = P.lerp(1, s, u2), cm = m * (1 - u1) / sc, cs = s / sc;
+  const f = x => phi(x, cm, cs), base = x => [v.X(x), v.Y(0)];
+  P.axes(ctx, v, { x: true });
+  P.path(ctx, P.curve(v, x => phi(x, 0, 1)), { color: C.mute, width: 1.2, alpha: .6, dash: [4, 4] });
+  // 阴影区间随同一变换移动，面积不变
+  const a = cm + A0 * cs, b = cm + B0 * cs, top = P.curve(v, f, a, b, 160);
+  P.fill(ctx, top, [base(a), base(b)], P.rgba(C.warm, .32 * P.seg(intro, .45, 1)));
+  for (const x of [a, b]) P.path(ctx, [base(x), [v.X(x), v.Y(f(x))]], { color: C.warm, width: 1.2, alpha: .8 * P.seg(intro, .45, 1) });
+  P.path(ctx, [base(cm), [v.X(cm), v.Y(f(cm))]], { color: C.mute, width: 1, dash: [3, 4], alpha: .8 });
+  P.path(ctx, P.curve(v, f), { color: C.accent, width: 2.6, halo: 3, progress: ip });
+  const pop = P.ease.back(P.seg(intro, .55, 1));
+  glow(ctx, v.X(cm), v.Y(f(cm)), 11 * pop, C.accent, .13); P.dot(ctx, v.X(cm), v.Y(f(cm)), { r: 4.2, color: C.accent, scale: pop });
+  // 平移的方向：从 μ 指向 0 的细箭头，只在平移阶段出现
+  const sh = u1 > .02 && u1 < .98 ? 1 : 0;
+  if (sh) P.path(ctx, [[v.X(m / sc), v.Y(0) - 8], [v.X(cm), v.Y(0) - 8]], { color: C.blue, width: 1.6, alpha: .7 });
+  const lo = v.Y(0) + 15, fin = u1 * u2, al = P.seg(intro, .6, 1);
+  lab.set('m', fin > .5 ? '0' : '\\mu', v.X(cm), lo, { color: C.soft });
+  lab.set('a', 'a', v.X(a), lo, { color: C.warm, alpha: al * (1 - fin) });
+  lab.set('b', 'b', v.X(b), lo, { color: C.warm, alpha: al * (1 - fin) });
+  lab.set('a2', '\\tfrac{a-\\mu}{\\sigma}', v.X(a), lo + 4, { color: C.warm, alpha: al * fin, size: 13 });
+  lab.set('b2', '\\tfrac{b-\\mu}{\\sigma}', v.X(b), lo + 4, { color: C.warm, alpha: al * fin, size: 13 });
+  lab.set('n01', 'N(0,1)', v.X(-1.9), v.Y(phi(-1.9, 0, 1)) - 14, { color: C.mute, size: 13, alpha: al });
+  lab.end();
+  return mv || intro < 1 || playing;
+});
+const pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; if (playing) clock = 0; sync(); cv.kick() };
+for (const el of [sm, ss]) el.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

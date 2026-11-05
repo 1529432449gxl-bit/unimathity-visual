@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>From probability mass to distribution function</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px}@media(max-width:520px){canvas#cv{height:350px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Each probability mass drops onto the distribution function and becomes a jump of the staircase"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// 一般的分布列：取值 x_1<x_2<...<x_n，质量 p_1,...,p_n
+const XS = [.6, 1.5, 2.2, 3.4, 4.1, 5.3], PS = [.1, .22, .16, .27, .1, .15], N = XS.length;
+const CUM = PS.reduce((a, p) => (a.push((a.at(-1) || 0) + p), a), []);
+const NAMES = ['x_1', 'x_2', 'x_3', '\\cdots', 'x_{n-1}', 'x_n'];
+const sh = { lv: new Array(N + 1).fill(0) };
+const lab = P.labels(document.getElementById('stage'));
+let player;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt), k = player.i, p = player.p;
+  const h1 = h * .36, g = 26;
+  const vt = P.view([0, 6, 0, .32], { l: 16, r: 16, t: 10, b: 6 }); vt.w = w; vt.h = h1;
+  const vb = P.view([0, 6, -.04, 1.08], { l: 16, r: 16, t: 4, b: 22 }); vb.w = w; vb.h = h - h1 - g;
+  const Yb = y => h1 + g + vb.Y(y);
+  // 目标：前 k 个质量已累积
+  const ke = p > .72 || k === 0 ? k : k - 1; let anim = false;
+  for (let j = 0; j <= N; j++) { const m = Math.min(j, ke); anim = P.spring(sh.lv, j, m ? CUM[m - 1] : 0, dt, { k: 110, z: .62 }) | anim }
+  // 上：分布列
+  P.path(ctx, [[vt.X(0), vt.Y(0)], [vt.X(6), vt.Y(0)]], { color: C.rule, width: 1 });
+  for (let j = 0; j < N; j++) {
+    const done = j < k, cur = j === k - 1, x = vt.X(XS[j]);
+    // 当前这一份质量：从上图落到下图的跳跃处
+    if (cur && p < 1) {
+      const e = P.ease.inOut(P.seg(p, 0, .75)), y0 = vt.Y(PS[j]), y1 = Yb(CUM[j]);
+      const top = P.lerp(y0, y1, e), bot = P.lerp(vt.Y(0), Yb(CUM[j] - PS[j]), e);
+      P.path(ctx, [[vb.X(XS[j]), bot], [vb.X(XS[j]), top]].map(([xx, yy]) => [P.lerp(x, xx, e), yy]), { color: C.warm, width: 5, halo: 2 });
+    }
+    P.path(ctx, [[x, vt.Y(0)], [x, vt.Y(PS[j])]], { color: done ? C.mute : C.accent, width: 5, alpha: done && !cur ? .35 : 1 });
+    P.dot(ctx, x, vt.Y(PS[j]), { r: 3.5, color: done ? C.mute : C.accent, alpha: done && !cur ? .4 : 1 });
+  }
+  // 下：分布函数阶梯（右连续：左端实心、右端空心）
+  P.path(ctx, [[vb.X(0), Yb(0)], [vb.X(6), Yb(0)]], { color: C.rule, width: 1 });
+  P.path(ctx, [[vb.X(0), Yb(1)], [vb.X(6), Yb(1)]], { color: C.mute, width: 1, dash: [4, 5], alpha: .6 });
+  const xsE = [0, ...XS, 6];
+  for (let j = 0; j <= N; j++) {
+    const y = sh.lv[j], a = xsE[j], b = xsE[j + 1], show = j <= k;
+    P.path(ctx, [[vb.X(a), Yb(y)], [vb.X(b), Yb(y)]], { color: C.accent, width: 2.4, halo: 2, alpha: show ? 1 : .25 });
+    if (j >= 1 && j <= k) {
+      const pop = j === k ? P.ease.back(P.seg(p, .7, 1)) : 1;
+      P.dot(ctx, vb.X(a), Yb(CUM[j - 1]), { r: 4.5, color: C.accent, scale: pop });
+      ctx.save(); ctx.beginPath(); ctx.arc(vb.X(a), Yb(j > 1 ? CUM[j - 2] : 0), 4 * pop, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.6; ctx.stroke(); ctx.restore();
+      if (j === k) { ctx.save(); ctx.beginPath(); ctx.arc(vb.X(a), Yb(CUM[j - 1]), 13 * pop, 0, 7); ctx.fillStyle = P.rgba(C.warm, .16 * (1 - P.seg(p, .85, 1) * .6)); ctx.fill(); ctx.restore() }
+    }
+  }
+  for (let j = 0; j < N; j++) lab.set('x' + j, NAMES[j], vb.X(XS[j]), Yb(0) + 13, { color: C.soft, size: 12 });
+  lab.set('F', 'F(x)', vb.X(.35), Yb(.92), { color: C.accent, size: 13 });
+  lab.set('p', 'p(x_i)', vt.X(5.85), vt.Y(.29), { color: C.accent, size: 13, dx: -16 });
+  lab.set('one', '1', vb.X(0) - 8, Yb(1), { color: C.mute, size: 12 });
+  lab.end();
+  return moving || anim;
+});
+player = P.stepper(document.getElementById('nav'), { count: N + 1, dur: 1.3, hold: .55, kick: cv.kick });
+// 进入视口后自动播放一次；离开视口暂停
+let auto = false;
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!auto) { auto = true; setTimeout(() => { if (player.i === 0 && !player.playing) document.querySelector('#nav .play').click() }, 1200) } } else player.stop() }, { threshold: .4 }).observe(document.getElementById('cv'));
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

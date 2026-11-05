@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Least squares line and bands</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:none}@media(max-width:520px){canvas#cv{height:330px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the line; squared residuals are drawn as squares; play moves the line to the least squares position"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="New starting line">↺</button><button type="button" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || !(r > 0)) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+let seed = 19; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()) };
+const XA = .8, XB = 9.2, pts = [];
+for (let i = 0; i < 12; i++) { const x = 1 + 8 * (i + .2 + .6 * rnd()) / 12; pts.push([x, 1.2 + .55 * x + .75 * gauss()]) }
+const mx = pts.reduce((s, p) => s + p[0], 0) / pts.length, my = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+const lxx = pts.reduce((s, p) => s + (p[0] - mx) ** 2, 0), lxy = pts.reduce((s, p) => s + (p[0] - mx) * (p[1] - my), 0);
+const b1 = lxy / lxx, b0 = my - b1 * mx, LS = [b0 + b1 * XA, b0 + b1 * XB];   // 直线由两端高度 [ya, yb] 表示
+// ?mode=bands：最优直线两侧的均值置信带（浅蓝）与预测带（灰色）
+const BANDS = new URLSearchParams(location.search).get('mode') === 'bands';
+const Q = pts.reduce((s, [x, y]) => s + (y - b0 - b1 * x) ** 2, 0), sig = Math.sqrt(Q / (pts.length - 2)), TQ = 2.228;
+const halfC = x => TQ * sig * Math.sqrt(1 / pts.length + (x - mx) ** 2 / lxx), halfP = x => TQ * sig * Math.sqrt(1 + 1 / pts.length + (x - mx) ** 2 / lxx);
+const st = { ab: BANDS ? LS.slice() : [LS[0] + 2.4, LS[1] - 2.2], x0: mx };
+let target = st.ab.slice(), playing = false, intro = 0, clock = 0, x0t = mx;
+if (BANDS) { document.querySelector('[data-a=first]').remove(); document.getElementById('cv').setAttribute('aria-label', 'Least squares line with a narrow confidence band for the mean and a wider prediction band; drag to move the marked x') }
+let v;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  // 等比例坐标，让残差平方是正方形
+  const ylo = 0, yhi = 7.6; const sx = (w - 28) / (XB - XA + .6), sy = (h - 24) / (yhi - ylo), s = Math.min(sx, sy);
+  v = { X: x => w / 2 + (x - (XA + XB) / 2) * s, Y: y => h / 2 - (y - (ylo + yhi) / 2) * s, s };
+  if (BANDS) return drawBands(ctx, w, h, dt);
+  const mv = P.approach(st, 'ab', target, dt, playing ? 1.6 : 14);
+  if (playing && !mv) { playing = false; sync() }
+  const [ya, yb] = st.ab, line = x => ya + (yb - ya) * (x - XA) / (XB - XA);
+  for (const [x, y] of pts) {
+    const yh = line(x), r = y - yh, side = Math.abs(r) * v.s, px = v.X(x), top = Math.min(v.Y(y), v.Y(yh));
+    ctx.save(); ctx.fillStyle = P.rgba(C.blue, .16); ctx.strokeStyle = P.rgba(C.blue, .5); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(px, top, side, side); ctx.fill(); ctx.stroke(); ctx.restore();
+    P.path(ctx, [[px, v.Y(y)], [px, v.Y(yh)]], { color: C.blue, width: 1.4 });
+  }
+  P.path(ctx, [[v.X(XA), v.Y(ya)], [v.X(XB), v.Y(yb)]], { color: C.warm, width: 2.6, halo: 3 });
+  for (const [x, y] of pts) P.dot(ctx, v.X(x), v.Y(y), { r: 4, color: C.accent });
+  for (const [xx, yy] of [[XA, ya], [XB, yb]]) { glow(ctx, v.X(xx), v.Y(yy), 15, C.warm, grab >= 0 ? .24 : .13); P.dot(ctx, v.X(xx), v.Y(yy), { r: 6.5, color: C.warm }) }
+  return mv || playing;
+});
+function drawBands(ctx, w, h, dt) {
+  intro = Math.min(1, intro + dt / 1.6); const ip = P.ease.inOut(intro);
+  if (playing) { clock += dt; x0t = mx + 3.6 * Math.sin(clock * .5) }
+  const mv = P.approach(st, 'x0', x0t, dt, playing ? 30 : 12), line = x => b0 + b1 * x;
+  // 带从均值处向两端展开
+  const N = 160, xsB = Array.from({ length: N + 1 }, (_, i) => XA + (XB - XA) * i / N).filter(x => Math.abs(x - mx) <= ip * (XB - XA));
+  const band = (hf, col, al) => { const up = xsB.map(x => [v.X(x), v.Y(line(x) + hf(x))]), dn = xsB.map(x => [v.X(x), v.Y(line(x) - hf(x))]); P.fill(ctx, up, dn, P.rgba(col, al)); P.path(ctx, up, { color: col, width: 1.2, alpha: .8, dash: col === C.mute ? [4, 4] : null }); P.path(ctx, dn, { color: col, width: 1.2, alpha: .8, dash: col === C.mute ? [4, 4] : null }) };
+  band(halfP, C.mute, .1); band(halfC, C.blue, .24);
+  P.path(ctx, [[v.X(XA), v.Y(line(XA))], [v.X(XB), v.Y(line(XB))]], { color: C.warm, width: 2.6, halo: 3 });
+  for (const [x, y] of pts) P.dot(ctx, v.X(x), v.Y(y), { r: 4, color: C.accent });
+  // 选定的 x0 处两段区间
+  const x0 = st.x0, a = P.seg(intro, .7, 1), px = v.X(x0);
+  P.path(ctx, [[px, v.Y(line(x0) - halfP(x0))], [px, v.Y(line(x0) + halfP(x0))]], { color: C.mute, width: 2.2, alpha: a });
+  P.path(ctx, [[px, v.Y(line(x0) - halfC(x0))], [px, v.Y(line(x0) + halfC(x0))]], { color: C.blue, width: 4, alpha: a });
+  glow(ctx, px, v.Y(line(x0)), 13, C.warm, .18 * a); P.dot(ctx, px, v.Y(line(x0)), { r: 5, color: C.warm, scale: P.ease.back(a) });
+  P.path(ctx, [[v.X(mx), v.Y(line(mx)) + 4], [v.X(mx), v.Y(-.2)]], { color: C.mute, width: 1, dash: [2, 4], alpha: .6 * a });
+  return mv || intro < 1 || playing;
+}
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+function sync() { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) }
+pb.onclick = () => { if (playing) { playing = false; target = st.ab.slice() } else { playing = true; target = LS.slice() } sync(); cv.kick() };
+if (!BANDS) nav.querySelector('[data-a=first]').onclick = () => { playing = false; sync(); target = [LS[0] + (rnd() - .5) * 6, LS[1] + (rnd() - .5) * 6]; cv.kick() };
+// 拖动两端的把手
+const cvs = document.getElementById('cv'); let grab = -1;
+cvs.addEventListener('pointerdown', e => { if (BANDS) { grab = 9; playing = false; sync(); cvs.setPointerCapture(e.pointerId); moveX0(e); return } const r = cvs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const d = [XA, XB].map((xx, k) => Math.hypot(x - v.X(xx), y - v.Y(st.ab[k]))); grab = d[0] < d[1] ? 0 : 1; if (d[grab] > 40) { grab = -1; return }
+  playing = false; sync(); cvs.setPointerCapture(e.pointerId) });
+const moveX0 = e => { const r = cvs.getBoundingClientRect(); x0t = P.clamp((e.clientX - r.left - r.width / 2) / v.s + (XA + XB) / 2, XA, XB); cv.kick() };
+cvs.addEventListener('pointermove', e => { if (grab < 0) return; if (BANDS) { moveX0(e); return } const r = cvs.getBoundingClientRect(); const yy = (r.height / 2 - (e.clientY - r.top)) / v.s + 3.8;
+  target[grab] = P.clamp(yy, -.5, 8.5); st.ab = target.slice(); cv.kick() });
+cvs.addEventListener('pointerup', () => grab = -1);
+if (BANDS) { playing = true; sync(); pb.onclick = () => { playing = !playing; if (playing) clock = Math.asin(P.clamp((st.x0 - mx) / 3.6, -1, 1)) / .5; sync(); cv.kick() } }
+else setTimeout(() => { if (!playing && grab < 0) { playing = true; target = LS.slice(); sync(); cv.kick() } }, 1400);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

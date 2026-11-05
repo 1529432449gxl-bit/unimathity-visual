@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Total probability and Bayes formula</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:350px;touch-action:none}@media(max-width:520px){canvas#cv{height:300px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lp"></span><input id="p" type="range" min="0.02" max="0.7" step="0.001" value="0.2" aria-label="prior probability of the first source"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Sources split the sample space; their target parts gather into one region A, and the share of the first source in A is the posterior"></canvas></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('lp'), 'P(B_1)');
+// 面积模型：Ω 为单位正方形，竖条宽度 = 先验 P(B_i)，竖条中底部高度 = P(A|B_i)。
+// 右侧单位条：把各块的 A 部分按来源叠成一列，B_1 所占比例即后验 P(B_1|A)。
+const LIK = [.88, .3, .16, .07], REST = [.42, .33, .25];          // 其余来源按固定比例分享 1-P(B_1)
+const COL = [C.warm, C.accent, C.blue, C.mute], NAME = ['B_1', 'B_2', '\\cdots', 'B_n'];
+const sl = document.getElementById('p');
+const st = { playing: false, t: 0, touched: false, intro: 0 };
+const sh = { p: +sl.value, w: [0, 0, 0, 0] };
+const priors = p => [p, ...REST.map(r => r * (1 - p))];
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 2.4);
+  if (st.playing) { st.t += dt; sl.value = (.02 + .5 * (1 - Math.cos(st.t * .42)) / 2 * 1.36).toFixed(3); anim = true }
+  anim = P.spring(sh, 'p', +sl.value, dt, { k: st.playing ? 200 : 80, z: .8 }) | anim;
+  const pr = priors(sh.p), pa = pr.reduce((s, q, i) => s + q * LIK[i], 0);
+  const I = st.intro, pBlk = P.ease.out(P.seg(I, 0, .35)), pA = P.seg(I, .2, .5), flow = P.ease.inOut(P.seg(I, .45, .95));
+  const barW = Math.max(30, Math.min(52, w * .07)), gap = Math.max(40, w * .1);
+  const side = Math.min(h - 40, w - barW - gap - 60), ox = (w - side - gap - barW) / 2, oy = 12, Y = v => oy + (1 - v) * side, bx = ox + side + gap;
+  // 左：各来源竖条与其中的 A 部分
+  let x = 0; const pieces = [];
+  pr.forEach((q, i) => {
+    const x0 = ox + x * side, ww = q * side * pBlk;
+    ctx.fillStyle = P.rgba(COL[i], .08); ctx.fillRect(x0, oy, ww, side);
+    const hA = LIK[i] * side * pA;
+    ctx.fillStyle = P.vgrad(ctx, Y(LIK[i]), Y(0), COL[i], .55, .3); ctx.fillRect(x0, Y(0) - hA, ww, hA);
+    P.path(ctx, [[x0, Y(0) - hA], [x0 + ww, Y(0) - hA]], { color: COL[i], width: 2.2, alpha: pA });
+    if (i) P.path(ctx, [[x0, oy], [x0, oy + side]], { color: C.bg, width: 2 });
+    pieces.push({ x0, ww, hA });
+    lab.set('n' + i, NAME[i], x0 + ww / 2, oy + side + 13, { color: i ? C.soft : C.warm, size: 13, alpha: pBlk * (ww > 16 ? 1 : 0) });
+    x += q;
+  });
+  ctx.strokeStyle = C.soft; ctx.lineWidth = 1.2; ctx.strokeRect(ox, oy, side, side);
+  // 右：A 的各部分按来源叠成单位条（入场时从左侧飞入）
+  let acc = 0;
+  pr.forEach((q, i) => {
+    const frac = q * LIK[i] / pa, hh = frac * side, ty = Y(acc) - hh, src = pieces[i];
+    const rx = P.lerp(src.x0, bx, flow), rw = P.lerp(src.ww, barW, flow), ry = P.lerp(Y(0) - src.hA, ty, flow), rh = P.lerp(src.hA, hh, flow);
+    if (flow > 0) { ctx.fillStyle = P.rgba(COL[i], i ? .38 : .62); ctx.fillRect(rx, ry, rw, rh) }
+    if (i === 0 && flow > .98) { P.path(ctx, [[bx - 6, ty], [bx + barW + 6, ty]], { color: C.warm, width: 2.4, halo: 2 }); lab.set('post', 'P(B_1\\mid A)', bx + barW + 44, ty + hh / 2, { color: C.warm, size: 13 }) }
+    acc += frac;
+  });
+  ctx.save(); ctx.globalAlpha = flow; ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4; ctx.strokeRect(bx, oy, barW, side); ctx.restore();
+  for (const v of [0, 1]) P.path(ctx, [[ox + side, Y(v)], [bx, Y(v)]], { color: C.accent, width: 1, alpha: .18 * flow, dash: [2, 4] });
+  lab.set('O', '\\Omega', ox - 12, oy + 8, { color: C.soft, alpha: pBlk });
+  lab.set('A', 'A', bx + barW / 2, oy + side + 13, { color: C.warm, size: 14, alpha: flow });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.playing = true; st.t = Math.acos(P.clamp(1 - 2 * (+sl.value - .02) / .68, -1, 1)) / .42; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+sl.addEventListener('input', () => { st.touched = true; stop(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched) play() }, 2600) } else stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

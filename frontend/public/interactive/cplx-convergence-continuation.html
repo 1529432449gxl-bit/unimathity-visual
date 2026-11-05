@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Convergence disks and continuation along a chain</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px}@media(max-width:520px){canvas#cv{height:330px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Each power series disk reaches the nearest singularity; a chain of disks carries the function along a path"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || r <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const SING = [[-1.6, .62], [-.75, -.8], [.15, .72], [.55, -.58], [1.45, .55], [2.25, -.62]];
+const path = t => [-2.15 + 4.75 * t, .08 * Math.sin(5 * t) - .1 + .3 * t * t - .1 * t];   // 延拓路径
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const near = c => SING.map((s, k) => [dist(c, s), k]).sort((a, b) => a[0] - b[0])[0];
+// 圆链：下一个中心取在路径上、距当前中心约 0.7R 处
+const DISKS = []; { let t = 0; for (let g = 0; g < 14 && t < 1; g++) { const c = path(t), [R, k] = near(c); DISKS.push({ c, R, k, t });
+  let t2 = t; while (t2 < 1 && dist(path(t2), c) < .7 * R) t2 += .002; t = Math.min(1, t2) } }
+const lab = P.labels(document.getElementById('stage'));
+let player, intro = 0;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt); intro = Math.min(1, intro + dt / 1.2);
+  const i = player.i, p = player.p;
+  const s = Math.min((w - 24) / 6.3, (h - 20) / 3.4), S = q => [w / 2 + (q[0] - .2) * s, h / 2 - q[1] * s];
+  P.path(ctx, [S([-2.95, 0]), S([3.35, 0])], { color: C.rule, width: 1 });
+  // 路径：灰色虚线，已走过的部分加深
+  const pp = []; for (let k = 0; k <= 200; k++) pp.push(S(path(k / 200)));
+  P.path(ctx, pp, { color: C.mute, width: 1.2, dash: [4, 5], alpha: .7, progress: intro });
+  const tNow = DISKS[i].t, done = pp.slice(0, Math.round(tNow * 200) + 1);
+  P.path(ctx, done, { color: C.mute, width: 1.6, alpha: .8 });
+  for (let j = 0; j <= i; j++) {
+    const d = DISKS[j], cur = j === i, grow = cur ? P.ease.out(P.seg(p, .25, .9)) : 1, R = d.R * grow, age = i - j;
+    const circ = []; for (let k = 0; k <= 120; k++) { const a = 2 * Math.PI * k / 120; circ.push(S([d.c[0] + R * Math.cos(a), d.c[1] + R * Math.sin(a)])) }
+    ctx.save(); ctx.beginPath(); circ.forEach((q, k) => k ? ctx.lineTo(...q) : ctx.moveTo(...q)); ctx.fillStyle = P.rgba(C.blue, cur ? .16 : Math.max(.04, .1 - age * .015)); ctx.fill(); ctx.restore();
+    P.path(ctx, circ, { color: cur ? C.blue : C.accent, width: cur ? 2.4 : 1.2, alpha: cur ? 1 : Math.max(.18, .6 - age * .08), halo: cur ? 2 : 0 });
+    P.dot(ctx, ...S(d.c), { r: cur ? 5 : 3, color: C.accent, alpha: cur ? 1 : .55, scale: cur ? P.ease.back(P.seg(p, 0, .3)) : 1 });
+  }
+  // 当前圆心到最近奇点
+  const d = DISKS[i], sk = SING[d.k], reach = P.seg(p, .25, .9);
+  P.path(ctx, [S(d.c), S(sk)], { color: C.warm, width: 1.6, alpha: .85, progress: reach });
+  SING.forEach((q, k) => { const hit = k === d.k && p > .88, Q = S(q); if (hit) glow(ctx, ...Q, 13, C.warm, .2);
+    ctx.save(); ctx.beginPath(); ctx.arc(Q[0], Q[1], 5.5, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = C.warm; ctx.lineWidth = 2; ctx.globalAlpha = P.seg(intro, .3, 1); ctx.stroke(); ctx.restore() });
+  const c0 = S(DISKS[0].c); lab.set('z0', 'z_0', ...c0, { color: C.accent, dx: -4, dy: 16, size: 13 });
+  const cn = S(d.c); lab.set('zn', 'z_{' + i + '}', ...cn, { color: C.accent, dx: 4, dy: 16, size: 13, alpha: i > 0 ? 1 : 0 });
+  lab.end();
+  return moving || intro < 1;
+});
+player = P.stepper(document.getElementById('nav'), { count: DISKS.length, dur: 1.5, hold: .55, kick: cv.kick });
+player.playing = true; player.go(0, true); player.playing = true; player.wait = .6; cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

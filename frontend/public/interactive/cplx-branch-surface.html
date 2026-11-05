@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tracking a root around a branch point</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px}@media(max-width:520px){canvas#cv{height:520px}}</style></head>
+<body><main>
+<div class="top" id="modes"><button type="button" class="tg" data-m="0" aria-pressed="true">Planes</button><button type="button" class="tg" data-m="1" aria-pressed="false">Surface</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A point circles the branch point; the tracked square root moves to the other branch after one turn and returns after two. The surface view lifts the two branches to sheets glued along the cut"></canvas></div>
+<div class="nav" id="nav"><button type="button" data-a="first" aria-label="Restart">↺</button><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+import * as V from './vendor/view3d.js';
+P.style();
+const { C } = P;
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || r <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const ring = (ctx, x, y, r, col, a = 1) => { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = C.bg; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.stroke(); ctx.restore() };
+const q = new URLSearchParams(location.search);
+let mode = q.get('view') === 'surface' ? 1 : 0, playing = true, th = 0, fade = 1, intro = 0;
+const TH0 = .35, LOOP = 4 * Math.PI, rho = t => 1 + .12 * Math.sin(3 * t);   // z = ρ(θ) e^{iθ}，θ 从 TH0 起走两圈
+const zAt = t => [rho(t) * Math.cos(t), rho(t) * Math.sin(t)];
+const wAt = t => { const r = Math.sqrt(rho(t)); return [r * Math.cos(t / 2), r * Math.sin(t / 2)] };
+const box = document.getElementById('modes');
+const setMode = m => { mode = m; fade = 0; box.querySelectorAll('button').forEach((b, j) => b.setAttribute('aria-pressed', String(j === m))); document.getElementById('cv').style.touchAction = m ? 'none' : 'pan-y'; cv.kick() };
+box.querySelectorAll('button').forEach((b, j) => b.onclick = () => setMode(j));
+const cam = V.camera({ az: -.75, el: .42 });
+const lab = P.labels(document.getElementById('stage'));
+let drag;
+function planes(ctx, w, h, t) {
+  const stack = w < 520, Wp = stack ? w : w / 2, Hp = stack ? h / 2 : h, s = Math.min(Wp / 3.3, Hp / 3.1);
+  const o1 = [Wp / 2, Hp / 2], o2 = stack ? [w / 2, Hp + Hp / 2] : [Wp + Wp / 2, h / 2];
+  const S1 = p => [o1[0] + p[0] * s, o1[1] - p[1] * s], S2 = p => [o2[0] + p[0] * s, o2[1] - p[1] * s];
+  for (const [S, o] of [[S1, o1], [S2, o2]]) { P.path(ctx, [S([-1.5, 0]), S([1.5, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -1.4]), S([0, 1.4])], { color: C.rule, width: 1 }) }
+  if (!stack) P.path(ctx, [[Wp, 16], [Wp, h - 16]], { color: C.faint, width: 1 }); else P.path(ctx, [[16, Hp], [w - 16, Hp]], { color: C.faint, width: 1 });
+  // 割线：负实轴
+  P.path(ctx, [S1([0, 0]), S1([-1.5, 0])], { color: C.mute, width: 2.4, dash: [6, 5], alpha: .7 });
+  const a = TH0 + t, n = 220, zt = [], w1 = [], w2 = [];
+  for (let k = 0; k <= n; k++) { const u = TH0 + t * k / n; zt.push(S1(zAt(u))); (u - TH0 < 2 * Math.PI ? w1 : w2).push(S2(wAt(u))) }
+  if (w2.length && w1.length) w2.unshift(w1[w1.length - 1]);
+  const full = []; for (let k = 0; k <= 160; k++) full.push(S1(zAt(TH0 + 2 * Math.PI * k / 160)));
+  P.path(ctx, full, { color: C.accent, width: 1.2, alpha: .18 });
+  P.path(ctx, zt.slice(Math.max(0, zt.length - 1 - Math.round(n * Math.min(t, 2 * Math.PI) / Math.max(t, 1e-6)))), { color: C.accent, width: 2.4, halo: 3 });
+  P.path(ctx, w1, { color: C.accent, width: 2.4, halo: 3 }); P.path(ctx, w2, { color: C.warm, width: 2.4, halo: 3 });
+  // 另一个根：灰色空心
+  const W = wAt(a), sheet2 = t >= 2 * Math.PI, col = sheet2 ? C.warm : C.accent;
+  ring(ctx, ...S2([-W[0], -W[1]]), 5, C.mute, .8);
+  ring(ctx, ...S2(wAt(TH0)), 7, C.blue, .9);
+  glow(ctx, ...S1([0, 0]), 11, C.warm, .2); P.dot(ctx, ...S1([0, 0]), { r: 4.5, color: C.warm });
+  const Z = S1(zAt(a)); glow(ctx, ...Z, 12, C.accent, .14); P.dot(ctx, ...Z, { r: 5.5, color: C.accent, scale: P.ease.back(intro) });
+  const Wp2 = S2(W); glow(ctx, ...Wp2, 12, col, .16); P.dot(ctx, ...Wp2, { r: 5.5, color: col, scale: P.ease.back(intro) });
+  lab.set('z', 'z', ...S1([1.35, 1.25]), { color: C.soft, size: 13 });
+  lab.set('w', 'w=\\sqrt z', ...S2([1.15, 1.25]), { color: C.soft, size: 13 });
+  lab.set('o', '0', ...S1([0, 0]), { color: C.warm, dx: 9, dy: 12, size: 12 });
+}
+function surface(ctx, w, h, t) {
+  cam.sc = Math.min(w, h) / 3.1; cam.ox = w / 2; cam.oy = h * .5;
+  const F = (r, u) => [r * Math.cos(u), r * Math.sin(u), Math.sqrt(r) * Math.cos(u / 2) * .8];
+  const q1 = V.mesh(F, .1, 1.2, 0, 2 * Math.PI, 5, 40), q2 = V.mesh(F, .1, 1.2, 2 * Math.PI, 4 * Math.PI, 5, 40);
+  const zb = -1.15, disk = []; for (let k = 0; k <= 96; k++) { const u = 2 * Math.PI * k / 96; disk.push([1.2 * Math.cos(u), 1.2 * Math.sin(u), zb]) }
+  V.line(ctx, cam, disk, { color: C.mute, width: 1, alpha: .5 });
+  V.line(ctx, cam, [[0, 0, zb], [-1.2, 0, zb]], { color: C.mute, width: 2, alpha: .6, dash: [6, 5] });
+  V.paint(ctx, cam, [{ quads: q1, color: C.accent, alpha: .22, edge: .2, edgeColor: C.accent }, { quads: q2, color: C.warm, alpha: .2, edge: .2, edgeColor: C.warm }]);
+  // 两叶沿负实轴交叉粘合
+  V.line(ctx, cam, [[0, 0, 0], [-1.2, 0, 0]], { color: C.soft, width: 2.2, alpha: .8 });
+  const a = TH0 + t, sheet2 = t >= 2 * Math.PI, trail = [];
+  for (let k = 0; k <= 70; k++) { const u = a - k * .05; if (u < TH0) break; trail.push(F(.85, u)) }
+  V.line(ctx, cam, trail, { color: sheet2 ? C.warm : C.accent, width: 2.8 });
+  const pb = [.85 * Math.cos(a), .85 * Math.sin(a), zb], ps = F(.85, a);
+  V.line(ctx, cam, [pb, ps], { color: C.mute, width: 1, alpha: .6, dash: [3, 4] });
+  const p1 = cam.P(pb), p2 = cam.P(ps); P.dot(ctx, p1[0], p1[1], { r: 4.5, color: C.blue });
+  glow(ctx, p2[0], p2[1], 12, sheet2 ? C.warm : C.accent, .16); P.dot(ctx, p2[0], p2[1], { r: 6, color: sheet2 ? C.warm : C.accent });
+}
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  intro = Math.min(1, intro + dt / 1.2); fade = Math.min(1, fade + dt / .45);
+  if (playing) th = (th + dt * .85) % (LOOP + 1.2);
+  if (playing && mode && !drag.active) cam.az += dt * .09;
+  const t = Math.min(LOOP, th) * P.ease.out(intro);
+  if (mode) surface(ctx, w, h, t); else planes(ctx, w, h, t);
+  lab.end();
+  if (fade < 1) { ctx.save(); ctx.fillStyle = P.rgba(C.bg, 1 - P.ease.out(fade)); ctx.fillRect(0, 0, w, h); ctx.restore() }
+  return playing || fade < 1 || intro < 1 || drag.active;
+});
+drag = V.drag(document.getElementById('cv'), cam, cv.kick, { onStart: () => {} });
+setMode(mode);
+const nav = document.getElementById('nav'), pb = nav.querySelector('.play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+nav.querySelector('[data-a=first]').onclick = () => { th = 0; cv.kick() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

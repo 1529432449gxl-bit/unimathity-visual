@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bayes estimate of a normal mean</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px}@media(max-width:520px){canvas#cv{height:330px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="lt"></span><input id="tau" type="range" min="0.25" max="2.5" step="0.005" value="0.8" aria-label="prior standard deviation"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Observations arrive one by one; the posterior narrows and its centre moves from the prior mean toward the sample mean"></canvas></div>
+<div class="legend" id="leg"></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('lt'), '\\tau');
+document.getElementById('leg').innerHTML = `<span class="key" style="--c:${C.blue}"></span><span id="k0"></span><span class="key dash" style="--c:${C.mute}"></span><span id="k1"></span><span class="key" style="--c:${C.accent}"></span><span id="k2"></span>`;
+K(document.getElementById('k0'), '\\pi(\\theta)'); K(document.getElementById('k1'), 'N\\!\\left(\\bar x,\\ \\sigma_0^2/n\\right)'); K(document.getElementById('k2'), '\\pi(\\theta\\mid\\mathbf x)');
+// 正态总体 N(θ, σ0²)，σ0 已知；先验 N(μ0, τ²)。后验 N(μ1, s1²)：1/s1² = n/σ0² + 1/τ²，μ1 = (n x̄/σ0² + μ0/τ²)·s1²
+const MU0 = -1, TRUE = 2, S0 = 2, NMAX = 40, XR = [-4.2, 5.2];
+const npdf = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s);
+const gauss = () => { let u = 0; while (!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random()) };
+const stl = document.getElementById('tau');
+const st = { playing: false, touched: false, clock: 0, intro: 0, data: [], shown: 0, tau: +stl.value, m1: MU0, s1: +stl.value, xb: MU0, sl: 4, la: 0, ymax: 1 };
+function reset() { st.data = Array.from({ length: NMAX }, () => TRUE + S0 * gauss()); st.shown = 0; st.clock = 0 }
+reset();
+const v = P.view([XR[0], XR[1], -.03, 1], { l: 16, r: 16, t: 16, b: 30 });
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+// 观测逐个到达：先慢后快
+const arrive = k => k <= 0 ? 0 : 1.2 * Math.pow(k, .78);
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.3); const I = P.ease.inOut(st.intro);
+  if (st.playing) { anim = true; st.clock += dt; while (st.shown < NMAX && st.clock >= arrive(st.shown + 1)) st.shown++; if (st.shown >= NMAX && st.clock > arrive(NMAX) + 3) reset() }
+  const n = st.shown, tau = +stl.value, xb = n ? st.data.slice(0, n).reduce((a, b) => a + b, 0) / n : MU0;
+  const prec = n / (S0 * S0) + 1 / (tau * tau), s1 = 1 / Math.sqrt(prec), m1 = (n * xb / (S0 * S0) + MU0 / (tau * tau)) * s1 * s1;
+  anim = P.spring(st, 'tau', tau, dt, { k: 80, z: .8 }) | P.spring(st, 'm1', m1, dt, { k: 60, z: .72 }) | P.spring(st, 's1', s1, dt, { k: 60, z: .8 }) | P.spring(st, 'xb', xb, dt, { k: 60, z: .75 })
+    | P.spring(st, 'sl', n ? S0 / Math.sqrt(n) : 4, dt, { k: 60, z: .8 }) | P.spring(st, 'la', n ? 1 : 0, dt, { k: 40, z: .9 }) | anim;
+  anim = P.spring(st, 'ymax', npdf(0, 0, Math.min(st.s1, st.tau)) * 1.15, dt, { k: 30, z: .9 }) | anim; v.b[3] = Math.max(.5, st.ymax);
+  P.axes(ctx, v, { x: true });
+  // 先验：浅蓝；样本信息：灰色虚线；后验：深蓝填充
+  P.path(ctx, P.curve(v, x => npdf(x, MU0, st.tau)), { color: C.blue, width: 2, alpha: .9 * I, progress: I });
+  P.path(ctx, P.curve(v, x => npdf(x, st.xb, st.sl)), { color: C.mute, width: 1.6, dash: [5, 4], alpha: st.la * I });
+  const post = P.curve(v, x => npdf(x, st.m1, st.s1));
+  P.fill(ctx, post, [[v.X(XR[0]), v.Y(0)], [v.X(XR[1]), v.Y(0)]], P.vgrad(ctx, v.Y(npdf(0, 0, st.s1)), v.Y(0), C.accent, .2 * I, .03));
+  P.path(ctx, post, { color: C.accent, width: 2.6, halo: 3, progress: I });
+  // 观测值：灰色小点落到轴上
+  for (let k = 0; k < n; k++) { const age = st.clock - arrive(k + 1), x = st.data[k]; if (x < XR[0] || x > XR[1]) continue;
+    const y = P.lerp(v.Y(v.b[3] * .9), v.Y(0) + 9, P.ease.out(P.seg(age, 0, .45))); P.dot(ctx, v.X(x), y, { r: 2.6, color: C.mute, ring: false, alpha: .45 + .55 * (1 - P.seg(age, .5, 3)) }) }
+  // 后验中心在先验均值与样本均值之间：橙色点与连线
+  const y0 = v.Y(0) + 9;
+  if (st.la > .01) P.path(ctx, [[v.X(MU0), y0], [v.X(st.xb), y0]], { color: C.warm, width: 2, alpha: .35 * st.la });
+  glow(ctx, v.X(st.m1), y0, 11, C.warm, .16 * I); P.dot(ctx, v.X(st.m1), y0, { r: 5, color: C.warm, scale: P.ease.back(P.seg(st.intro, .6, 1)) });
+  P.dot(ctx, v.X(MU0), y0, { r: 3.4, color: C.blue, alpha: I }); P.dot(ctx, v.X(st.xb), y0, { r: 3.4, color: C.mute, alpha: st.la });
+  lab.set('mu0', '\\mu_0', v.X(MU0), y0 + 15, { color: C.blue, size: 13, alpha: I });
+  lab.set('xb', '\\bar x', v.X(st.xb), y0 + 15, { color: C.mute, size: 13, alpha: st.la * P.clamp(Math.abs(v.X(st.xb) - v.X(st.m1)) / 14 - .5, 0, 1) });
+  lab.set('hb', '\\hat\\theta_B', v.X(st.m1), y0 + 15, { color: C.warm, size: 13, alpha: I * P.clamp(Math.abs(v.X(MU0) - v.X(st.m1)) / 18 - .5, 0, 1) });
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (st.shown >= NMAX) reset(); st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; reset(); play() };
+stl.addEventListener('input', () => { st.touched = true; stop(); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 900) } else stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

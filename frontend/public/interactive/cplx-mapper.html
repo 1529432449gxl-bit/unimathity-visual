@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Complex mapper</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px;touch-action:none}@media(max-width:520px){canvas#cv{height:560px}}</style></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Left: a grid in the z-plane. Right: the grid deforms continuously into its image in the w-plane"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const div = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d] };
+const glow = (ctx, x, y, r, col, a = .16) => { if (r <= 0 || a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const range = (a, b, n) => Array.from({ length: n + 1 }, (_, k) => a + (b - a) * k / n);
+const seg = (p0, p1, n = 120) => range(0, 1, n).map(t => [P.lerp(p0[0], p1[0], t), P.lerp(p0[1], p1[1], t)]);
+// 三个预设：网格（两族线）、映射、左侧视窗、探针路径
+const PRESETS = {
+  exp: { tex: 'w=e^{z}', f: z => { const e = Math.exp(z[0]); return [e * Math.cos(z[1]), e * Math.sin(z[1])] }, L: [-1.5, 1.5, -3.1, 3.1],
+    lines: () => [range(-1, 1, 8).map(x => ({ fam: 0, pts: seg([x, -2.8], [x, 2.8], 160) })), range(-2.8, 2.8, 16).map(y => ({ fam: 1, pts: seg([-1, y], [1, y], 80) }))].flat(),
+    probe: s => [.75 * Math.sin(s * .9), 2.4 * Math.sin(s * .5)] },
+  mobius: { tex: 'w=\\dfrac{z-i}{z+i}', f: z => div([z[0], z[1] - 1], [z[0], z[1] + 1]), L: [-2.7, 2.7, -.35, 3.1],
+    lines: () => [range(-2.4, 2.4, 12).map(x => ({ fam: 0, pts: seg([x, .02], [x, 3], 160) })), [.12, .28, .5, .8, 1.2, 1.8, 2.7].map(y => ({ fam: 1, pts: seg([-9, y], [9, y], 400) }))].flat(),
+    probe: s => [1.8 * Math.sin(s * .7), 1.05 + .75 * Math.sin(s * 1.1)] },
+  joukowski: { tex: 'w=\\tfrac12\\left(z+\\tfrac1z\\right)', f: z => { const r2 = z[0] * z[0] + z[1] * z[1]; return [(z[0] + z[0] / r2) / 2, (z[1] - z[1] / r2) / 2] }, L: [-2.7, 2.7, -2.4, 2.4],
+    lines: c => { const R = Math.hypot(c[0] + 1, c[1]), out = [];
+      for (const k of [1, 1.18, 1.42, 1.75, 2.2]) out.push({ fam: k === 1 ? 2 : 0, pts: range(0, 2 * Math.PI, 240).map(a => [c[0] + k * R * Math.cos(a), c[1] + k * R * Math.sin(a)]) });
+      for (let j = 0; j < 16; j++) { const a = Math.PI * 2 * j / 16 + Math.PI / 16; out.push({ fam: 1, pts: range(R, 2.2 * R, 50).map(r => [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]) }) }
+      return out },
+    probe: s => s },
+};
+const q = new URLSearchParams(location.search);
+let preset = PRESETS[q.get('preset')] ? q.get('preset') : 'exp';
+const st = { c: [.1, .12], cT: [.1, .12], box: null, probe: [0, 0] };
+let clock = 0, playing = true, intro = 0, grab = null, geo = null, trail = [];
+const box = document.getElementById('modes');
+for (const [key, m] of Object.entries(PRESETS)) { const b = document.createElement('button'); b.type = 'button'; K(b, m.tex); b.dataset.k = key; b.setAttribute('aria-pressed', String(key === preset));
+  b.onclick = () => { preset = key; clock = 0; intro = 0; trail = []; st.box = null; box.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.k === key))); cv.kick() }; box.appendChild(b) }
+const lab = P.labels(document.getElementById('stage'));
+const fit = (b, ox, oy, W, H, pad = 18) => { const s = Math.min((W - 2 * pad) / (b[1] - b[0]), (H - 2 * pad) / (b[3] - b[2])), cx = (b[0] + b[1]) / 2, cy = (b[2] + b[3]) / 2;
+  return { s, S: p => [ox + W / 2 + (p[0] - cx) * s, oy + H / 2 - (p[1] - cy) * s], inv: (x, y) => [cx + (x - ox - W / 2) / s, cy - (y - oy - H / 2) / s] } };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const m = PRESETS[preset]; intro = Math.min(1, intro + dt / 1.6);
+  if (playing) clock += dt;
+  // 变形进度：停一下 → 变形 → 停在像 → 回到原网格，循环
+  const T = 10, ph = clock % T, t = ph < 1.2 ? 0 : ph < 4.2 ? P.ease.inOut((ph - 1.2) / 3) : ph < 8 ? 1 : ph < 9.6 ? 1 - P.ease.inOut((ph - 8) / 1.6) : 0;
+  const mc = P.spring(st, 'c', st.cT, dt, grab === 'c' ? { k: 400, z: .9 } : { k: 80, z: .8 });
+  const c = st.c, R = Math.hypot(c[0] + 1, c[1]);
+  if (playing && !grab) st.probe = preset === 'joukowski' ? (a => [c[0] + 1.42 * R * Math.cos(a), c[1] + 1.42 * R * Math.sin(a)])(clock * .45) : m.probe(clock);
+  const F = z => { const p = m.f(z); return [P.lerp(z[0], p[0], t), P.lerp(z[1], p[1], t)] };
+  const stack = w < 520, Wp = stack ? w : w / 2, Hp = stack ? h / 2 : h, ox = stack ? 0 : Wp, oy = stack ? Hp : 0;
+  const lines = m.lines(c), A = fit(m.L, 0, 0, Wp, Hp);
+  // 右侧镜头：框住当前像（去掉极端值），缓动
+  const xs = [], ys = []; for (const l of lines) for (let k = 0; k < l.pts.length; k += 6) { const p = F(l.pts[k]); if (Math.hypot(...p) < 30) { xs.push(p[0]); ys.push(p[1]) } }
+  xs.sort((a, b) => a - b); ys.sort((a, b) => a - b); const pk = r => Math.floor(r * (xs.length - 1));
+  const bt = [xs[pk(.01)], xs[pk(.99)], ys[pk(.01)], ys[pk(.99)]], cx0 = (bt[0] + bt[1]) / 2, cy0 = (bt[2] + bt[3]) / 2, hw = Math.max(bt[1] - bt[0], 1) / 2 * 1.08, hh = Math.max(bt[3] - bt[2], 1) / 2 * 1.08;
+  const want = [cx0 - hw, cx0 + hw, cy0 - hh, cy0 + hh]; if (!st.box) st.box = want.slice();
+  const mb = P.approach(st, 'box', want, dt, 3.5), B = fit(st.box, ox, oy, Wp, Hp);
+  geo = { A, Wp, Hp, stack };
+  // 坐标轴
+  for (const [V, b] of [[A, m.L], [B, st.box]]) { P.path(ctx, [V.S([b[0] - 9, 0]), V.S([b[1] + 9, 0])], { color: C.rule, width: 1 }); P.path(ctx, [V.S([0, b[2] - 9]), V.S([0, b[3] + 9])], { color: C.rule, width: 1 }) }
+  if (!stack) P.path(ctx, [[Wp, 14], [Wp, h - 14]], { color: C.faint, width: 1 });
+  const col = [C.accent, C.blue, C.warm], ip = P.ease.out(intro);
+  // 左右两侧的网格线，入场时逐段画出
+  ctx.save(); ctx.beginPath(); ctx.rect(ox + 2, oy + 2, Wp - 4, Hp - 4); ctx.clip();
+  if (preset === 'joukowski') { const air = lines[0].pts.map(z => B.S(F(z))); ctx.save(); ctx.beginPath(); air.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.warm, .14); ctx.fill(); ctx.restore() }
+  for (const l of lines) { let run = [], prev = null; const fl = () => { if (run.length > 1) P.path(ctx, run, { color: col[l.fam], width: l.fam === 2 ? 2.6 : 1.4, alpha: l.fam === 2 ? 1 : .75, progress: ip, halo: l.fam === 2 ? 2 : 0 }); run = [] };
+    for (const z of l.pts) { const p = F(z); if (Math.hypot(...p) > 40) { fl(); prev = null; continue } const sp = B.S(p); if (prev && Math.hypot(sp[0] - prev[0], sp[1] - prev[1]) > 120) fl(); run.push(sp); prev = sp } fl() }
+  ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(2, 2, Wp - 4, Hp - 4); ctx.clip();
+  if (preset === 'joukowski') { const q0 = lines[0].pts.map(A.S); ctx.save(); ctx.beginPath(); q0.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fillStyle = P.rgba(C.warm, .1); ctx.fill(); ctx.restore() }
+  for (const l of lines) P.path(ctx, l.pts.map(A.S), { color: col[l.fam], width: l.fam === 2 ? 2.6 : 1.4, alpha: l.fam === 2 ? 1 : .75, progress: ip, halo: l.fam === 2 ? 2 : 0 });
+  ctx.restore();
+  if (preset === 'joukowski') { P.dot(ctx, ...A.S([-1, 0]), { r: 3.5, color: C.soft }); P.dot(ctx, ...A.S([1, 0]), { r: 3.5, color: C.soft });
+    const cc = A.S(c); glow(ctx, ...cc, grab === 'c' ? 15 : 12, C.warm, grab === 'c' ? .22 : .14); P.dot(ctx, ...cc, { r: 5, color: C.warm }) }
+  // 探针：左右同步，右侧留一段淡出的轨迹
+  const pz = st.probe, pw = F(pz), a = P.seg(intro, .5, 1);
+  trail.push(B.S(pw)); if (trail.length > 70) trail.shift();
+  if (playing || grab) for (let k = 1; k < trail.length; k++) P.path(ctx, [trail[k - 1], trail[k]], { color: C.warm, width: 2, alpha: a * k / trail.length * .6 });
+  glow(ctx, ...A.S(pz), 12, C.warm, .15 * a); P.dot(ctx, ...A.S(pz), { r: 5, color: C.warm, alpha: a });
+  glow(ctx, ...B.S(pw), 12, C.warm, .15 * a); P.dot(ctx, ...B.S(pw), { r: 5, color: C.warm, alpha: a });
+  lab.set('z', 'z', 14, 14, { color: C.soft, size: 13 }); lab.set('w', 'w', ox + 14, oy + 14, { color: C.soft, size: 13 });
+  lab.end();
+  return playing || intro < 1 || mb || mc || !!grab;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+const local = e => { const r = cvs.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] };
+cvs.addEventListener('pointerdown', e => { const [x, y] = local(e); if (x > geo.Wp || y > geo.Hp) return; const z = geo.A.inv(x, y);
+  grab = preset === 'joukowski' && Math.hypot(z[0] - st.c[0], z[1] - st.c[1]) < .4 ? 'c' : 'p'; playing = false; sync(); cvs.setPointerCapture(e.pointerId); move(e) });
+const move = e => { const [x, y] = local(e), z = geo.A.inv(x, y), m = PRESETS[preset];
+  if (grab === 'c') { const q = [P.clamp(z[0], 0, .3), z[1]], L = Math.hypot(...q), k = L > .35 ? .35 / L : 1; st.cT = [q[0] * k, q[1] * k] }
+  else if (preset === 'joukowski') { const R = Math.hypot(st.c[0] + 1, st.c[1]), d = [z[0] - st.c[0], z[1] - st.c[1]], L = Math.hypot(...d) || 1, r = P.clamp(L, 1.05 * R, 2.2 * R); st.probe = [st.c[0] + d[0] / L * r, st.c[1] + d[1] / L * r] }
+  else st.probe = [P.clamp(z[0], preset === 'exp' ? -1 : -2.4, preset === 'exp' ? 1 : 2.4), P.clamp(z[1], preset === 'exp' ? -2.8 : .05, preset === 'exp' ? 2.8 : 2.9)];
+  cv.kick() };
+cvs.addEventListener('pointermove', e => { if (grab) move(e) });
+cvs.addEventListener('pointerup', () => { grab = null; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

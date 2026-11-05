@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local rotation and scaling</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px;touch-action:none}@media(max-width:520px){canvas#cv{height:560px}}</style></head>
+<body><main>
+<div class="top" id="modes"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="A small grid near a point is only rotated and scaled by an analytic map; angles are preserved. Drag the point"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const glow = (ctx, x, y, r, col, a = .16) => { if (r <= 0 || a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const ex = z => { const e = Math.exp(z[0]); return [e * Math.cos(z[1]), e * Math.sin(z[1])] };
+const MAPS = {
+  sq: { tex: 'w=z^2', f: z => mul(z, z), df: z => [2 * z[0], 2 * z[1]], L: [-.2, 1.9, -.2, 1.6], path: s => [1.05 + .5 * Math.cos(s), .7 + .45 * Math.sin(s * 1.3)] },
+  exp: { tex: 'w=e^{z}', f: ex, df: ex, L: [-1.2, .9, -.3, 2.2], path: s => [-.15 + .5 * Math.cos(s), 1 + .7 * Math.sin(s * 1.2)] },
+  sin: { tex: 'w=\\sin z', f: z => [Math.sin(z[0]) * Math.cosh(z[1]), Math.cos(z[0]) * Math.sinh(z[1])], df: z => [Math.cos(z[0]) * Math.cosh(z[1]), -Math.sin(z[0]) * Math.sinh(z[1])], L: [-1.4, 1.4, .1, 1.6], path: s => [.75 * Math.cos(s), .85 + .45 * Math.sin(s * 1.4)] },
+};
+const q = new URLSearchParams(location.search);
+let map = MAPS[q.get('map')] ? q.get('map') : 'sq';
+const st = { z: MAPS[map].path(0), box: null };
+let clock = 0, playing = true, intro = 0, grab = false, geo;
+const box = document.getElementById('modes');
+for (const [key, m] of Object.entries(MAPS)) { const b = document.createElement('button'); b.type = 'button'; K(b, m.tex); b.dataset.k = key; b.setAttribute('aria-pressed', String(key === map));
+  b.onclick = () => { map = key; clock = 0; intro = 0; st.box = null; box.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.k === key))); cv.kick() }; box.appendChild(b) }
+const lab = P.labels(document.getElementById('stage'));
+const fit = (b, ox, oy, W, H, pad = 20) => { const s = Math.min((W - 2 * pad) / (b[1] - b[0]), (H - 2 * pad) / (b[3] - b[2])), cx = (b[0] + b[1]) / 2, cy = (b[2] + b[3]) / 2;
+  return { s, S: p => [ox + W / 2 + (p[0] - cx) * s, oy + H / 2 - (p[1] - cy) * s], inv: (x, y) => [cx + (x - ox - W / 2) / s, cy - (y - oy - H / 2) / s] } };
+const arrow = (ctx, a, b, color, width = 2.4) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); if (L < 3) return; const ux = dx / L, uy = dy / L, hh = Math.min(9, L * .4);
+  P.path(ctx, [a, [b[0] - ux * hh * .6, b[1] - uy * hh * .6]], { color, width, halo: 2 }); ctx.save(); ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(...b); ctx.lineTo(b[0] - ux * hh - uy * hh * .45, b[1] - uy * hh + ux * hh * .45); ctx.lineTo(b[0] - ux * hh + uy * hh * .45, b[1] - uy * hh - ux * hh * .45); ctx.closePath(); ctx.fill(); ctx.restore() };
+const corner = (ctx, o, a, b, color) => { const k = 11, ua = [a[0] - o[0], a[1] - o[1]], ub = [b[0] - o[0], b[1] - o[1]], la = Math.hypot(...ua) || 1, lb = Math.hypot(...ub) || 1;
+  const p1 = [o[0] + ua[0] / la * k, o[1] + ua[1] / la * k], p2 = [o[0] + ub[0] / lb * k, o[1] + ub[1] / lb * k]; P.path(ctx, [p1, [p1[0] + p2[0] - o[0], p1[1] + p2[1] - o[1]], p2], { color, width: 1.3 }) };
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const m = MAPS[map]; intro = Math.min(1, intro + dt / 1.4); const ip = P.ease.out(intro);
+  if (playing) clock += dt;
+  const zt = playing && !grab ? m.path(clock * .4) : st.zT || st.z, mz = P.approach(st, 'z', zt, dt, grab ? 20 : 8), z0 = st.z;
+  const stack = w < 520, Wp = stack ? w : w / 2, Hp = stack ? h / 2 : h, ox = stack ? 0 : Wp, oy = stack ? Hp : 0;
+  const A = fit(m.L, 0, 0, Wp, Hp);
+  // 背景对照：一块较大的网格及其像（淡色）
+  const NL = 8, gl = []; for (let i = 0; i <= NL; i++) { const x = m.L[0] + (m.L[1] - m.L[0]) * i / NL, y = m.L[2] + (m.L[3] - m.L[2]) * i / NL;
+    gl.push({ f: 0, pts: Array.from({ length: 81 }, (_, k) => [x, m.L[2] + (m.L[3] - m.L[2]) * k / 80]) }, { f: 1, pts: Array.from({ length: 81 }, (_, k) => [m.L[0] + (m.L[1] - m.L[0]) * k / 80, y]) }) }
+  let bx = [Infinity, -Infinity, Infinity, -Infinity]; for (const l of gl) for (const p of l.pts) { const v = m.f(p); bx = [Math.min(bx[0], v[0]), Math.max(bx[1], v[0]), Math.min(bx[2], v[1]), Math.max(bx[3], v[1])] }
+  const cx = (bx[0] + bx[1]) / 2, cy = (bx[2] + bx[3]) / 2, half = Math.max(bx[1] - bx[0], (bx[3] - bx[2]) * Wp / Hp) / 2 * 1.05;
+  const want = [cx - half, cx + half, cy - half * Hp / Wp, cy + half * Hp / Wp]; if (!st.box) st.box = want; const mb = P.approach(st, 'box', want, dt, 4);
+  const B = fit(st.box, ox, oy, Wp, Hp); geo = { A, Wp, Hp };
+  if (!stack) P.path(ctx, [[Wp, 14], [Wp, h - 14]], { color: C.faint, width: 1 });
+  for (const l of gl) { P.path(ctx, l.pts.map(A.S), { color: l.f ? C.blue : C.accent, width: 1, alpha: .22 * ip }); P.path(ctx, l.pts.map(p => B.S(m.f(p))), { color: l.f ? C.blue : C.accent, width: 1, alpha: .22 * ip }) }
+  // 小网格：z0 附近边长 2h 的方格，5×5 条线
+  const hS = 18 / A.s, cells = []; for (let k = -2; k <= 2; k++) { const u = k / 2 * hS;
+    cells.push({ f: 0, pts: Array.from({ length: 21 }, (_, j) => [z0[0] + u, z0[1] - hS + 2 * hS * j / 20]) }, { f: 1, pts: Array.from({ length: 21 }, (_, j) => [z0[0] - hS + 2 * hS * j / 20, z0[1] + u]) }) }
+  const pop = P.ease.back(P.seg(intro, .45, 1));
+  for (const [S, F] of [[A.S, p => p], [B.S, m.f]]) {
+    const c0 = S(F(z0)); glow(ctx, ...c0, 30 * pop, C.warm, .08);
+    for (const l of cells) P.path(ctx, l.pts.map(p => S(F(p))), { color: l.f ? C.blue : C.accent, width: 1.6, alpha: pop });
+  }
+  // 两个切向量：z 平面上的 1 与 i，w 平面上乘以 f'(z0)
+  const d = m.df(z0), Lz = 1.6 * hS, a1 = [z0[0] + Lz, z0[1]], a2 = [z0[0], z0[1] + Lz];
+  const w0 = m.f(z0), sc = Lz * A.s / (Math.hypot(...d) * B.s) * Math.min(1.8, Math.max(.7, Math.hypot(...d) * B.s / A.s));
+  const b1 = [w0[0] + d[0] * sc, w0[1] + d[1] * sc], b2 = [w0[0] - d[1] * sc, w0[1] + d[0] * sc];
+  if (pop > .2) { arrow(ctx, A.S(z0), A.S(a1), C.warm); arrow(ctx, A.S(z0), A.S(a2), C.warm); corner(ctx, A.S(z0), A.S(a1), A.S(a2), C.warm);
+    arrow(ctx, B.S(w0), B.S(b1), C.warm); arrow(ctx, B.S(w0), B.S(b2), C.warm); corner(ctx, B.S(w0), B.S(b1), B.S(b2), C.warm) }
+  P.dot(ctx, ...A.S(z0), { r: 5.5, color: C.warm, scale: pop }); P.dot(ctx, ...B.S(w0), { r: 5.5, color: C.warm, scale: pop });
+  lab.set('z0', 'z_0', ...A.S(z0), { color: C.warm, dx: -16, dy: 16, alpha: pop });
+  lab.set('w0', 'f(z_0)', ...B.S(w0), { color: C.warm, dx: -26, dy: 16, alpha: pop });
+  lab.set('z', 'z', 14, 14, { color: C.soft, size: 13 }); lab.set('w', 'w', ox + 14, oy + 14, { color: C.soft, size: 13 });
+  lab.end();
+  return playing || intro < 1 || mz || mb || grab;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; st.zT = null; sync(); cv.kick() };
+const place = e => { const r = cvs.getBoundingClientRect(), m = MAPS[map], z = geo.A.inv(e.clientX - r.left, e.clientY - r.top), pad = .2;
+  let q = [P.clamp(z[0], m.L[0] + pad, m.L[1] - pad), P.clamp(z[1], m.L[2] + pad, m.L[3] - pad)]; const L = Math.hypot(...q); if (map === 'sq' && L < .4) q = L ? [q[0] / L * .4, q[1] / L * .4] : [.4, 0]; st.zT = q; cv.kick() };
+cvs.addEventListener('pointerdown', e => { const r = cvs.getBoundingClientRect(); if (e.clientX - r.left > geo.Wp || e.clientY - r.top > geo.Hp) return; grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
+cvs.addEventListener('pointermove', e => { if (grab) place(e) });
+cvs.addEventListener('pointerup', () => { grab = false; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

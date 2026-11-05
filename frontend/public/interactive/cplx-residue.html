@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Residue: only the minus-one power survives</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px}@media(max-width:520px){canvas#cv{height:560px}}</style></head>
+<body><main>
+<div class="fx" id="fx"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Integrating each Laurent term around a small circle: every power closes up except the minus-one power, which leaves a gap of two pi i"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script src="vendor/steady.js"></script>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style(); document.head.insertAdjacentHTML('beforeend', '<style>.fx .katex-display{margin:0}</style>');
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || r <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+// 沿 |z-z0|=1 正向一周，∫(z-z0)^k dz 的累积值：k≠-1 时为 (e^{i(k+1)t}-1)/(k+1)，k=-1 时为 i t
+const ORDER = [0, 1, 2, -2, -3, -1];
+const acc = (k, t) => k === -1 ? [0, t] : [(Math.cos((k + 1) * t) - 1) / (k + 1), Math.sin((k + 1) * t) / (k + 1)];
+const STEPS = ORDER.length + 1;   // 最后一步：汇总
+const tex = i => i < ORDER.length
+  ? (ORDER[i] === -1 ? '\\oint_{|z-z_0|=r} c_{-1}(z-z_0)^{-1}\\,dz=2\\pi i\\,c_{-1}' : `\\oint_{|z-z_0|=r} c_{${ORDER[i]}}(z-z_0)^{${ORDER[i]}}\\,dz=0`)
+  : '\\oint_{|z-z_0|=r} f(z)\\,dz=\\sum_{k}c_k\\oint_{|z-z_0|=r}(z-z_0)^k\\,dz=2\\pi i\\,c_{-1}';
+const fx = document.getElementById('fx');
+const formula = i => { fx.innerHTML = '<div></div>'; K(fx.children[0], tex(i)) };
+const lab = P.labels(document.getElementById('stage'));
+let player, intro = 0;
+function arrowHead(ctx, a, b, color, alpha = 1) { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, h = 9;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(b[0] + ux * 3, b[1] + uy * 3); ctx.lineTo(b[0] - ux * h - uy * h * .45, b[1] - uy * h + ux * h * .45); ctx.lineTo(b[0] - ux * h + uy * h * .45, b[1] - uy * h - ux * h * .45); ctx.closePath(); ctx.fill(); ctx.restore() }
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = player.tick(dt); intro = Math.min(1, intro + dt / 1.2);
+  const i = player.i, p = player.p, final = i >= ORDER.length;
+  const stack = w < 520, Wp = stack ? w : w * .42, Hp = stack ? h * .36 : h;
+  // 左：z 平面，小圆 |z-z0|=r 与动点
+  const s1 = Math.min(Wp, Hp) / 3.2, o1 = [Wp / 2, Hp / 2], S1 = q => [o1[0] + q[0] * s1, o1[1] - q[1] * s1];
+  const circ = []; for (let k = 0; k <= 160; k++) { const a = 2 * Math.PI * k / 160; circ.push(S1([Math.cos(a), Math.sin(a)])) }
+  ctx.save(); ctx.beginPath(); circ.forEach((q, k) => k ? ctx.lineTo(...q) : ctx.moveTo(...q)); ctx.fillStyle = P.rgba(C.blue, .07); ctx.fill(); ctx.restore();
+  P.path(ctx, circ, { color: C.accent, width: 2.2, alpha: .35 });
+  const T = final ? 2 * Math.PI : 2 * Math.PI * P.ease.inOut(p);
+  P.path(ctx, circ.slice(0, Math.round(160 * T / (2 * Math.PI)) + 1), { color: C.accent, width: 2.6, halo: 3, progress: intro });
+  arrowHead(ctx, S1([Math.cos(1.4), Math.sin(1.4)]), S1([Math.cos(1.5), Math.sin(1.5)]), C.accent, .7);
+  P.dot(ctx, ...S1([0, 0]), { r: 4, color: C.warm });
+  const zt = S1([Math.cos(T), Math.sin(T)]); glow(ctx, ...zt, 12, C.accent, .14); P.dot(ctx, ...zt, { r: 5, color: C.accent, scale: P.ease.back(intro) });
+  lab.set('z0', 'z_0', ...S1([0, 0]), { color: C.warm, dx: 12, dy: 12, size: 13 });
+  lab.set('z', 'z', 14, 14, { color: C.soft, size: 13 });
+  // 右：累积积分平面
+  const ox = stack ? 0 : Wp, oy = stack ? Hp : 0, W2 = stack ? w : w - Wp, H2 = stack ? h - Hp : h;
+  const B = [-2.6, 2.6, -2.3, 6.9], s2 = Math.min((W2 - 24) / (B[1] - B[0]), (H2 - 20) / (B[3] - B[2]));
+  const S2 = q => [ox + W2 / 2 + q[0] * s2, oy + H2 - 10 - (q[1] - B[2]) * s2];
+  if (!stack) P.path(ctx, [[Wp, 16], [Wp, h - 16]], { color: C.faint, width: 1 });
+  P.path(ctx, [S2([B[0], 0]), S2([B[1], 0])], { color: C.rule, width: 1 }); P.path(ctx, [S2([0, B[2]]), S2([0, B[3] - .2])], { color: C.rule, width: 1 });
+  const traj = (k, t1) => { const n = Math.max(12, Math.round(120 * t1 / (2 * Math.PI) * Math.max(1, Math.abs(k + 1)))), out = []; for (let j = 0; j <= n; j++) out.push(S2(acc(k, t1 * j / n))); return out };
+  ORDER.forEach((k, j) => {
+    if (j > i || (j === i && !final && false)) return;
+    const cur = j === i && !final, t1 = cur ? T : 2 * Math.PI, res = k === -1;
+    const col = res ? C.warm : C.accent, alpha = final ? (res ? 1 : .28) : cur ? 1 : .22;
+    P.path(ctx, traj(k, t1), { color: col, width: res ? 3 : cur ? 2.4 : 1.6, alpha, halo: cur || (final && res) ? 3 : 0 });
+    if (cur) { const e = S2(acc(k, t1)); glow(ctx, ...e, 12, col, .16); P.dot(ctx, ...e, { r: 5, color: col }) }
+  });
+  P.dot(ctx, ...S2([0, 0]), { r: 4, color: C.soft });
+  // 负一次幂：终点与起点之间的缺口
+  const showGap = (i === ORDER.length - 1 && p > .97) || final;
+  if (showGap) { const top = S2([0, 2 * Math.PI]); glow(ctx, ...top, 14, C.warm, .18); P.dot(ctx, ...top, { r: 5.5, color: C.warm });
+    lab.set('g', '2\\pi i\\,c_{-1}', top[0] + 40, top[1], { color: C.warm, size: 14 }) }
+  lab.set('o', '0', ...S2([0, 0]), { color: C.soft, dx: -10, dy: 12, size: 12 });
+  lab.set('I', '\\textstyle\\int_{\\gamma_t}', ox + 22, oy + 18, { color: C.soft, size: 13 });
+  lab.end();
+  return moving || intro < 1;
+});
+player = P.stepper(document.getElementById('nav'), { count: STEPS, dur: 2.6, hold: .8, kick: cv.kick, onChange: s => formula(s.i) });
+Steady.sweep([fx], STEPS, formula, () => formula(0));
+formula(0); player.playing = true; player.go(0, true); player.playing = true; player.wait = .8; cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

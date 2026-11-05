@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Likelihood function</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:pan-y}@media(max-width:520px){canvas#cv{height:330px}}</style></head>
+<body><main>
+<div class="controls"><span class="n" id="ln"></span><input id="n" type="range" min="0" max="1" step="0.001" value="0.15" aria-label="sample size"></div>
+<div class="controls"><span class="n" id="lh"></span><input id="h" type="range" min="0.15" max="0.85" step="0.001" value="0.3" aria-label="sample proportion"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="With the data fixed, the likelihood as a function of p peaks at the sample proportion and sharpens as the sample grows; drag p along the axis"></canvas></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
+K(document.getElementById('ln'), 'n'); K(document.getElementById('lh'), '\\bar x');
+const NMIN = 4, NMAX = 240, nOf = u => NMIN * Math.pow(NMAX / NMIN, u);
+const sn = document.getElementById('n'), sh = document.getElementById('h');
+// 归一化似然 L(p)/L(p̂)，对数形式计算避免下溢
+const L = (p, n, h) => p <= 0 || p >= 1 ? 0 : Math.exp(n * (h * Math.log(p / h) + (1 - h) * Math.log((1 - p) / (1 - h))));
+const st = { n: nOf(+sn.value), h: +sh.value, p: .55, playing: false, touched: false, clock: 0, intro: 0, drag: false };
+const v = P.view([0, 1, -.04, 1.12], { l: 18, r: 18, t: 54, b: 34 });
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+let pTarget = .55;
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  v.w = w; v.h = h;
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.4); const I = P.ease.inOut(st.intro);
+  if (st.playing) { anim = true; st.clock += dt; sn.value = ((1 - Math.cos(st.clock * .42)) / 2).toFixed(4) }
+  anim = P.spring(st, 'n', nOf(+sn.value), dt, { k: 70, z: .8 }) | P.spring(st, 'h', +sh.value, dt, { k: 70, z: .8 }) | P.spring(st, 'p', pTarget, dt, { k: 140, z: .7 }) | anim;
+  const n = st.n, hh = st.h, f = p => L(p, n, hh);
+  // 顶部：样本的组成（成功深蓝、失败浅色），组数增多时分隔线淡去
+  const bx0 = v.X(0), bx1 = v.X(1), by = 18, bh = 12, split = P.lerp(bx0, bx1, hh);
+  ctx.save(); ctx.globalAlpha = I; ctx.beginPath(); ctx.roundRect(bx0, by, bx1 - bx0, bh, 6); ctx.clip();
+  ctx.fillStyle = P.rgba(C.accent, .85); ctx.fillRect(bx0, by, split - bx0, bh); ctx.fillStyle = P.rgba(C.blue, .18); ctx.fillRect(split, by, bx1 - split, bh);
+  const cells = Math.round(n), a = P.clamp(1 - (n - 12) / 50, 0, 1);
+  if (a > 0) { ctx.strokeStyle = P.rgba(C.bg, .9 * a); ctx.lineWidth = 1.2; for (let k = 1; k < cells; k++) { const x = P.lerp(bx0, bx1, k / n); ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x, by + bh); ctx.stroke() } }
+  ctx.restore();
+  P.axes(ctx, v, { x: true, ticks: [0, 1] });
+  const pts = P.curve(v, f, 0, 1, 600);
+  P.fill(ctx, pts, [[v.X(0), v.Y(0)], [v.X(1), v.Y(0)]], P.vgrad(ctx, v.Y(1), v.Y(0), C.accent, .16 * I, .02));
+  P.path(ctx, pts, { color: C.accent, width: 2.6, halo: 3, progress: I });
+  // 最大值点 p̂
+  const xm = v.X(hh), ym = v.Y(1);
+  P.path(ctx, [[xm, v.Y(0)], [xm, ym]], { color: C.warm, width: 1.2, dash: [3, 4], alpha: .8 * I });
+  glow(ctx, xm, ym, 13, C.warm, .14 * I); P.dot(ctx, xm, ym, { r: 5, color: C.warm, scale: P.ease.back(P.seg(st.intro, .6, 1)) });
+  // 可拖动的参数 p：轴上的拖动柄与曲线上的对应点
+  const xp = v.X(st.p), yp = v.Y(f(st.p));
+  P.path(ctx, [[xp, v.Y(0)], [xp, yp]], { color: C.blue, width: 1.4, alpha: .85 * I });
+  glow(ctx, xp, yp, 10, C.blue, .14 * I); P.dot(ctx, xp, yp, { r: 4.2, color: C.blue, alpha: I });
+  P.grip(ctx, xp, v.Y(0), { color: C.blue, s: st.drag ? 1.15 : 1, w: 9, h: 20 });
+  lab.set('ph', '\\hat p', xm, v.Y(0) + 22, { color: C.warm, alpha: I });
+  lab.set('p', 'p', xp, v.Y(0) + 22, { color: C.blue, alpha: I * P.clamp(Math.abs(xp - xm) / 18 - .4, 0, 1) });
+  lab.set('L', 'L(p)', v.X(.97) - 14, v.Y(1.04), { color: C.accent, size: 13, alpha: I });
+  lab.end();
+  return anim || st.drag;
+});
+const playBtn = document.querySelector('#play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.clock = Math.acos(P.clamp(1 - 2 * +sn.value, -1, 1)) / .42; st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+for (const el of [sn, sh]) el.addEventListener('input', () => { st.touched = true; stop(); cv.kick() });
+const setP = e => { const r = cvEl.getBoundingClientRect(); pTarget = P.clamp((e.clientX - r.left - v.pad.l) / (r.width - v.pad.l - v.pad.r), .01, .99); cv.kick() };
+cvEl.addEventListener('pointerdown', e => { st.touched = true; stop(); st.drag = true; cvEl.setPointerCapture(e.pointerId); setP(e) });
+cvEl.addEventListener('pointermove', e => { if (st.drag) setP(e) });
+cvEl.addEventListener('pointerup', () => { st.drag = false; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 900) } else stop() }, { threshold: .4 }).observe(cvEl);
+const q = new URLSearchParams(location.search);
+if (q.get('h')) sh.value = q.get('h');
+if (q.get('n')) sn.value = P.clamp(Math.log(+q.get('n') / NMIN) / Math.log(NMAX / NMIN), 0, 1);
+st.h = +sh.value; st.n = nOf(+sn.value);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
