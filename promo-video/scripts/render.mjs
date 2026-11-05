@@ -6,6 +6,10 @@ import fs from 'node:fs';
 const args = process.argv.slice(2);
 const pos = args.filter((a) => !a.startsWith('--'));
 const extra = args.filter((a) => a.startsWith('--'));
+if (!fs.existsSync('public/music.wav')) {
+  console.log('> 未找到 public/music.wav，先合成配乐');
+  spawnSync('node', ['scripts/make-music.mjs'], {stdio: 'inherit'});
+}
 const id = pos[0] ?? 'UnimathityPromo';
 const out = pos[1] ?? `out/${id}.mp4`;
 const candidates = [process.env.REMOTION_BROWSER, '/opt/pw-browsers/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell'];

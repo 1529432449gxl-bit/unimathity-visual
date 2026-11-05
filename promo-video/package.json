@@ -6,7 +6,7 @@
   "scripts": {
     "photos": "node scripts/scan-photos.mjs",
     "music": "node scripts/make-music.mjs",
-    "studio": "node scripts/scan-photos.mjs && remotion studio",
+    "studio": "node scripts/scan-photos.mjs && node -e \"require('fs').existsSync('public/music.wav')||require('child_process').execSync('node scripts/make-music.mjs',{stdio:'inherit'})\" && remotion studio",
     "render": "node scripts/scan-photos.mjs && node scripts/render.mjs",
     "list": "remotion compositions"
   },
