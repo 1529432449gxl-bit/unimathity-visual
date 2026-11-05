@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coset decomposition</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:350px}@media(max-width:520px){canvas#cv{height:300px}}.fx .katex-display{margin:0}.top .tg{min-width:64px}</style></head>
+<body><main>
+<div class="top" id="subs"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="The subgroup H is carried by left multiplication onto its cosets, which have equal size, do not overlap and fill the whole group"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d = true) => katex.render(s, el, { throwOnError: false, displayMode: d });
+// 二面体群 D_n（n=6，阶 12）：元素 r^k s^f 记作 {k,f}；s r^k = r^{-k} s。
+const n = 6, G = [];
+for (let f = 0; f < 2; f++) for (let k = 0; k < n; k++) G.push({ k, f, i: f * n + k });
+const at = (k, f) => G[f * n + ((k % n) + n) % n];
+const mul = (a, b) => at(a.k + (a.f ? -b.k : b.k), a.f ^ b.f);
+const tex = g => g.f ? (g.k === 0 ? 's' : g.k === 1 ? 'rs' : `r^{${g.k}}s`) : (g.k === 0 ? 'e' : g.k === 1 ? 'r' : `r^{${g.k}}`);
+const gen = gs => { const S = [G[0]], seen = new Set([0]); for (let q = 0; q < S.length; q++) for (const g of gs) { const x = mul(S[q], g); if (!seen.has(x.i)) { seen.add(x.i); S.push(x) } } return S };
+const SUBS = [{ tex: '\\langle r^2\\rangle', H: gen([at(2, 0)]) }, { tex: '\\langle s\\rangle', H: gen([at(0, 1)]) }, { tex: '\\langle r^3,s\\rangle', H: gen([at(3, 0), at(0, 1)]) }];
+// H 的元素按 e 在前排好，左乘 g 时列与列一一对应（h ↦ gh 是双射）
+let H, cosets, cosetOf;
+function build(si) {
+  H = SUBS[si].H.slice().sort((a, b) => a.i - b.i); cosets = []; cosetOf = new Array(G.length).fill(-1);
+  for (const g of G) if (cosetOf[g.i] < 0) { const c = { g, els: H.map(h => mul(g, h)) }; c.els.forEach(x => cosetOf[x.i] = cosets.length); cosets.push(c) }
+}
+const fx = document.getElementById('fx'); fx.innerHTML = '<div></div><div></div>';
+const setTex = (a, b) => { K(fx.children[0], a); K(fx.children[1], b) };
+const setOf = els => `\\{${els.map(tex).join(',')}\\}`;
+function formula(i) {
+  const m = cosets.length, st = SUBS[cur].tex;
+  if (i === 0) setTex('G=D_6=\\{r^k,\\ r^k s\\}', '|G|=12');
+  else if (i === 1) setTex(`H=${st}`, `H=${setOf(H)}`);
+  else if (i <= m) { const c = cosets[i - 1]; setTex('gH=\\{gh\\mid h\\in H\\}', `${tex(c.g)}H=${setOf(c.els)}`) }
+  else setTex('|G|=[G:H]\\,|H|', `12=${m}\\times ${H.length}`);
+}
+// ---------- 页面状态 ----------
+let cur = 0; build(0);
+const subsEl = document.getElementById('subs');
+SUBS.forEach((s, j) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tg'; b.setAttribute('aria-pressed', String(j === 0)); K(b, s.tex, false); b.onclick = () => choose(j); subsEl.appendChild(b) });
+const lab = P.labels(document.getElementById('stage'));
+const vis = G.map(() => ({ c: [122, 124, 132], r: 4 }));          // 环上每个元素的显示颜色与半径（缓动）
+const hexRGB = h => { const v = parseInt(h.slice(1), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255] };
+const COL = { idle: hexRGB('#b9bbc2'), H: hexRGB(C.accent), cur: hexRGB(C.warm), done: hexRGB(C.blue) };
+let intro = 0, st, cyc = 0;
+const cvEl = document.getElementById('cv');
+const bez = (a, c, b, t) => [(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * c[0] + t * t * b[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * c[1] + t * t * b[1]];
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  intro = Math.min(1, intro + dt / 1.2); const I = P.ease.inOut(intro);
+  let anim = st.tick(dt) || intro < 1;
+  const i = st.i, p = st.p, m = cosets.length, fin = i === m + 1, ci = i >= 1 && i <= m ? i - 1 : -1;
+  if (fin) { cyc += dt; anim = true } else cyc = 0;
+  const hl = fin && p >= 1 ? Math.floor(cyc / 1.3) % m : -1;
+  // 布局：左侧双圈（内圈旋转 r^k，外圈反射 r^k s），右侧陪集板（每行一个陪集）
+  const narrow = w < 520, R = Math.min(h * .37, w * (narrow ? .21 : .2)), cy = h / 2 + 2;
+  const colW0 = narrow ? 26 : 36, gapB = narrow ? 52 : 96, boardW = 40 + colW0 * 4 + 52;
+  const total = 2 * R + 40 + gapB + boardW, cx = Math.max(R + 26, (w - total) / 2 + R + 20);
+  const pos = g => { const a = -Math.PI / 2 + 2 * Math.PI * g.k / n, r = g.f ? R : R * .56; return [cx + r * Math.cos(a), cy + r * Math.sin(a)] };
+  const bx0 = cx + R + gapB, bw = w - bx0 - 58, rowH = Math.min(40, (h - 50) / m), by0 = cy - rowH * (m - 1) / 2;
+  const colW = Math.min(colW0, bw / (H.length + .3)), slot = (r, c) => [bx0 + colW * (c + .5), by0 + r * rowH];
+  // 结构细线：两圈与对应的径向连线
+  ctx.save(); ctx.globalAlpha = I; ctx.strokeStyle = C.faint; ctx.lineWidth = 1;
+  for (const r of [R * .56, R]) { ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * I); ctx.stroke() }
+  ctx.restore();
+  // 元素颜色目标
+  for (const g of G) {
+    const c = cosetOf[g.i]; let tg = 'idle';
+    if (i >= 1) { if (c === 0) tg = (ci === 0 && p < .55) ? 'idle' : (fin && hl === 0 ? 'cur' : 'H'); else if (fin) tg = c === hl ? 'cur' : 'done'; else if (c < ci) tg = 'done'; else if (c === ci && p > .55) tg = 'cur' }
+    anim = P.approach(vis[g.i], 'c', COL[tg], dt, 7) | anim; anim = P.approach(vis[g.i], 'r', tg === 'idle' ? 4 : 6.5, dt, 9) | anim;
+  }
+  // 代表元：橙色圆环弹出
+  if (ci > 0) { const [x, y] = pos(cosets[ci].g), s = P.ease.back(P.seg(p, 0, .22));
+    ctx.save(); ctx.strokeStyle = C.hl; ctx.lineWidth = 2; ctx.globalAlpha = .9; ctx.beginPath(); ctx.arc(x, y, Math.max(0, 12 * s), 0, 7); ctx.stroke(); ctx.restore() }
+  // 环上元素
+  G.forEach((g, k) => { const [x, y] = pos(g), a = P.seg(I, k / 24, k / 24 + .5); const c = vis[g.i].c;
+    P.dot(ctx, x, y, { r: vis[g.i].r, color: `rgb(${c.map(Math.round)})`, scale: P.ease.back(a) }) });
+  // 陪集板：已完成的行
+  const rowCol = r => r === hl ? C.warm : r === 0 ? C.accent : (r === ci ? C.warm : C.blue);
+  for (let r = 0; r < m; r++) {
+    const shown = fin || r < ci || (r === ci && false); if (!shown && !(fin)) continue;
+    ctx.save(); ctx.globalAlpha = r === hl ? .18 : .1; ctx.fillStyle = rowCol(r); const [x0, y0] = slot(r, 0);
+    ctx.beginPath(); ctx.roundRect(x0 - colW / 2 + 2, y0 - rowH / 2 + 4, colW * H.length - 4, rowH - 8, 10); ctx.fill(); ctx.restore();
+    for (let c = 0; c < H.length; c++) P.dot(ctx, ...slot(r, c), { r: 6, color: rowCol(r) });
+  }
+  // 当前一步：H 的各元素经左乘飞到 gH，再落到板上对应行
+  if (ci >= 0) {
+    const g = cosets[ci].g, col = ci === 0 ? C.accent : C.warm;
+    if (ci > 0 || true) { const [x0, y0] = slot(ci, 0); const a = P.seg(p, .6, .9);
+      ctx.save(); ctx.globalAlpha = .1 * a; ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(x0 - colW / 2 + 2, y0 - rowH / 2 + 4, colW * H.length - 4, rowH - 8, 10); ctx.fill(); ctx.restore() }
+    H.forEach((hh, j) => {
+      const A = pos(hh), M = pos(mul(g, hh)), B = slot(ci, j);
+      const t1 = P.ease.inOut(P.seg(p, .14 + .04 * j, .55)), t2 = P.ease.inOut(P.seg(p, .58 + .03 * j, .92));
+      const c1 = [(A[0] + M[0]) / 2 + (cy - (A[1] + M[1]) / 2) * .35, (A[1] + M[1]) / 2 - (cx - (A[0] + M[0]) / 2) * .35 - 10];
+      const c2 = [(M[0] + B[0]) / 2, Math.min(M[1], B[1]) - 40];
+      const at2 = t => t < 1 ? bez(A, c1, M, t) : M;
+      const where = (u, v) => v > 0 ? bez(M, c2, B, v) : at2(u);
+      if (t1 <= 0) return;
+      // 运动拖尾
+      const trail = []; for (let q = 0; q <= 8; q++) { const d = q * .025; trail.push(where(Math.max(0, t1 - (t2 > 0 ? 0 : d)), Math.max(0, t2 - d))) }
+      P.path(ctx, trail.reverse(), { color: col, width: 3, alpha: .22 * (1 - (t2 >= 1 ? 1 : 0)) });
+      P.dot(ctx, ...where(t1, t2), { r: 6, color: col });
+    });
+  }
+  // 标签
+  G.forEach(g => { const [x, y] = pos(g), a = -Math.PI / 2 + 2 * Math.PI * g.k / n, o = g.f ? 17 : 15;
+    lab.set('g' + g.i, tex(g), x + o * Math.cos(a) * (g.f ? 1 : -1), y + o * Math.sin(a) * (g.f ? 1 : -1), { color: C.soft, size: 12, alpha: I }) });
+  for (let r = 0; r < 6; r++) {
+    const vis_ = r < m && (fin || r < ci || (r === ci && p > .6)); const [x0, y0] = r < m ? slot(r, 0) : [0, 0];
+    lab.set('row' + r, r < m ? (r === 0 ? 'H' : `${tex(cosets[r].g)}H`) : '', x0 - colW / 2 - 22, y0, { color: r < m ? rowCol(r) : C.soft, size: 13, alpha: vis_ ? 1 : 0 });
+  }
+  const [lx, ly] = slot(0, 0), [rx, ry] = slot(m - 1, H.length - 1);
+  lab.set('hH', '|H|', (lx + rx) / 2, ly - rowH / 2 - 8, { color: C.mute, size: 13, alpha: fin ? P.seg(p, .2, .6) : 0 });
+  lab.set('gH', '[G:H]', rx + colW / 2 + 30, (ly + ry) / 2, { color: C.mute, size: 13, alpha: fin ? P.seg(p, .4, .8) : 0 });
+  if (fin) { const a = P.seg(p, .2, .8);
+    P.path(ctx, [[lx - colW / 2 + 4, ly - rowH / 2 + 2], [rx + colW / 2 - 4, ly - rowH / 2 + 2]], { color: C.mute, width: 1.2, alpha: a, progress: a });
+    P.path(ctx, [[rx + colW / 2 + 2, ly - rowH / 2 + 6], [rx + colW / 2 + 2, ry + rowH / 2 - 6]], { color: C.mute, width: 1.2, alpha: a, progress: a }) }
+  lab.end();
+  return anim;
+});
+let touched = false;
+st = P.stepper(document.getElementById('nav'), { count: cosets.length + 2, dur: 2.1, hold: .8, kick: cv.kick, onChange: s => formula(s.i) });
+document.getElementById('nav').addEventListener('click', () => { touched = true });
+function lock() { let mx = 0; const keep = cur; for (let j = 0; j < SUBS.length; j++) { cur = j; build(j); for (let i = 0; i < cosets.length + 2; i++) { formula(i); mx = Math.max(mx, fx.getBoundingClientRect().height) } } cur = keep; build(keep); fx.style.minHeight = Math.ceil(mx) + 'px' }
+function choose(j) { touched = true; cur = j; build(j); [...subsEl.children].forEach((b, k) => b.setAttribute('aria-pressed', String(k === j))); st.stop(); st.reset(cosets.length + 2); formula(0); cv.kick(); setTimeout(() => { if (!st.playing) subsEl.parentElement.querySelector('.play').click() }, 400) }
+lock(); formula(0); document.fonts.ready.then(() => { lock(); formula(st.i) });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) { document.querySelector('.play').click(); touched = false } }, 1300) } else st.stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

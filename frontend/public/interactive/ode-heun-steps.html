@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Improved Euler method</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:300px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="0" aria-pressed="true">Improved Euler</button><button type="button" class="tg" data-m="1" aria-pressed="false">Euler</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Step by step: predict with the left slope, take the slope at the predicted point, average the two slopes, correct"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 算例 y'=y cos x，y(0)=1，精确解 y=e^{sin x}：解曲线有明显的起伏，步长 h=0.8 走 8 步。
+const f = (x, y) => y * Math.cos(x), ex = x => Math.exp(Math.sin(x)), H = .8, N = 8;
+const ALL = [-.35, 6.75, -.1, 3.05];
+let mode = 0, S = [];
+function build() {
+  S = [{ x: 0, y: 1 }];
+  for (let n = 0; n < N; n++) {
+    const { x, y } = S[n], k1 = f(x, y), yp = y + H * k1, k2 = f(x + H, yp);
+    S.push({ x: x + H, y: mode ? yp : y + H / 2 * (k1 + k2), k1, yp, k2 });
+  }
+}
+const v = P.view(ALL, { l: 16, r: 16, t: 16, b: 22 });
+function frameFor(i) {
+  if (i === 0) return ALL;
+  const a = S[i - 1], b = S[i], x0 = a.x - .85 * H, x1 = b.x + .85 * H;
+  let lo = Math.min(a.y, b.y, b.yp), hi = Math.max(a.y, b.y, b.yp);
+  for (let k = 0; k <= 30; k++) { const y = ex(x0 + (x1 - x0) * k / 30); lo = Math.min(lo, y); hi = Math.max(hi, y) }
+  const r = Math.max(hi - lo, .5); return [x0, x1, lo - r * .35, hi + r * .38];
+}
+const fx = document.getElementById('fx');
+const hl = (s, on) => on ? `\\color{#ad6844}{${s}}` : s;
+let lastKey = '';
+function formula(i, ph) {
+  const stage = i === 0 ? -1 : mode ? (ph < .8 ? 0 : 1) : (ph < .38 ? 0 : ph < .72 ? 1 : 2), key = mode + ':' + stage;
+  if (key === lastKey) return; lastKey = key;
+  fx.innerHTML = '<div></div><div></div>';
+  if (mode) { K(fx.children[0], 'f(x,y)=y\\cos x'); K(fx.children[1], hl('y_{n+1}=y_n+h\\,f(x_n,y_n)', stage >= 0)) }
+  else {
+    K(fx.children[0], hl('\\bar y_{n+1}=y_n+h\\,f(x_n,y_n)', stage === 0));
+    K(fx.children[1], 'y_{n+1}=y_n+\\dfrac h2\\Big[' + hl('f(x_n,y_n)+f(x_{n+1},\\bar y_{n+1})', stage === 1) + '\\Big]');
+  }
+}
+const lab = P.labels(document.getElementById('stage'));
+let st, mm = { a: 0 };
+// 过点 (x,y) 斜率 k 的一小段切线（屏幕上固定长度，任意缩放下都清楚）
+const tick = (x, y, k, len, prog = 1, o = {}) => { const dx = 1, dy = k, sx = v.X(x + dx) - v.X(x), sy = v.Y(y + dy) - v.Y(y), L = Math.hypot(sx, sy) || 1;
+  const ux = sx / L * len, uy = sy / L * len, cx = v.X(x), cy = v.Y(y); P.path(ctx0, [[cx - ux, cy - uy], [cx + ux, cy + uy]], { progress: prog, ...o }) };
+let ctx0;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  ctx0 = ctx; v.w = w; v.h = h;
+  const moving = st.tick(dt), cam = v.step(dt, 3), i = st.i, p = st.p;
+  formula(i, p);
+  P.axes(ctx, v, { x: true });
+  // 精确解：灰色参照
+  P.path(ctx, P.curve(v, ex, Math.max(ALL[0], v.b[0]), Math.min(ALL[1], v.b[1])), { color: C.mute, width: 1.6, alpha: .8 });
+  // 已完成的折线与点
+  const pts = S.slice(0, i).map(s => [v.X(s.x), v.Y(s.y)]);
+  P.path(ctx, pts, { color: C.accent, width: 2.4 });
+  for (let k = 0; k < i; k++) P.dot(ctx, v.X(S[k].x), v.Y(S[k].y), { r: k === i - 1 ? 4.5 : 3.5, color: C.accent });
+  if (i === 0) P.dot(ctx, v.X(0), v.Y(1), { r: 4.5, color: C.accent, scale: P.ease.back(P.seg(p, 0, .5)) });
+  else {
+    const a = S[i - 1], b = S[i], A = [v.X(a.x), v.Y(a.y)];
+    if (mode) { // 欧拉：只用左端斜率
+      const p1 = P.ease.inOut(P.seg(p, 0, .3)), p2 = P.ease.inOut(P.seg(p, .3, .8)), p3 = P.seg(p, .75, 1);
+      tick(a.x, a.y, a.k1, 32, p1, { color: C.warm, width: 2.4 });
+      P.path(ctx, [A, [v.X(b.x), v.Y(b.y)]], { color: C.warm, width: 2, progress: p2 });
+      P.path(ctx, [[v.X(b.x), v.Y(b.y)], [v.X(b.x), v.Y(ex(b.x))]], { color: C.mute, width: 1, dash: [3, 4], alpha: p3 });
+      P.dot(ctx, v.X(b.x), v.Y(b.y), { r: 4.8, color: C.accent, scale: P.ease.back(p3) });
+    } else {
+      const p1 = P.ease.inOut(P.seg(p, 0, .16)), p2 = P.ease.inOut(P.seg(p, .14, .36)), p3 = P.ease.inOut(P.seg(p, .38, .52)),
+        p4 = P.ease.inOut(P.seg(p, .56, .74)), p5 = P.seg(p, .76, 1), fadeAux = 1 - .65 * P.seg(p, .8, 1);
+      const Bp = [v.X(b.x), v.Y(b.yp)];
+      // ① 左端斜率与欧拉预测（橙色虚线）
+      tick(a.x, a.y, a.k1, 32, p1, { color: C.warm, width: 2.4, alpha: fadeAux });
+      P.path(ctx, [A, Bp], { color: C.warm, width: 1.6, dash: [5, 4], progress: p2, alpha: .85 * fadeAux });
+      P.dot(ctx, ...Bp, { r: 4.2, color: C.blue, scale: P.ease.back(P.seg(p, .3, .4)), alpha: fadeAux });
+      // ② 预测点处的斜率（浅蓝）
+      tick(b.x, b.yp, b.k2, 32, p3, { color: C.blue, width: 2.4, alpha: fadeAux });
+      // ③ 两个斜率的平均：从左端点出发的橙色实线，④ 校正后的点
+      const km = (a.k1 + b.k2) / 2, ang = P.lerp(a.k1, km, p4), ang2 = P.lerp(b.k2, km, p4);
+      if (p4 > 0 && p4 < 1) { tick(a.x, a.y, ang, 32, 1, { color: C.warm, width: 1.6, alpha: .7 }); tick(a.x, a.y, ang2, 32, 1, { color: C.blue, width: 1.6, alpha: .7 }) }
+      P.path(ctx, [A, [v.X(b.x), v.Y(b.y)]], { color: C.hl, width: 2.4, progress: P.ease.inOut(P.seg(p, .7, .92)) });
+      P.path(ctx, [[v.X(b.x), v.Y(b.y)], [v.X(b.x), v.Y(ex(b.x))]], { color: C.mute, width: 1, dash: [3, 4], alpha: p5 });
+      P.dot(ctx, v.X(b.x), v.Y(b.y), { r: 4.8, color: C.accent, scale: P.ease.back(P.seg(p, .86, 1)) });
+      lab.set('yp', '\\bar y_{n+1}', Bp[0] + 26, Bp[1] - 2, { color: C.blue, size: 13, alpha: P.seg(p, .32, .42) * fadeAux });
+    }
+    lab.set('a', 'y_n', A[0] - 6, A[1] - 22, { color: C.accent, size: 13 });
+    lab.set('b', 'y_{n+1}', v.X(b.x) + 22, v.Y(b.y) + 14, { color: C.accent, size: 13, alpha: P.seg(p, .86, 1) });
+  }
+  lab.set('ex', 'e^{\\sin x}', v.X(Math.min(v.b[1], 6.2) - .02 * (v.b[1] - v.b[0])), v.Y(ex(Math.min(v.b[1], 6.2))) - 16, { color: C.mute, size: 13, alpha: i === 0 ? 1 : 0 });
+  // 角落小地图：整体曲线、已走过的点、当前镜头框
+  const zoomed = (v.b[1] - v.b[0]) < 5;
+  const mmMove = P.approach(mm, 'a', zoomed ? 1 : 0, dt, 6);
+  P.minimap(ctx, v, { B: ALL, alpha: mm.a, corner: 'tr', frac: .24, paint: (mx, my, c) => {
+    P.mapCurve(c, mx, my, ex, ALL[0], ALL[1], { color: C.mute, width: 1.2 });
+    P.path(c, S.slice(0, i + 1).map(s => [mx(s.x), my(s.y)]), { color: C.accent, width: 1.4 });
+    for (let k = 0; k <= i; k++) P.dot(c, mx(S[k].x), my(S[k].y), { r: 1.8, color: k === i ? C.warm : C.accent, ring: false });
+  } });
+  lab.end();
+  return moving || cam || mmMove;
+});
+st = P.stepper(document.getElementById('nav'), { count: N + 1, dur: 3.2, hold: .8, kick: cv.kick, onChange: s => { v.aim(frameFor(s.i)); lastKey = '' } });
+// 预排公式区高度
+{ let m = 0; for (const md of [0, 1]) { mode = md; for (const ph of [.1, .5, .9]) { lastKey = ''; formula(1, ph); m = Math.max(m, fx.getBoundingClientRect().height) } } fx.style.minHeight = Math.ceil(m) + 'px'; mode = 0; lastKey = '' }
+const setMode = m => { mode = m; build(); document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.m === m))); lastKey = ''; st.go(0, false); v.aim(ALL); cv.kick() };
+let touched = false;
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { touched = true; setMode(+b.dataset.m) });
+document.getElementById('nav').addEventListener('pointerdown', () => { touched = true });
+build(); v.aim(ALL, true); st.go(0, false);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) document.querySelector('.play').click() }, 900) } else st.stop() }, { threshold: .4 }).observe(document.getElementById('cv'));
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

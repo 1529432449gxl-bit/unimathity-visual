@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Normal subgroups, quotient groups and homomorphisms</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:350px}@media(max-width:520px){canvas#cv{height:300px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="normal" aria-pressed="true">Normal</button><button type="button" class="tg" data-m="quotient" aria-pressed="false">Quotient</button><button type="button" class="tg" data-m="hom" aria-pressed="false">Homomorphism</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Conjugation keeps a normal subgroup in place; coset products do not depend on representatives; a homomorphism collapses each coset of its kernel to one point"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 二面体群 D_6（阶 12）：元素 r^k s^f 记作 {k,f}；s r^k = r^{-k} s。正规子群 N=⟨r²⟩，商群 G/N 有 4 个元素。
+const n = 6, G = [];
+for (let f = 0; f < 2; f++) for (let k = 0; k < n; k++) G.push({ k, f, i: f * n + k });
+const at = (k, f) => G[f * n + ((k % n) + n) % n];
+const mul = (a, b) => at(a.k + (a.f ? -b.k : b.k), a.f ^ b.f);
+const inv = a => a.f ? a : at(-a.k, 0);
+const conj = (g, h) => mul(mul(g, h), inv(g));
+const tex = g => g.f ? (g.k === 0 ? 's' : g.k === 1 ? 'rs' : `r^{${g.k}}s`) : (g.k === 0 ? 'e' : g.k === 1 ? 'r' : `r^{${g.k}}`);
+const N = [at(0, 0), at(2, 0), at(4, 0)], Ks = [at(0, 0), at(0, 1)];
+const REPS = [at(0, 0), at(1, 0), at(0, 1), at(1, 1)], CN = ['N', 'rN', 'sN', 'rsN'], IMG = ["e'", '\\phi(r)', '\\phi(s)', '\\phi(rs)'];
+const cosetOf = g => REPS.findIndex(a => N.some(h => mul(a, h) === g));
+const colEls = REPS.map(a => N.map(h => mul(a, h)));          // 每个陪集一列，列内顺序按 N 的元素
+// ---------- 三种模式的步骤脚本 ----------
+const conjSteps = (g, S) => S.map(h => ({ from: h, to: conj(g, h) }));
+const pairs = [[at(1, 0), at(0, 1)], [at(3, 0), at(2, 1)], [at(5, 0), at(4, 1)]];
+const SCRIPT = {
+  normal: [
+    { set: N, f: ['N=\\langle r^2\\rangle', 'N=\\{e,r^2,r^4\\}'] },
+    { set: N, g: at(0, 1), fly: conjSteps(at(0, 1), N), f: ['gNg^{-1}=\\{ghg^{-1}\\mid h\\in N\\}', 'sNs^{-1}=N'] },
+    { set: N, g: at(1, 1), fly: conjSteps(at(1, 1), N), f: ['gNg^{-1}=\\{ghg^{-1}\\mid h\\in N\\}', '(rs)N(rs)^{-1}=N'] },
+    { set: Ks, f: ['K=\\langle s\\rangle', 'K=\\{e,s\\}'] },
+    { set: Ks, g: at(1, 0), fly: conjSteps(at(1, 0), Ks), bad: true, f: ['rKr^{-1}=\\{e,\\ r^2s\\}', 'rKr^{-1}\\ne K'] },
+    { set: N, all: true, f: ['N\\lhd G\\iff gNg^{-1}=N\\quad \\forall g\\in G', 'gN=Ng'] },
+  ],
+  quotient: [
+    { f: ['G/N=\\{N,\\ rN,\\ sN,\\ rsN\\}', '(aN)(bN)=(ab)N'] },
+    { sel: true, f: ['(rN)(sN)=(rs)N', '\\phantom{r}'] },
+    { sel: true, pair: 0, f: ['(rN)(sN)=(rs)N', 'r\\cdot s=rs'] },
+    { sel: true, pair: 1, f: ['(rN)(sN)=(rs)N', 'r^3\\cdot r^2s=r^5s'] },
+    { sel: true, pair: 2, f: ['(rN)(sN)=(rs)N', 'r^5\\cdot r^4s=r^3s'] },
+    { sel: true, rain: true, f: ['a\'\\in aN,\\ b\'\\in bN\\ \\Longrightarrow\\ a\'b\'\\in abN', '(aN)(bN)=(ab)N'] },
+  ],
+  hom: [
+    { f: ['\\phi:G\\to G\',\\qquad \\ker\\phi=N', '\\phi(aN)=\\{\\phi(a)\\}'] },
+    { col: 0, f: ['\\ker\\phi=N\\ \\longmapsto\\ e\'', '\\phi(h)=e\'\\quad \\forall h\\in N'] },
+    { col: 1, f: ['rN\\ \\longmapsto\\ \\phi(r)', '\\phi(rh)=\\phi(r)\\,\\phi(h)=\\phi(r)'] },
+    { col: 2, f: ['sN\\ \\longmapsto\\ \\phi(s)', '\\phi(sh)=\\phi(s)'] },
+    { col: 3, f: ['rsN\\ \\longmapsto\\ \\phi(rs)', '\\phi(rsh)=\\phi(rs)'] },
+    { col: 4, iso: true, f: ['G/\\ker\\phi\\ \\cong\\ G\'', 'aN\\ \\longmapsto\\ \\phi(a)'] },
+  ],
+};
+const fx = document.getElementById('fx'); fx.innerHTML = '<div></div><div></div>';
+const formula = (mode, i) => { K(fx.children[0], SCRIPT[mode][i].f[0]); K(fx.children[1], SCRIPT[mode][i].f[1]) };
+const lockFx = () => { let mx = 0; for (const m in SCRIPT) SCRIPT[m].forEach((_, i) => { formula(m, i); mx = Math.max(mx, fx.getBoundingClientRect().height) }); fx.style.minHeight = Math.ceil(mx) + 'px' }; lockFx();
+// ---------- 绘制工具 ----------
+const lab = P.labels(document.getElementById('stage'));
+const bez = (a, c, b, t) => [(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * c[0] + t * t * b[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * c[1] + t * t * b[1]];
+const hex3 = h => { const v = parseInt(h.slice(1), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255] }, BG = hex3(C.bg);
+const mixBg = (h, a) => { const c = hex3(h); return `rgb(${c.map((x, k) => Math.round(BG[k] + (x - BG[k]) * a))})` };
+/** 柔和的集合轮廓：按极角排好的点连成多边形，用粗圆角描边加填充，得到圆润的“团” */
+function blob(ctx, pts, { color, alpha = .16, pad = 15, dash = null, line = 0 }) {
+  if (!pts.length || alpha <= 0) return; const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const q = pts.slice().sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  const cc = mixBg(color, alpha);
+  ctx.save(); ctx.beginPath(); q.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); if (q.length > 2) ctx.closePath();
+  ctx.fillStyle = cc; ctx.strokeStyle = cc; ctx.lineJoin = 'round'; ctx.lineWidth = 2 * pad; ctx.stroke(); ctx.fill(); ctx.restore();
+  if (line) { ctx.save(); ctx.globalAlpha = Math.min(1, alpha * 5); ctx.strokeStyle = color; ctx.lineWidth = line; ctx.setLineDash(dash || []); ctx.beginPath(); q.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.stroke(); ctx.restore() }
+}
+// ---------- 状态 ----------
+let mode = 'normal', touched = false, intro = 0;
+const el = G.map(() => ({ x: 0, y: 0, a: 1 })), fade = { N: 0, K: 0, sel: 0, img: 0 };
+let placed = false, st, isoT = 0;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  intro = Math.min(1, intro + dt / 1.2); const I = P.ease.inOut(intro);
+  let anim = st.tick(dt) || intro < 1;
+  const S = SCRIPT[mode], i = st.i, p = st.p, sc = S[i], narrow = w < 520;
+  // 两种布局：环（看结构与共轭）与陪集列（看商群与同态）
+  const R = Math.min(h * .38, w * (narrow ? .3 : .22)), cx = w / 2, cy = h / 2 + 4;
+  const ring = g => { const a = -Math.PI / 2 + 2 * Math.PI * g.k / n, r = g.f ? R : R * .56; return [cx + r * Math.cos(a), cy + r * Math.sin(a)] };
+  const span = mode === 'hom' ? (narrow ? .5 : .5) : (narrow ? .9 : .62), colGap = Math.min(92, w * span / 4), x0 = mode === 'hom' ? w * (narrow ? .07 : .12) + colGap / 2 : cx - colGap * 1.5;
+  const rowGap = Math.min(54, h * .17), col = (c, j) => [x0 + c * colGap, cy - rowGap + j * rowGap - 6];
+  const blockPos = g => { const c = cosetOf(g), j = colEls[c].indexOf(g); return col(c, j) };
+  const target = mode === 'normal' ? ring : blockPos;
+  for (const g of G) { const [tx, ty] = target(g); if (!placed) { el[g.i].x = tx; el[g.i].y = ty } anim = P.spring(el[g.i], 'x', tx, dt, { k: 60, z: .78 }) | P.spring(el[g.i], 'y', ty, dt, { k: 60, z: .78 }) | anim }
+  placed = true;
+  const pos = g => [el[g.i].x, el[g.i].y];
+  // 环模式的结构细线
+  anim = P.approach(fade, 'img', mode === 'normal' ? 1 : 0, dt, 6) | anim;
+  let hot = new Set(), lift = new Set();
+  if (mode === 'normal') {
+    const showN = sc.set === N, showK = sc.set === Ks;
+    anim = P.approach(fade, 'N', showN ? 1 : 0, dt, 5) | P.approach(fade, 'K', showK ? 1 : 0, dt, 5) | anim;
+    if (sc.all) { const pulse = .5 + .5 * Math.sin(performance.now() / 320); blob(ctx, N.map(pos), { color: C.accent, alpha: (.06 + .07 * pulse) * P.seg(p, .1, .3), pad: 23 }); anim = true }
+    blob(ctx, N.map(pos), { color: C.accent, alpha: .18 * fade.N * I, pad: 16 });
+    blob(ctx, Ks.map(pos), { color: C.accent, alpha: .18 * fade.K * I, pad: 16 });
+    sc.set.forEach(g => hot.add(g.i));
+    if (sc.bad) { const img = sc.fly.map(q => q.to); blob(ctx, img.map(pos), { color: C.warm, alpha: .12 * P.seg(p, .7, 1), pad: 16, line: 1.4, dash: [4, 4] }) }
+    if (sc.g) { const [x, y] = pos(sc.g), s = Math.max(0, P.ease.back(P.seg(p, 0, .2)));
+      ctx.save(); ctx.strokeStyle = C.hl; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 12 * s, 0, 7); ctx.stroke(); ctx.restore(); lift.add(sc.g.i) }
+  } else {
+    // 陪集列：浅灰底的竖胶囊；商群模式下被乘的两列橙色，结果列深蓝
+    const sel = !!sc.sel; anim = P.approach(fade, 'sel', sel ? 1 : 0, dt, 5) | anim;
+    for (let c = 0; c < 4; c++) {
+      const [x, yt] = col(c, 0), yb = col(c, 2)[1];
+      let color = C.mute, a = .08;
+      if (mode === 'quotient' && fade.sel > .01) { if (c === 1 || c === 2) { color = C.warm; a = .08 + .08 * fade.sel } if (c === 3) { color = C.accent; a = .08 + .07 * fade.sel } }
+      if (mode === 'hom') { if (c === 0) { color = C.accent; a = .14 } if (sc.col === c) { color = C.warm; a = .16 } }
+      ctx.save(); ctx.globalAlpha = a * I; ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x - 19, yt - 20, 38, yb - yt + 40, 19); ctx.fill(); ctx.restore();
+      lab.set('c' + c, CN[c], x, yb + 34, { color: color === C.mute ? C.soft : color, size: 13, alpha: I * (1 - fade.img) });
+    }
+    if (mode === 'hom') N.forEach(g => hot.add(g.i));
+  }
+  if (fade.img > .01) { ctx.save(); ctx.globalAlpha = fade.img * I * .8; ctx.strokeStyle = C.rule; ctx.lineWidth = 1;
+    for (const r of [R * .56, R]) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke() } ctx.restore() }
+  // 元素点
+  G.forEach((g, k) => { const [x, y] = pos(g), a = P.ease.back(P.seg(I, k / 24, k / 24 + .5)), on = hot.has(g.i);
+    P.dot(ctx, x, y, { r: on || lift.has(g.i) ? 6 : 4.6, color: on ? C.accent : (mode === 'normal' ? '#b9bbc2' : C.blue), scale: Math.max(0, a) }) });
+  // ---------- 飞行动画 ----------
+  const ghost = (A, B, t, color, bend = .3, r = 6) => { if (t <= 0) return; const c = [(A[0] + B[0]) / 2 + (cy - (A[1] + B[1]) / 2) * bend, (A[1] + B[1]) / 2 - (cx - (A[0] + B[0]) / 2) * bend - 12];
+    const tr = []; for (let q = 0; q <= 8; q++) tr.push(bez(A, c, B, Math.max(0, t - q * .03))); P.path(ctx, tr, { color, width: 3, alpha: t < 1 ? .25 : 0 }); P.dot(ctx, ...bez(A, c, B, t), { r, color }) };
+  if (mode === 'normal') {
+    if (sc.fly) sc.fly.forEach((q, j) => ghost(pos(q.from), pos(q.to), P.ease.inOut(P.seg(p, .2 + .08 * j, .75 + .05 * j)), C.warm, q.from === q.to ? 0 : .3));
+    if (sc.all) G.forEach((g, j) => { const t0 = .02 + j * .06; N.forEach((hh, k) => ghost(pos(hh), pos(conj(g, hh)), P.ease.inOut(P.seg(p, t0, t0 + .3)) * (P.seg(p, t0, t0 + .3) < 1 ? 1 : 0), C.warm, .25, 4)) });
+  }
+  if (mode === 'quotient' && sc.pair !== undefined || sc.rain) {
+    const list = sc.rain ? colEls[1].flatMap(a => colEls[2].map(b => [a, b])) : [pairs[sc.pair]];
+    list.forEach(([a, b], j) => {
+      const t0 = sc.rain ? j * .07 : .15, A = pos(a), B = pos(b), T = pos(mul(a, b));
+      const s1 = P.ease.inOut(P.seg(p, t0, t0 + (sc.rain ? .2 : .35))), s2 = P.ease.inOut(P.seg(p, t0 + (sc.rain ? .2 : .4), t0 + (sc.rain ? .38 : .8)));
+      const Mx = [(A[0] + B[0]) / 2, Math.min(A[1], B[1]) - rowGap * .9];
+      if (!sc.rain || s2 < 1) { if (s2 <= 0) { ghost(A, Mx, s1, C.warm, 0, 5); ghost(B, Mx, s1, C.warm, 0, 5) } else ghost(Mx, T, s2, C.accent, .1, 6) }
+      if (!sc.rain) { ctx.save(); ctx.strokeStyle = C.hl; ctx.lineWidth = 2; for (const Q of [A, B]) { ctx.beginPath(); ctx.arc(...Q, Math.max(0, 11 * P.ease.back(P.seg(p, 0, .15))), 0, 7); ctx.stroke() } ctx.restore();
+        if (s2 >= 1) { ctx.save(); ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(...T, 11, 0, 7); ctx.stroke(); ctx.restore() } }
+    });
+    if (sc.rain) anim = true;
+  }
+  if (mode === 'hom') {
+    // 右侧 G'：4 个像点；已压缩的陪集落在对应点上
+    const gx = w * (narrow ? .76 : .76), gR = Math.max(36, Math.min(46, w * .08)), img = [[gx, cy - gR], [gx - gR, cy], [gx + gR, cy], [gx, cy + gR]];
+    const doneUpTo = sc.col === undefined ? -1 : (sc.iso ? 3 : sc.col - (p >= 1 ? 0 : 1));
+    img.forEach((Q, c) => {
+      const lit = c <= doneUpTo, colr = c === 0 ? C.accent : (c === sc.col ? C.warm : C.blue);
+      P.dot(ctx, ...Q, { r: lit ? 8 : 5, color: lit ? colr : '#b9bbc2', scale: I });
+      lab.set('i' + c, IMG[c], Q[0] + (c === 1 ? (narrow ? -30 : -32) : c === 2 ? (narrow ? 31 : 36) : 0), Q[1] + (c === 0 ? -20 : c === 3 ? 22 : 0), { color: lit ? colr : C.mute, size: 13, alpha: I });
+    });
+    if (sc.col !== undefined && sc.col < 4) colEls[sc.col].forEach((g, j) => ghost(pos(g), img[sc.col], P.ease.inOut(P.seg(p, .15 + .1 * j, .75 + .08 * j)), sc.col === 0 ? C.accent : C.warm, .12, 6));
+    // 陪集到像点的对应：从列顶向上绕过，不穿过其他列
+    if (sc.iso) { isoT += dt; anim = true; const c = Math.floor(isoT / 1.3) % 4, u = (isoT % 1.3) / 1.3, a = Math.sin(Math.PI * Math.min(1, u * 1.15)) ;
+      const [x, yt] = col(c, 0), yb = col(c, 2)[1];
+      ctx.save(); ctx.globalAlpha = .22 * a; ctx.strokeStyle = C.hl; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x - 21, yt - 22, 42, yb - yt + 44, 21); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.globalAlpha = .9 * a; ctx.strokeStyle = C.hl; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(...img[c], 13, 0, 7); ctx.stroke(); ctx.restore();
+      const A = [x, yt - 26], B = img[c], M = [(x + B[0]) / 2, Math.min(yt - 26, B[1]) - 34], pts = []; for (let q = 0; q <= 40; q++) pts.push(bez(A, M, B, q / 40));
+      P.path(ctx, pts, { color: C.hl, width: 1.4, alpha: .7 * a, dash: [4, 4], progress: Math.min(1, u * 2.2) }) } else isoT = 0;
+    lab.set('Gp', "G'", gx, cy + gR + 44, { color: C.soft, size: 14, alpha: I });
+  } else for (let c = 0; c < 4; c++) lab.set('i' + c, '', 0, 0, { alpha: 0 });
+  // 元素标签
+  G.forEach(g => { const [x, y] = pos(g); let lx = x, ly = y;
+    if (mode === 'normal') { const a = -Math.PI / 2 + 2 * Math.PI * g.k / n, o = g.f ? 17 : -15; lx += o * Math.cos(a); ly += o * Math.sin(a) } else { lx += 0; ly += 0 }
+    lab.set('g' + g.i, tex(g), mode === 'normal' ? lx : x + 0, mode === 'normal' ? ly : y, { color: C.soft, size: 12, alpha: mode === 'normal' ? I : 0 }) });
+  // 陪集列模式：标签放在点的右侧
+  if (mode !== 'normal') G.forEach(g => { const [x, y] = pos(g); lab.set('h' + g.i, tex(g), x + 25, y, { color: C.soft, size: 11, alpha: I * (1 - fade.img) * (narrow && mode === 'hom' ? 0 : 1) }) });
+  else G.forEach(g => lab.set('h' + g.i, '', 0, 0, { alpha: 0 }));
+  if (mode !== 'hom') lab.set('Gp', '', 0, 0, { alpha: 0 });
+  lab.end();
+  return anim;
+});
+st = P.stepper(document.getElementById('nav'), { count: SCRIPT.normal.length, dur: 2.2, hold: .9, kick: cv.kick, onChange: s => formula(mode, s.i) });
+document.getElementById('nav').addEventListener('click', () => { touched = true });
+function setMode(m, auto) {
+  mode = m; document.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m)));
+  st.stop(); st.reset(SCRIPT[m].length); formula(m, 0); cv.kick();
+  if (auto) setTimeout(() => { if (!st.playing) { const t = touched; document.querySelector('.play').click(); touched = t } }, 700);
+}
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { touched = true; setMode(b.dataset.m, true) });
+const qm = new URLSearchParams(location.search).get('mode'); if (SCRIPT[qm]) setMode(qm, false); else formula('normal', 0);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) { document.querySelector('.play').click(); touched = false } }, 1300) } else st.stop() }, { threshold: .4 }).observe(cvEl);
+document.fonts.ready.then(() => { lockFx(); formula(mode, st.i) });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
