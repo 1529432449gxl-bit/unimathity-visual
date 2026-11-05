@@ -108,7 +108,7 @@ const Fourier: React.FC<VizProps> = ({w, h, t, frame}) => {
 export const fourier: VizDef = {
   id: 'fourier',
   title: '傅里叶级数',
-  course: '数学分析',
+  course: '微积分',
   formula: String.raw`f(x)=\frac{4}{\pi}\sum_{k\ \mathrm{odd}}\frac{\sin kx}{k}`,
   component: Fourier,
 };

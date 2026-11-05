@@ -140,7 +140,7 @@ scripts/
 |---|---|
 | riemann | 微积分 · 定积分的定义 |
 | taylor | 微积分 · 泰勒展开 |
-| fourier | 数学分析 · 傅里叶级数 |
+| fourier | 微积分 · 傅里叶级数 |
 | linearMap | 线性代数 · 特征值的几何意义 |
 | galton | 概率统计 · 中心极限定理 |
 | complexMap | 复变函数 · 共形映射 |
