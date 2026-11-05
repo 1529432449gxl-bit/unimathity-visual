@@ -48,8 +48,8 @@ const cv = P.mount(cvEl, (ctx, w, h, dt) => {
   P.dot(ctx, ...ps, { r: 4.5, color: C.warm, scale: P.ease.back(P.seg(st.intro, .5, 1)) });
   lab.set('s', 's', v.X(s), v.Y(0) + 14, { color: C.soft, size: 13, alpha: I });
   lab.set('o', '0', v.X(0), v.Y(0) + 14, { color: C.soft, size: 12, alpha: I });
-  lab.set('f', 'p(x)', v.X(.12), v.Y(f(.12)) - 6, { color: C.accent, size: 13, dx: 30, alpha: I * (1 - sh.m) });
-  lab.set('t', 'p(x+s)\\,e^{\\lambda s}', ps[0], ps[1], { color: C.warm, size: 13, dx: 62, dy: -6, alpha: I * P.seg(sh.m, 0, .3) * (sh.m > .97 ? .0 : 1) });
+  lab.set('f', 'p(x)', v.X(.12), v.Y(f(.12)) - 6, { color: C.accent, size: 13, dx: 30, alpha: I });
+  lab.set('t', 'p(x+s)\\,e^{\\lambda s}', ps[0], ps[1], { color: C.warm, size: 13, dx: 62, dy: -6, alpha: I * P.seg(sh.m, .04, .25) * (1 - P.seg(sh.m, .8, .95)) });
   lab.end();
   return anim;
 });

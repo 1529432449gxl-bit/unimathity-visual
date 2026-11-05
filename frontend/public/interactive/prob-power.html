@@ -34,7 +34,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   if (MODE === 'errors') mv |= P.approach(st, 'c', val('c'), dt, rate);
   if (MODE === 'power') mv |= P.approach(st, 't', val('t'), dt, rate);
   if (MODE === 'pvalue') mv |= P.approach(st, 'x', val('x'), dt, rate);
-  const s = SD / Math.sqrt(MODE === 'pvalue' ? 10 : st.n), c = MODE === 'errors' ? st.c : Z * s, th = MODE === 'power' ? st.t : MU1;
+  const s = SD / Math.sqrt(MODE === 'pvalue' ? 4 : st.n), c = MODE === 'errors' ? st.c : Z * s, th = MODE === 'power' ? st.t : MU1;
   const H = MODE === 'power' ? h * .6 : h; v.w = w; v.h = H;
   const top = pdf(0, 0, s) * 1.22; v.aim([-1.7, 2.8, -top * .03, top]); const mc = v.step(dt, 3.5);
   const f0 = x => pdf(x, 0, s), f1 = x => pdf(x, th, s), base = x => [v.X(x), v.Y(0)];

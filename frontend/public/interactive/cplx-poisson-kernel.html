@@ -10,9 +10,30 @@
 import * as P from './vendor/plotfx.js';
 P.style();
 const { C } = P;
-const st = { z: [0, 0] }; let tgt = [0, 0], playing = true, clock = 0, grab = false, geo;
+const HALF = new URLSearchParams(location.search).get('mode') === 'halfplane';
+if (HALF) { document.title = 'Poisson kernel of the upper half-plane'; document.getElementById('cv').setAttribute('aria-label', 'Poisson kernel weights on the real axis for a point in the upper half-plane; they concentrate as the point nears the axis') }
+const st = { z: HALF ? [0, 1] : [0, 0] }; let tgt = st.z.slice(), playing = true, clock = 0, grab = false, geo;
+// 上半平面：实轴上权重 y/(π((x-t)^2+y^2)) 画在实轴下方，与圆盘模式画在圆外一致
+function drawHalf(ctx, w, h, dt) {
+  if (playing) { clock += dt; tgt = [1.7 * Math.sin(clock * .21), .2 + 1.5 * Math.pow(Math.sin(clock * .33 + .9), 2)] }
+  const mv = P.approach(st, 'z', tgt, dt, playing ? 20 : 12), [x, y] = st.z;
+  const s = Math.min(w / 8.6, h / 4.3), o = [w / 2, h * .5], S = q => [o[0] + q[0] * s, o[1] - q[1] * s]; geo = { s, o };
+  const T = 4.3, N = 400, ker = [], base = [];
+  for (let k = 0; k <= N; k++) { const t = -T + 2 * T * k / N, Pk = y / (Math.PI * ((x - t) ** 2 + y * y)), H = 1.75 * (1 - Math.exp(-Pk / .32)); ker.push(S([t, -H])); base.push(S([t, 0])) }
+  ctx.save(); ctx.beginPath(); ker.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); for (let k = N; k >= 0; k--) ctx.lineTo(...base[k]); ctx.closePath(); ctx.fillStyle = P.rgba(C.blue, .2); ctx.fill(); ctx.restore();
+  P.path(ctx, ker, { color: C.blue, width: 2, halo: 2 });
+  ctx.save(); ctx.fillStyle = P.rgba(C.accent, .04); ctx.fillRect(S([-T, 0])[0], S([0, 2.1])[1], 2 * T * s, 2.1 * s); ctx.restore();
+  P.path(ctx, base, { color: C.accent, width: 2.4, halo: 3 });
+  P.path(ctx, [S([x, y]), S([x, 0])], { color: C.warm, width: 1.2, dash: [3, 3], alpha: .8 });
+  const q = S([x, y]); ctx.save(); ctx.beginPath(); ctx.arc(q[0], q[1], 13, 0, 7); ctx.fillStyle = P.rgba(C.warm, grab ? .2 : .12); ctx.fill(); ctx.restore();
+  P.dot(ctx, ...q, { r: 5.5, color: C.warm });
+  lab.set('z', 'z', ...q, { color: C.warm, dx: 12, dy: -12 });
+  lab.end();
+  return playing || mv || grab;
+}
 const lab = P.labels(document.getElementById('stage'));
 const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (HALF) return drawHalf(ctx, w, h, dt);
   if (playing) { clock += dt; const r = .78 * Math.pow(Math.sin(clock * .33), 2), a = clock * .21 + .6; tgt = [r * Math.cos(a), r * Math.sin(a)] }
   const mv = P.approach(st, 'z', tgt, dt, playing ? 20 : 12), z = st.z, r2 = z[0] * z[0] + z[1] * z[1];
   const s = Math.min(w, h) / 4.1, o = [w / 2, h / 2], S = q => [o[0] + q[0] * s, o[1] - q[1] * s]; geo = { s, o };
@@ -35,7 +56,7 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
 const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
 const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
 pb.onclick = () => { playing = !playing; if (playing) clock = 0; sync(); cv.kick() };
-const place = e => { const r = cvs.getBoundingClientRect(), q = [(e.clientX - r.left - geo.o[0]) / geo.s, -(e.clientY - r.top - geo.o[1]) / geo.s], L = Math.hypot(...q), k = L > .9 ? .9 / L : 1; tgt = [q[0] * k, q[1] * k]; cv.kick() };
+const place = e => { const r = cvs.getBoundingClientRect(), q = [(e.clientX - r.left - geo.o[0]) / geo.s, -(e.clientY - r.top - geo.o[1]) / geo.s]; if (HALF) { tgt = [P.clamp(q[0], -3.6, 3.6), P.clamp(q[1], .12, 2)]; cv.kick(); return } const L = Math.hypot(...q), k = L > .9 ? .9 / L : 1; tgt = [q[0] * k, q[1] * k]; cv.kick() };
 cvs.addEventListener('pointerdown', e => { grab = true; playing = false; sync(); cvs.setPointerCapture(e.pointerId); place(e) });
 cvs.addEventListener('pointermove', e => { if (grab) place(e) });
 cvs.addEventListener('pointerup', () => { grab = false; cv.kick() });

@@ -47,7 +47,6 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
     lab.set('g' + i, TEX[i], X(cx), H1 - 14, { color: C.soft, size: 13 });
   });
   lab.set('dots', '\\cdots', X(4), H1 - 14, { color: C.mute, size: 13 });
-  lab.set('dots2', '\\cdots', X(4), Yp((yl + yh) / 2), { color: C.mute, size: 15 });
   // 平方和条形：上 S_T，下 S_A 与 S_e 首尾相接，最后两者等长
   const bx = 52, bw = (w - bx - 26) / ST, b1 = H1 + 12, b2 = H1 + 40, bh = 14;
   const rr = (x, y, len, col, a) => { if (len < .5) return; ctx.save(); ctx.fillStyle = P.rgba(col, a); ctx.beginPath(); ctx.roundRect(x, y, len, bh, 3); ctx.fill(); ctx.restore() };

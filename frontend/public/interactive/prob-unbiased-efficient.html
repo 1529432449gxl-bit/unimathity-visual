@@ -48,7 +48,7 @@ const cv = P.mount(cvEl, (ctx, w, h, dt) => {
   EST.forEach((e, r) => {
     const base = top + (r + 1) * rh - 18, Y = y => base - y / YM * (rh - 34);
     P.path(ctx, [[X(XR[0]), base], [X(XR[1]), base]], { color: C.rule, width: 1 });
-    const R = rows[r], NN = Math.max(1, st.total);
+    const R = rows[r], NN = Math.max(60, st.total);
     for (let i = 0; i < NB; i++) { const b = R.bins[i]; anim = P.spring(b, 'h', st.total ? b.c / (NN * bw) : 0, dt, { k: 90, z: .62 }) | anim;
       if (b.h < 1e-3) continue; const x0 = X(XR[0] + i * bw) + .7, x1 = X(XR[0] + (i + 1) * bw) - .7, y = Y(Math.min(b.h, YM));
       ctx.fillStyle = P.vgrad(ctx, y, base, e.col, .42, .14); ctx.beginPath(); ctx.roundRect(x0, y, x1 - x0, base - y, [2, 2, 0, 0]); ctx.fill() }

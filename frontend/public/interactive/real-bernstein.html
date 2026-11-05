@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bernstein polynomials</title>
-<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script></head>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:420px}@media(max-width:520px){canvas#cv{height:360px}}</style></head>
 <body><main>
-<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Bernstein polynomials of increasing degree close in on a continuous function"></canvas></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Bernstein polynomials of increasing degree close in on a continuous function; binomial weight bars at a moving point x"></canvas></div>
 <div class="legend" id="leg"></div>
 <div class="nav" id="nav"></div>
 </main>
@@ -19,18 +20,37 @@ const lgam = x => { if (x < 7) { let r = 0; while (x < 7) { r -= Math.log(x); x+
 const B = n => xs.map(x => { let s = 0; for (let k = 0; k <= n; k++) { const lw = lgam(n + 1) - lgam(k + 1) - lgam(n - k + 1) + (k ? k * Math.log(x) : 0) + (n - k ? (n - k) * Math.log(1 - x) : 0); s += f(k / n) * (Number.isFinite(lw) ? Math.exp(lw) : 0) } return s });
 const CACHE = NS.map(B), st = { y: CACHE[0] };
 const v = P.view([0, 1, .05, 1.0], { l: 16, r: 16, t: 14, b: 18 });
-let player;
+const wt = (n, k, x) => Math.exp(lgam(n + 1) - lgam(k + 1) - lgam(n - k + 1) + (k ? k * Math.log(x) : 0) + (n - k ? (n - k) * Math.log(1 - x) : 0));
+const glow = (ctx, x, y, r, col, a = .14) => { if (r <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+let player, clock = 0, auto = true;
+const bars = { h: [] };
 const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
-  v.w = w; v.h = h; const moving = player.tick(dt), n = NS[player.i];
+  const top = h * .66; v.w = w; v.h = top; const moving = player.tick(dt), n = NS[player.i];
+  if (auto) clock += dt; const xm = .5 + .4 * Math.sin(clock * .45);
   const mv = P.approach(st, 'y', CACHE[player.i], dt, 4.5);
   P.path(ctx, P.curve(v, f, 0, 1, 400), { color: C.mute, width: 1.6, dash: [5, 4] });
   const pts = xs.map((x, j) => [v.X(x), v.Y(st.y[j])]);
   P.fill(ctx, pts, P.curve(v, f, 0, 1, M), P.rgba(C.blue, .12));
   P.path(ctx, pts, { color: C.accent, width: 2.4, halo: 2 });
   if (n <= 60) for (let k = 0; k <= n; k++) P.dot(ctx, v.X(k / n), v.Y(f(k / n)), { r: n > 30 ? 2 : 3, color: C.blue, ring: false, alpha: .8, scale: P.ease.back(P.seg(player.p, 0, .5)) });
-  return moving || mv;
+  // 当前 x 处的二项权重：画在下方，浅蓝细柱，高度按最大权重归一
+  const j = Math.round(xm * M), yx = st.y[j];
+  P.path(ctx, [[v.X(xm), v.Y(.05)], [v.X(xm), h - 4]], { color: C.mute, width: 1, dash: [3, 4], alpha: .7 });
+  const tgt = []; let mx = 0; for (let k = 0; k <= n; k++) { const q = wt(n, k, xm); tgt.push(q); mx = Math.max(mx, q) }
+  const nb = tgt.map(q => q / mx); if (bars.h.length !== nb.length) bars.h = nb.map(() => 0);
+  const mb = P.approach(bars, 'h', nb, dt, 9);
+  const by = h - 8, bh = h - top - 26, bw = Math.max(1.4, Math.min(8, (w - 40) / (n + 1) * .55));
+  P.path(ctx, [[v.X(0), by], [v.X(1), by]], { color: C.rule, width: 1 });
+  bars.h.forEach((q, k) => { const x = v.X(k / n); P.path(ctx, [[x, by], [x, by - q * bh]], { color: C.blue, width: bw, alpha: .55 + .4 * q }) });
+  glow(ctx, v.X(xm), v.Y(yx), 12, C.warm); P.dot(ctx, v.X(xm), v.Y(yx), { r: 5, color: C.warm });
+  P.dot(ctx, v.X(xm), by, { r: 3.5, color: C.warm, ring: false });
+  return moving || mv || mb || auto;
 });
 player = P.stepper(document.getElementById('nav'), { count: NS.length, dur: 1.2, hold: .5, kick: cv.kick });
 player.playing = true; player.go(0, false); player.wait = .6; cv.kick();
+// 手动点 ◀ ▶ ↺ 即暂停标记点；点 Play 恢复
+document.getElementById('nav').addEventListener('click', () => { auto = player.playing; cv.kick() });
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') auto = false });
+document.addEventListener('visibilitychange', () => { if (document.hidden) auto = false });
 P.reportHeight(document.querySelector('main'));
 </script></body></html>

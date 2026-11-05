@@ -15,6 +15,8 @@ K(document.getElementById('le'), '\\varepsilon');
 // E：三个区间加一列向 1 收缩的小区间
 const E = [[.04, .2], [.27, .36], [.43, .5]];
 for (let k = 0; k < 9; k++) { const a = 1 - .42 * Math.pow(.62, k), b = a + .5 * .42 * Math.pow(.62, k) * .62; E.push([a, b]) }
+const OUTER = new URLSearchParams(location.search).get('mode') === 'outer';
+if (OUTER) { document.title = 'Outer measure by open covers'; document.getElementById('cv').setAttribute('aria-label', 'Open sets G containing E shrink toward E as epsilon decreases') }
 const sl = document.getElementById('e'), st = { e: .25 }; let playing = true, clock = 0;
 const lab = P.labels(document.getElementById('stage'));
 const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
@@ -29,16 +31,16 @@ const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
   bar(G, yE - band * 1.8, yE + band * 1.8, C.blue, .22);
   // G \ F 的差：橙色
   ctx.save(); ctx.fillStyle = P.rgba(C.warm, .75);
-  for (const [a, b] of G) { let cur = a; for (const [c, d] of F) { if (d <= a || c >= b) continue; if (c > cur) ctx.fillRect(X(cur), yE + band * 2.3, X(c) - X(cur), 5); cur = Math.max(cur, d) } if (b > cur) ctx.fillRect(X(cur), yE + band * 2.3, Math.max(.6, X(b) - X(cur)), 5) }
+  for (const [a, b] of G) { let cur = a; for (const [c, d] of (OUTER ? E : F)) { if (d <= a || c >= b) continue; if (c > cur) ctx.fillRect(X(cur), yE + band * 2.3, X(c) - X(cur), 5); cur = Math.max(cur, d) } if (b > cur) ctx.fillRect(X(cur), yE + band * 2.3, Math.max(.6, X(b) - X(cur)), 5) }
   ctx.restore();
   // E 单独画在上方一条细轨道上，便于和 G、F 对照
   for (const [a, b] of E) P.path(ctx, [[X(a), yE - band * 3.1], [Math.max(X(a) + .8, X(b)), yE - band * 3.1]], { color: C.accent, width: 4 });
   for (const [a, b] of E) for (const x of [a, b]) P.path(ctx, [[X(x), yE - band * 2.9], [X(x), yE - band * 1.8]], { color: C.accent, width: 1, alpha: .25, dash: [2, 3] });
-  bar(F, yE - band, yE + band, C.accent, .85);
+  bar(OUTER ? E : F, yE - band, yE + band, C.accent, .85);
   lab.set('G', 'G', X(.235), yE - band * 2.45, { color: C.blue, size: 13 });
-  lab.set('F', 'F', X(.12), yE, { color: '#fff', size: 13 });
+  if (!OUTER) lab.set('F', 'F', X(.12), yE, { color: '#fff', size: 13 });
   lab.set('E', 'E', X(.12), yE - band * 3.1 - 13, { color: C.accent, size: 13 });
-  lab.set('D', 'G\\setminus F', X(.75), yE + band * 2.3 + 18, { color: C.warm, size: 13 });
+  lab.set('D', OUTER ? 'G\\setminus E' : 'G\\setminus F', X(.75), yE + band * 2.3 + 18, { color: C.warm, size: 13 });
   lab.end();
   return playing || mv;
 });

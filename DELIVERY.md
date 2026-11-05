@@ -44,3 +44,129 @@
 ### 本地操作提醒
 
 复制回 `D:\MathAPP` 后运行“导入课程内容”和“渲染TikZ图”，并把交互页面同步到 `frontend\dist\interactive`。
+
+## 本批：概率统计、复变函数、实变函数按认可清单完成（Claude 云端会话）
+
+以 review/ 下三份 -gpt.md（站长认可的筛选结果）为准。交互模块 34 个（概率统计 17 个、复变 11 个、实变 6 个，另外富比尼与实变卷积复用概率页面），TikZ 推导图 18 张，全部插入讲义，旧的 `@interactive function` 模块已按清单重写或下线。
+
+### 新增或修改的交互页面（复制到 `D:\MathAPP\frontend\public\interactive\`，并同步到 `frontend\dist\interactive\`）
+
+- `D:\MathAPP\frontend\public\interactive\prob-bayes.html`
+- `D:\MathAPP\frontend\public\interactive\prob-cdf-steps.html`
+- `D:\MathAPP\frontend\public\interactive\prob-poisson-limit.html`
+- `D:\MathAPP\frontend\public\interactive\prob-normal-standardize.html`
+- `D:\MathAPP\frontend\public\interactive\prob-exp-memoryless.html`
+- `D:\MathAPP\frontend\public\interactive\prob-transform-density.html`
+- `D:\MathAPP\frontend\public\interactive\prob-joint-slice.html`
+- `D:\MathAPP\frontend\public\interactive\prob-convolution.html`
+- `D:\MathAPP\frontend\public\interactive\prob-correlation.html`
+- `D:\MathAPP\frontend\public\interactive\prob-lln.html`
+- `D:\MathAPP\frontend\public\interactive\prob-unbiased-efficient.html`
+- `D:\MathAPP\frontend\public\interactive\prob-likelihood.html`
+- `D:\MathAPP\frontend\public\interactive\prob-bayes-normal.html`
+- `D:\MathAPP\frontend\public\interactive\prob-ci-coverage.html`
+- `D:\MathAPP\frontend\public\interactive\prob-power.html`
+- `D:\MathAPP\frontend\public\interactive\prob-anova.html`
+- `D:\MathAPP\frontend\public\interactive\prob-regression.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-multiply-roots.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-riemann-sphere.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-conformal-local.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-mapper.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-branch-surface.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-potential-flow.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-convergence-continuation.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-winding.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-residue.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-mobius-steps.html`
+- `D:\MathAPP\frontend\public\interactive\cplx-poisson-kernel.html`
+- `D:\MathAPP\frontend\public\interactive\real-preimage.html`
+- `D:\MathAPP\frontend\public\interactive\real-inner-outer.html`
+- `D:\MathAPP\frontend\public\interactive\real-layer-cake.html`
+- `D:\MathAPP\frontend\public\interactive\real-egorov.html`
+- `D:\MathAPP\frontend\public\interactive\real-bv-split.html`
+- `D:\MathAPP\frontend\public\interactive\real-bernstein.html`
+
+### 删除的页面
+
+本会话中途做过、后来按认可清单撤下的页面已从仓库删除，本地若曾复制过请一并删除：prob-buffon、prob-histogram-density、prob-clt、prob-normal-density、prob-monotone-transform、prob-confidence、prob-two-errors、prob-least-squares、cplx-product、cplx-argument-principle、cplx-semicircle、cplx-max-modulus、cplx-arg-change、cplx-conformal-grid、cplx-joukowski、cplx-riemann-surface、cplx-taylor-disk、real-measure-squeeze、real-bounded-variation、real-countable-union、real-cantor-set、real-cantor-function、real-simple-approx、real-lebesgue-layers（均为 .html）。
+
+### 修改的讲义（只插入引导句、模块与 TikZ，或替换/下线旧模块，正文未动）
+
+- `D:\MathAPP\content\library\knowledge\complex-analysis\01-复数与复变函数\01-复数.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\01-复数与复变函数\04-复球面与无穷远点.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\02-解析函数\01-解析函数的概念与柯西-黎曼方程.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\02-解析函数\02-初等解析函数.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\02-解析函数\03-初等多值函数.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\03-复变函数的积分\01-复积分的概念及其简单性质.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\03-复变函数的积分\02-柯西积分定理.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\03-复变函数的积分\05-平面向量场——解析函数的应用.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\04-解析函数的幂级数表示法\03-解析函数的泰勒展开式.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\04-解析函数的幂级数表示法\04-解析函数零点的孤立性及惟一性定理.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\05-解析函数的洛朗展开与孤立奇点\01-解析函数的洛朗展开式.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\05-解析函数的洛朗展开与孤立奇点\03-解析函数在无穷远点的性质.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\06-留数理论及其应用\01-留数.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\06-留数理论及其应用\02-用留数定理计算实积分.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\06-留数理论及其应用\03-辐角原理及其应用.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\07-共形映射\01-解析变换的特性.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\07-共形映射\02-分式线性变换.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\07-共形映射\03-某些初等函数所构成的共形映射.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\08-解析延拓\01-解析延拓的概念与幂级数延拓.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\08-解析延拓\03-完全解析函数及黎曼面的概念.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\09-调和函数\01-平均值定理与极值原理.math.md`
+- `D:\MathAPP\content\library\knowledge\complex-analysis\09-调和函数\02-泊松积分公式与狄利克雷问题.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\01-随机事件与概率\04-条件概率.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\01-随机事件与概率\05-独立性.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\02-随机变量及其分布\01-随机变量及其分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\02-随机变量及其分布\02-随机变量的数学期望.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\02-随机变量及其分布\04-常用离散分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\02-随机变量及其分布\05-常用连续分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\02-随机变量及其分布\06-随机变量函数的分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\03-多维随机变量及其分布\02-边际分布与随机变量的独立性.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\03-多维随机变量及其分布\03-多维随机变量函数的分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\03-多维随机变量及其分布\04-多维随机变量的特征数.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\03-多维随机变量及其分布\05-条件分布与条件期望.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\04-大数定律与中心极限定理\01-随机变量序列的两种收敛性.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\04-大数定律与中心极限定理\03-大数定律.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\05-统计量及其分布\03-统计量及其分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\05-统计量及其分布\04-三大抽样分布.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\06-参数估计\01-点估计的概念与无偏性.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\06-参数估计\03-最大似然估计与 EM 算法.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\06-参数估计\05-贝叶斯估计.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\06-参数估计\06-区间估计.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\07-假设检验\01-假设检验的基本思想与概念.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\07-假设检验\02-正态总体参数假设检验.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\08-方差分析与回归分析\01-方差分析.math.md`
+- `D:\MathAPP\content\library\knowledge\probability\08-方差分析与回归分析\04-一元线性回归.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\01-集合\02-映射与集合的势.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\02-勒贝格测度\02-开闭集测度与内外测度.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\02-勒贝格测度\03-勒贝格可测集.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\02-勒贝格测度\07-广义测度与分解.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\03-可测函数\01-可测函数及其运算.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\03-可测函数\02-函数列的收敛.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\03-可测函数\03-鲁津定理.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\04-勒贝格积分\01-勒贝格积分的定义.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\04-勒贝格积分\03-积分与极限交换.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\04-勒贝格积分\05-乘积测度与重积分.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\04-勒贝格积分\06-单调函数与微分.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\05-函数空间Lp\01-Lp空间与收敛.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\05-函数空间Lp\02-稠密性与可分性.math.md`
+- `D:\MathAPP\content\library\knowledge\real-analysis\05-函数空间Lp\03-平移与卷积.math.md`
+
+### 插入位置
+
+每个模块的位置与认可清单“位置”一栏一致，跨两三处的合并条目用 url 参数区分模式（如 `prob-power.html?mode=power`、`cplx-mapper.html?preset=joukowski`、`real-layer-cake.html?mode=integral`）。旧模块处理：
+- 重写替换：正态密度、指数密度、对数正态、似然函数、贝叶斯估计权重、功效函数；先射优势改为 TikZ。
+- 下线：阳性结果的可信度（改由 1.4.3 的全概率与贝叶斯模块承担）、分组检验、组合方差。
+
+### 需要站长定夺
+
+- 建议 02+03 全概率与贝叶斯：插在 1.4.3，1.4.4 原模块直接下线，没有在 1.4.4 再放一次。
+- 建议 32+33：同一页面三处使用，7.1.2 基本步骤后放两类错误模式，原功效函数位置放功效模式，7.1.3 放 p 值模式。
+- TikZ 图在云端只核对了几何布局；本地字体编码与云端不同，公式排版请在“渲染TikZ图”后过目一遍。
+- 用了 stepper 的页面，按钮读屏标签来自共用件 plotfx.js，仍是中文，画面上不显示，未改动共用件。
+- 已知小瑕疵：prob-regression 在 380px 下左端把手光环被画布边缘截掉一点。
+
+### 本地操作
+
+复制回 `D:\MathAPP` 后运行“导入课程内容”和“渲染TikZ图”，并把交互页面同步到 `frontend\dist\interactive`。
+

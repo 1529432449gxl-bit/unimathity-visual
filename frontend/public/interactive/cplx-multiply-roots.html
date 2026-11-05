@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Complex multiplication and roots</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:380px;touch-action:none}@media(max-width:520px){canvas#cv{height:340px}}</style></head>
+<body><main>
+<div class="controls" id="nrow" hidden><span class="n" id="ln"></span><input id="n" type="range" min="3" max="8" step="1" value="5" aria-label="root order n"></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag two complex numbers; moduli multiply and arguments add"></canvas></div>
+<div class="nav" id="nav"><button type="button" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const MODE = new URLSearchParams(location.search).get('mode') === 'roots' ? 'roots' : 'mul';
+const glow = (ctx, x, y, r, col, a = .14) => { if (r <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const sn = document.getElementById('n');
+if (MODE === 'roots') { document.getElementById('nrow').hidden = false; katex.render('n', document.getElementById('ln'), { throwOnError: false });
+  document.getElementById('cv').setAttribute('aria-label', 'Drag z; its n-th roots form a regular n-gon on a circle'); document.title = 'n-th roots of a complex number' }
+const R = { z: [1.6, .9], n: +sn.value, w: null, rad: 0, born: 0 };
+const rootsOf = (q, n) => { const r = Math.pow(Math.hypot(...q), 1 / n), t = Math.atan2(q[1], q[0]); return Array.from({ length: n }, (_, k) => [r * Math.cos((t + 2 * Math.PI * k) / n), r * Math.sin((t + 2 * Math.PI * k) / n)]) };
+function drawRoots(ctx, w, h, dt) {
+  if (playing) { const a = Math.atan2(R.z[1], R.z[0]) + dt * .28, r = Math.hypot(...R.z); R.z = [r * Math.cos(a), r * Math.sin(a)] }
+  const n = +sn.value; if (n !== R.n || !R.w) { const w0 = rootsOf(R.z, n)[0]; R.w = Array.from({ length: n }, () => w0.slice()).flat(); R.n = n; R.born = 0 }
+  R.born = Math.min(1, R.born + dt / 1.2);
+  const tgt = rootsOf(R.z, n), sp = P.ease.inOut(R.born);
+  // 等分圆周：各根从 w_0 出发沿圆周展开到各自位置
+  const r1 = Math.hypot(...tgt[0]), t0 = Math.atan2(tgt[0][1], tgt[0][0]);
+  const want = tgt.map((_, k) => { const a = t0 + 2 * Math.PI * k / n * sp; return [r1 * Math.cos(a), r1 * Math.sin(a)] }).flat();
+  const mv = P.approach(R, 'w', want, dt, playing ? 40 : 14) | P.approach(R, 'rad', r1, dt, 10);
+  const s = Math.min(w / 5.6, h / 4.6), ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s, oy - q[1] * s];
+  P.path(ctx, [S([-3.2, 0]), S([3.2, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.4]), S([0, 2.4])], { color: C.rule, width: 1 });
+  const circ = (rr) => Array.from({ length: 121 }, (_, k) => S([rr * Math.cos(k * Math.PI / 60), rr * Math.sin(k * Math.PI / 60)]));
+  P.path(ctx, circ(Math.hypot(...R.z)), { color: C.mute, width: 1, dash: [3, 4], alpha: .6 });
+  P.path(ctx, circ(R.rad), { color: C.blue, width: 1.6, alpha: .8 });
+  const W = []; for (let k = 0; k < n; k++) W.push([R.w[2 * k], R.w[2 * k + 1]]);
+  ctx.save(); ctx.beginPath(); W.map(S).forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.fillStyle = P.rgba(C.blue, .12 * sp); ctx.fill(); ctx.restore();
+  P.path(ctx, [...W, W[0]].map(S), { color: C.accent, width: 2.2, alpha: sp, halo: 2 });
+  P.path(ctx, [S([0, 0]), S(R.z)], { color: C.warm, width: 1.4, alpha: .6, dash: [3, 3] });
+  W.forEach((q, k) => { const g = S(q), pop = P.ease.back(P.seg(R.born, k / n * .7, k / n * .7 + .3)); if (k === 0) glow(ctx, ...g, 12, C.accent); P.dot(ctx, ...g, { r: 5, color: C.accent, scale: k ? pop : 1 }) });
+  const gz = S(R.z); glow(ctx, ...gz, 13, C.warm, grab >= 0 ? .22 : .14); P.dot(ctx, ...gz, { r: 6, color: C.warm });
+  const off = (q, k) => { const L = Math.hypot(...q) || 1; return [S(q)[0] + q[0] / L * k, S(q)[1] - q[1] / L * k] };
+  lab.set('z', 'z', ...off(R.z, 18), { color: C.warm }); lab.set('w0', 'w_0', ...off(W[0], 18), { color: C.accent });
+  lab.set('w1', 'w_1', ...off(W[1], 18), { color: C.accent, alpha: sp });
+  lab.end();
+  return playing || mv || grab >= 0 || R.born < 1;
+}
+sn.addEventListener('input', () => { playing = false; sync(); cv.kick() });
+const z = [[1.25, .55], [.9, .75]];
+const st = { p: mul(z[0], z[1]) };
+let playing = true, grab = -1, S;
+const lab = P.labels(document.getElementById('stage'));
+function arc(ctx, r, a0, a1, color, alpha) { const pts = []; const n = 40; for (let k = 0; k <= n; k++) { const t = a0 + (a1 - a0) * k / n; pts.push(S([r * Math.cos(t), r * Math.sin(t)])) } P.path(ctx, pts, { color, width: 1.6, alpha }) }
+function tri(ctx, a, b, c, color, alpha) { ctx.save(); ctx.beginPath(); [a, b, c].map(S).forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.fillStyle = P.rgba(color, alpha); ctx.fill(); ctx.restore() }
+function arrow(ctx, a, b, color, width) { const p = S(a), q = S(b), dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy); if (L < 2) return; const ux = dx / L, uy = dy / L, hh = Math.min(10, L * .4);
+  P.path(ctx, [p, [q[0] - ux * hh * .6, q[1] - uy * hh * .6]], { color, width }); ctx.save(); ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] - ux * hh - uy * hh * .42, q[1] - uy * hh + ux * hh * .42); ctx.lineTo(q[0] - ux * hh + uy * hh * .42, q[1] - uy * hh - ux * hh * .42); ctx.closePath(); ctx.fill(); ctx.restore() }
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  if (MODE === 'roots') return drawRoots(ctx, w, h, dt);
+  if (playing) { const a = Math.atan2(z[1][1], z[1][0]) + dt * .35, r = Math.hypot(...z[1]); z[1] = [r * Math.cos(a), r * Math.sin(a)] }
+  const mv = P.approach(st, 'p', mul(z[0], z[1]), dt, playing ? 40 : 12);
+  const s = Math.min(w / 5.6, h / 4.6), ox = w / 2, oy = h / 2; S = q => [ox + q[0] * s, oy - q[1] * s];
+  P.path(ctx, [S([-3.2, 0]), S([3.2, 0])], { color: C.rule, width: 1 }); P.path(ctx, [S([0, -2.4]), S([0, 2.4])], { color: C.rule, width: 1 });
+  const p = st.p, O = [0, 0], one = [1, 0];
+  tri(ctx, O, one, z[0], C.accent, .1); tri(ctx, O, z[1], p, C.warm, .12);
+  const t1 = Math.atan2(z[0][1], z[0][0]), t2 = Math.atan2(z[1][1], z[1][0]);
+  arc(ctx, .32, 0, t1, C.accent, .9); arc(ctx, .48, 0, t2, C.blue, .9); arc(ctx, .66, 0, t1 + t2, C.warm, .9);
+  arrow(ctx, O, z[1], C.blue, 2); arrow(ctx, O, z[0], C.accent, 2.4); arrow(ctx, O, p, C.warm, 2.4);
+  P.path(ctx, [S(one), S(z[0])], { color: C.accent, width: 1, alpha: .5, dash: [3, 3] }); P.path(ctx, [S(z[1]), S(p)], { color: C.warm, width: 1, alpha: .5, dash: [3, 3] });
+  P.dot(ctx, ...S(one), { r: 3.5, color: C.mute });
+  for (const [q, c] of [[z[0], C.accent], [z[1], C.blue]]) { const g = S(q); ctx.save(); ctx.beginPath(); ctx.arc(g[0], g[1], 13, 0, 7); ctx.fillStyle = P.rgba(c, .12); ctx.fill(); ctx.restore() }
+  P.dot(ctx, ...S(z[0]), { r: 6, color: C.accent }); P.dot(ctx, ...S(z[1]), { r: 6, color: C.blue }); P.dot(ctx, ...S(p), { r: 4.5, color: C.warm });
+  const off = (q, k) => { const L = Math.hypot(...q) || 1; return [S(q)[0] + q[0] / L * k, S(q)[1] - q[1] / L * k] };
+  lab.set('1', '1', ...off(one, 0), { color: C.soft, dy: 14, size: 13 });
+  lab.set('z1', 'z_1', ...off(z[0], 18), { color: C.accent }); lab.set('z2', 'z_2', ...off(z[1], 18), { color: C.blue });
+  lab.set('p', 'z_1z_2', ...off(p, 22), { color: C.warm });
+  lab.end();
+  return playing || mv || grab >= 0;
+});
+const cvs = document.getElementById('cv'), pb = document.querySelector('#nav .play');
+const sync = () => { pb.textContent = playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(playing)) };
+pb.onclick = () => { playing = !playing; sync(); cv.kick() };
+const toZ = e => { const r = cvs.getBoundingClientRect(), s = Math.min(r.width / 5.6, r.height / 4.6); return [(e.clientX - r.left - r.width / 2) / s, -(e.clientY - r.top - r.height / 2) / s] };
+cvs.addEventListener('pointerdown', e => { if (MODE === 'roots') { const q = toZ(e); if (Math.hypot(q[0] - R.z[0], q[1] - R.z[1]) > .5) return; grab = 0; playing = false; sync(); cvs.setPointerCapture(e.pointerId); cv.kick(); return } const q = toZ(e), d = z.map(a => Math.hypot(a[0] - q[0], a[1] - q[1])); grab = d[0] < d[1] ? 0 : 1; if (d[grab] > .45) { grab = -1; return } playing = false; sync(); cvs.setPointerCapture(e.pointerId); cv.kick() });
+cvs.addEventListener('pointermove', e => { if (grab < 0) return; if (MODE === 'roots') { const q = toZ(e), r = Math.hypot(...q), Rr = P.clamp(r, .3, 2.2); R.z = [q[0] / (r || 1) * Rr, q[1] / (r || 1) * Rr]; cv.kick(); return } const q = toZ(e), r = Math.hypot(...q), R = P.clamp(r, .35, 1.5); z[grab] = [q[0] / (r || 1) * R, q[1] / (r || 1) * R]; cv.kick() });
+cvs.addEventListener('pointerup', () => { grab = -1 });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

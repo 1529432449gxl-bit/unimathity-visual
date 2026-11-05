@@ -68,7 +68,7 @@ const cv = P.mount(cvEl, (ctx, w, h, dt) => {
     V.line(ctx, cam, raw, { color: C.warm, width: 2.2, alpha: I });
     const mv = slice(x1, f); V.line(ctx, cam, mv, { color: C.blue, width: 2.6, alpha: I * P.seg(m, 0, .15) });
     if (m > .95) V.paint(ctx, cam, [V.poly([W3(-A, -A, 0), ...mv, W3(-A, A, 0)], C.blue, .14)]);
-    const pk = cam.P(mv[40]); lab.set('c', 'p(y\\mid x)', pk[0], pk[1], { color: C.blue, size: 13, dy: -14, alpha: P.seg(m, .8, 1) });
+    const pk = cam.P(mv[40]); lab.set('c', 'p(y\\mid x)', pk[0], pk[1], { color: C.blue, size: 13, dx: 34, dy: -16, alpha: P.seg(m, .8, 1) });
   } else {
     // 富比尼：先沿 x 逐片累积，再沿 y 逐片累积，两种次序得到同一个体积
     const dir = phase ? 'y' : 'x', col = phase ? C.blue : C.warm;
@@ -76,10 +76,10 @@ const cv = P.mount(cvEl, (ctx, w, h, dt) => {
     const sp = slice(fx, 1, dir), base = dir === 'x' ? [W3(fx, -A, 0), W3(fx, A, 0)] : [W3(-A, fx, 0), W3(A, fx, 0)];
     V.paint(ctx, cam, [V.poly([base[0], ...sp, base[1]], col, .34)]); V.line(ctx, cam, sp, { color: col, width: 2.4 });
     // 右下角两根柱：两种次序的累积量，最终等高
-    const bh = Math.min(120, h * .3), bw = 16, bx = w - 70, by = h - 26;
+    const bh = Math.min(120, h * .3), bw = 16, bx = w - 84, by = h - 26;
     const va = interp(cumX, -A + 2 * A * sh.fa), vb = interp(cumY, -A + 2 * A * sh.fb), tot = cumX[G - 1];
-    [[va, C.warm, 0], [vb, C.blue, 1]].forEach(([vv, cc, k]) => { const x0 = bx + k * (bw + 14); ctx.fillStyle = P.vgrad(ctx, by - bh, by, cc, .6, .3); ctx.fillRect(x0, by - bh * vv / tot, bw, bh * vv / tot); ctx.strokeStyle = P.rgba(cc, .7); ctx.lineWidth = 1; ctx.strokeRect(x0, by - bh, bw, bh) });
-    lab.set('a', 'dy\\,dx', bx + bw / 2, by + 12, { color: C.warm, size: 11 }); lab.set('b', 'dx\\,dy', bx + bw * 1.5 + 14, by + 12, { color: C.blue, size: 11 });
+    [[va, C.warm, 0], [vb, C.blue, 1]].forEach(([vv, cc, k]) => { const x0 = bx + k * (bw + 26); ctx.fillStyle = P.vgrad(ctx, by - bh, by, cc, .6, .3); ctx.fillRect(x0, by - bh * vv / tot, bw, bh * vv / tot); ctx.strokeStyle = P.rgba(cc, .7); ctx.lineWidth = 1; ctx.strokeRect(x0, by - bh, bw, bh) });
+    lab.set('a', 'dy\\,dx', bx + bw / 2, by + 12, { color: C.warm, size: 11 }); lab.set('b', 'dx\\,dy', bx + bw * 1.5 + 26, by + 12, { color: C.blue, size: 11 });
   }
   const ax = cam.P(W3(A, -A, 0)), ay = cam.P(W3(-A, A, 0));
   lab.set('X', 'x', ax[0], ax[1], { color: C.soft, size: 13, dx: 10, dy: 8 }); lab.set('Y', 'y', ay[0], ay[1], { color: C.soft, size: 13, dx: -10, dy: 8 });
