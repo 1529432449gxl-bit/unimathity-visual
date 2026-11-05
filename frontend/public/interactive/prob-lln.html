@@ -10,7 +10,7 @@
 import * as P from './vendor/plotfx.js';
 P.style();
 const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false });
-const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const glow = (ctx, x, y, r, col, a = .16) => { if (a <= 0 || !(r > 0)) return; ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
 K(document.getElementById('le'), '\\varepsilon');
 const p = .4, NMAX = 6000, PATHS = 7, DUR = 9;
 let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preimage cut out by horizontal lines</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px;touch-action:none}@media(max-width:520px){canvas#cv{height:320px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the value interval on the vertical axis; its preimage on the horizontal axis is highlighted"></canvas></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="true">Pause</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// 模式：?mode=map 原像 f^{-1}([c,d])；?mode=measurable 集合 E(f>α)
+const MODE = new URLSearchParams(location.search).get('mode') === 'measurable' ? 1 : 0;
+const f = x => .5 + .26 * Math.sin(2 * Math.PI * (1.6 * x - .1)) + .13 * Math.sin(2 * Math.PI * (3.7 * x + .2)) + .06 * x;
+const M = 900, xs = Array.from({ length: M + 1 }, (_, j) => j / M), fv = xs.map(f);
+const YLO = .02, YHI = .98;
+const st = { c: .42, d: .6, playing: true, t: 0, drag: null, intro: 0 };
+const sh = { c: .42, d: .6 };
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+const lab = P.labels(document.getElementById('stage'));
+let v;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  st.intro = Math.min(1, st.intro + dt / 1.6);
+  if (st.playing) { st.t += dt;
+    if (MODE) { st.c = .5 + .3 * Math.sin(st.t * .42) }
+    else { const wd = .12 + .06 * Math.sin(st.t * .37); const m = .5 + .26 * Math.sin(st.t * .29); st.c = m - wd / 2; st.d = m + wd / 2 } }
+  const stiff = st.drag ? { k: 420, z: .9 } : { k: 80, z: .82 };
+  let anim = P.spring(sh, 'c', st.c, dt, stiff) | P.spring(sh, 'd', st.d, dt, stiff) | st.intro < 1 | st.playing;
+  v = P.view([-.06, 1.03, -.08, 1.04], { l: 34, r: 16, t: 12, b: 26 }); v.w = w; v.h = h;
+  const c = sh.c, d = MODE ? 1.04 : sh.d, ip = P.ease.out(st.intro);
+  // 值域区间：横向浅蓝带
+  ctx.save(); ctx.fillStyle = P.rgba(C.blue, .1 * ip); ctx.fillRect(v.X(0), v.Y(d), v.X(1) - v.X(0), v.Y(c) - v.Y(d)); ctx.restore();
+  for (const y of MODE ? [c] : [c, d]) P.path(ctx, [[v.X(-.06), v.Y(y)], [v.X(1), v.Y(y)]], { color: C.mute, width: 1, dash: [4, 4], alpha: .8 * ip });
+  P.path(ctx, [[v.X(0), v.Y(0)], [v.X(1.02), v.Y(0)]], { color: C.rule, width: 1 });
+  P.path(ctx, [[v.X(0), v.Y(0)], [v.X(0), v.Y(1.02)]], { color: C.rule, width: 1 });
+  // 原像：落在区间内的 x 组成若干段
+  const segs = []; let s0 = null;
+  for (let j = 0; j <= M; j++) { const inn = fv[j] >= c && fv[j] <= d; if (inn && s0 === null) s0 = j; if ((!inn || j === M) && s0 !== null) { segs.push([s0, inn ? j : j - 1]); s0 = null } }
+  // 原像上方的竖直浅橙色投影
+  for (const [a, b] of segs) { const top = [], bot = []; for (let j = a; j <= b; j++) { top.push([v.X(xs[j]), v.Y(fv[j])]); bot.push([v.X(xs[j]), v.Y(0)]) }
+    P.fill(ctx, top, bot, P.vgrad(ctx, v.Y(1), v.Y(0), C.warm, .02, .16 * ip)) }
+  P.path(ctx, xs.map((x, j) => [v.X(x), v.Y(fv[j])]), { color: C.accent, width: 2.4, halo: 3, progress: ip });
+  for (const [a, b] of segs) {
+    const arc = []; for (let j = a; j <= b; j++) arc.push([v.X(xs[j]), v.Y(fv[j])]);
+    P.path(ctx, arc, { color: C.warm, width: 3.2, alpha: ip });
+    P.path(ctx, [[v.X(xs[a]), v.Y(0)], [v.X(xs[b]) + .8, v.Y(0)]], { color: C.warm, width: 5, alpha: ip });
+  }
+  // 拖动柄
+  const gx = v.X(-.03);
+  P.grip(ctx, gx, v.Y(c), { color: C.blue, s: st.drag === 'c' ? 1.15 : 1 });
+  if (!MODE) P.grip(ctx, gx, v.Y(d), { color: C.blue, s: st.drag === 'd' ? 1.15 : 1 });
+  lab.set('f', 'f', v.X(.03), v.Y(fv[Math.round(.03 * M)]) - 15, { color: C.accent, alpha: ip });
+  if (MODE) { lab.set('a', '\\alpha', gx - 16, v.Y(c), { color: C.blue, size: 14 }); lab.set('E', 'E(f>\\alpha)', v.X(.5), v.Y(0) + 15, { color: C.warm, size: 13, alpha: ip }) }
+  else { lab.set('c', 'c', gx - 14, v.Y(c), { color: C.blue, size: 14 }); lab.set('d', 'd', gx - 14, v.Y(d), { color: C.blue, size: 14 });
+    lab.set('E', 'f^{-1}([c,d])', v.X(.5), v.Y(0) + 15, { color: C.warm, size: 13, alpha: ip }) }
+  lab.end();
+  return anim || !!st.drag;
+});
+const pb = document.getElementById('play');
+const sync = () => { pb.textContent = st.playing ? 'Pause' : 'Play'; pb.setAttribute('aria-pressed', String(st.playing)) };
+pb.onclick = () => { st.playing = !st.playing; sync(); cv.kick() };
+const toY = e => { const r = cvEl.getBoundingClientRect(); return v.b[3] - (e.clientY - r.top - v.pad.t) / (r.height - v.pad.t - v.pad.b) * (v.b[3] - v.b[2]) };
+cvEl.addEventListener('pointerdown', e => {
+  const y = toY(e);
+  if (MODE) st.drag = 'c'; else { const dc = Math.abs(y - sh.c), dd = Math.abs(y - sh.d); st.drag = Math.min(dc, dd) < .08 ? (dc < dd ? 'c' : 'd') : 'band'; st.off = y - (sh.c + sh.d) / 2 }
+  st.playing = false; sync(); cvEl.setPointerCapture(e.pointerId); move(e) });
+const move = e => { if (!st.drag) return; const y = toY(e);
+  if (st.drag === 'c') st.c = P.clamp(y, YLO, MODE ? YHI : st.d - .03);
+  else if (st.drag === 'd') st.d = P.clamp(y, st.c + .03, YHI);
+  else { const wd = st.d - st.c, m = P.clamp(y - st.off, YLO + wd / 2, YHI - wd / 2); st.c = m - wd / 2; st.d = m + wd / 2 }
+  cv.kick() };
+cvEl.addEventListener('pointermove', move);
+cvEl.addEventListener('pointerup', () => { st.drag = null; cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { st.playing = false; sync() } });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

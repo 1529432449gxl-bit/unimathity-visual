@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Layering by function values</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:520px){canvas#cv{height:310px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="The range is cut into layers that become finer step by step"></canvas></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// 模式：?mode=simple 简单函数逐层逼近；?mode=integral 按值域横向分层；?mode=monotone 单调收敛
+const MODE = { simple: 0, integral: 1, monotone: 2 }[new URLSearchParams(location.search).get('mode')] ?? 0;
+const f = x => 1.5 + .9 * Math.sin(2 * Math.PI * (1.15 * x + .1)) + .42 * Math.sin(2 * Math.PI * 3.1 * x);
+const M = 700, xs = Array.from({ length: M + 1 }, (_, j) => j / M), fv = xs.map(f), YM = 2.95;
+const glow = (ctx, x, y, r, col, a) => { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = P.rgba(col, a); ctx.fill(); ctx.restore() };
+// 各步的目标阶梯
+const STEPS = MODE === 0 ? [1, 2, 3, 4, 5, 6] : MODE === 1 ? [3, 5, 8, 12, 18, 28] : [1, 2, 3, 5, 8, 14, 30];
+const target = i => { const n = STEPS[i];
+  if (MODE === 0) return fv.map(y => y >= n ? n : Math.floor(y * 2 ** n) / 2 ** n);
+  if (MODE === 1) { const dy = YM / n; return fv.map(y => Math.floor(y / dy) * dy) }
+  return xs.map((x, j) => fv[j] * Math.pow(x, 1.6 / n)) };   // f_n ↑ f
+const st = { y: target(0).map(() => 0), intro: 0 };
+const v = P.view([0, 1, -.06, 3.05], { l: 24, r: 14, t: 12, b: 22 });
+const lab = P.labels(document.getElementById('stage'));
+let player, prev = [];
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  v.w = w; v.h = h; st.intro = Math.min(1, st.intro + dt / 1.5); const ip = P.ease.out(st.intro);
+  const moving = player.tick(dt), i = player.i, n = STEPS[i], p = player.p;
+  const mv = P.approach(st, 'y', target(i), dt, 6);
+  const top = xs.map((x, j) => [v.X(x), v.Y(st.y[j])]), base = xs.map(x => [v.X(x), v.Y(0)]);
+  if (MODE === 0) {
+    // 值域上的分点：纵轴短刻度，新增分点拉出一条橙色细线后淡去
+    for (let k = 1; k * 2 ** -n < 3.05; k++) { const y = k / 2 ** n, fresh = k % 2 === 1 && n > 1, a = n > 4 ? .5 : 1;
+      P.path(ctx, [[v.X(0) - 6, v.Y(y)], [v.X(0) + (fresh ? 6 : 3), v.Y(y)]], { color: fresh ? C.warm : C.mute, width: 1, alpha: a * (fresh ? P.seg(p, 0, .3) : .7) });
+      if (fresh && n <= 4) P.path(ctx, [[v.X(0), v.Y(y)], [v.X(1), v.Y(y)]], { color: C.warm, width: 1, alpha: .35 * a * (1 - P.seg(p, .45, 1)), progress: P.ease.out(P.seg(p, 0, .45)) }) }
+    P.fill(ctx, top, base, P.vgrad(ctx, v.Y(3), v.Y(0), C.warm, .22, .06));
+    P.path(ctx, top, { color: C.warm, width: 2.2, halo: 2 });
+  } else if (MODE === 1) {
+    const dy = YM / n;
+    P.fill(ctx, top, base, P.rgba(C.warm, .16));
+    for (let k = 1; k * dy < YM; k++) P.path(ctx, [[v.X(0), v.Y(k * dy)], [v.X(1), v.Y(k * dy)]], { color: C.bg, width: 1.2 });
+    // 高亮的一层：随播放上移；它在横轴上的截口 E(f>y_k) 用深蓝线段标出
+    const kk = 1 + Math.floor(P.clamp(p, 0, .999) * Math.max(1, Math.floor(2.4 / dy) - 1)), lo = kk * dy, hi = lo + dy;
+    const band = top.map(([x], j) => [x, v.Y(Math.min(Math.max(fv[j], lo), hi))]), bl = top.map(([x]) => [x, v.Y(lo)]);
+    P.fill(ctx, band, bl, P.rgba(C.warm, .5 * ip));
+    let s0 = null; const segs = [];
+    xs.forEach((x, j) => { const inn = fv[j] > lo; if (inn && s0 === null) s0 = x; if ((!inn || j === M) && s0 !== null) { segs.push([s0, x]); s0 = null } });
+    for (const [a, b] of segs) P.path(ctx, [[v.X(a), v.Y(0) + 7], [v.X(b), v.Y(0) + 7]], { color: C.accent, width: 3.4, alpha: ip });
+    P.path(ctx, [[v.X(0) - 5, v.Y(lo)], [v.X(0), v.Y(lo)]], { color: C.warm, width: 2 });
+    lab.set('yk', 'y_k', v.X(0) - 14, v.Y(lo), { color: C.warm, size: 12, alpha: ip });
+  } else {
+    // 已走过的 f_k 留下淡淡的痕迹
+    if (player.i > (prev.at(-1)?.i ?? -1) && p >= 1) prev.push({ i: player.i, y: st.y.slice() });
+    prev = prev.filter(q => q.i < player.i);
+    for (const q of prev) P.path(ctx, xs.map((x, j) => [v.X(x), v.Y(q.y[j])]), { color: C.warm, width: 1.2, alpha: .18 + .3 * (q.i / player.i) });
+    P.fill(ctx, top, base, P.vgrad(ctx, v.Y(3), v.Y(0), C.blue, .3, .08));
+    P.path(ctx, top, { color: C.warm, width: 2.4, halo: 2 });
+    lab.set('fn', 'f_n', v.X(.62), v.Y(st.y[Math.round(.62 * M)]) + 16, { color: C.warm, size: 14, alpha: ip });
+  }
+  P.axes(ctx, v, { x: true, y: true });
+  P.path(ctx, xs.map((x, j) => [v.X(x), v.Y(fv[j])]), { color: C.accent, width: 2.4, halo: 2, progress: ip });
+  const xe = .985, pe = [v.X(xe), v.Y(f(xe))];
+  glow(ctx, ...pe, 10, C.accent, .12 * ip); P.dot(ctx, ...pe, { r: 3.6, color: C.accent, scale: P.ease.back(P.seg(st.intro, .6, 1)) });
+  lab.set('f', 'f', v.X(.03), v.Y(f(.03)) - 15, { color: C.accent, alpha: ip });
+  if (MODE === 0) lab.set('phi', '\\varphi_{' + n + '}', v.X(.97), v.Y(st.y[M - 20]) + 15, { color: C.warm });
+  lab.end();
+  return moving || mv || st.intro < 1;
+});
+player = P.stepper(document.getElementById('nav'), { count: STEPS.length, dur: MODE === 1 ? 2.4 : 1.4, hold: .8, kick: cv.kick });
+player.playing = true; player.go(0, false); player.wait = 1.2; cv.kick();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>
