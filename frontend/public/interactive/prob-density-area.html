@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Density height and area</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:410px}@media(max-width:520px){canvas#cv{height:350px}}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Drag the interval endpoints a and b; the shaded area under the density equals the rise of the distribution function"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style(); document.head.insertAdjacentHTML('beforeend', '<style>.fx .katex-display{margin:0}</style>');
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 双峰混合正态：弯曲明显，高度与面积的区别一眼可见
+const erf = x => { const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + .3275911 * x);
+  return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * Math.exp(-x * x)) };
+const N = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s)) / (Math.sqrt(2 * Math.PI) * s), Phi = (x, m, s) => .5 * (1 + erf((x - m) / (s * Math.SQRT2)));
+const p = x => .55 * N(x, -1.1, .65) + .45 * N(x, 1.3, 1), F = x => .55 * Phi(x, -1.1, .65) + .45 * Phi(x, 1.3, 1);
+const XR = [-3.6, 4.4], LO = -3.2, HI = 4, MIN = .06;
+const st = { a: -.9, b: 1.1, playing: false, ph: 0, cyc: 0, drag: null, hov: null, touched: false, intro: 0 };
+const sh = { a: -.9, b: 1.1, Fa: 0, Fb: 0, ga: 1, gb: 1 };
+const fx = document.getElementById('fx');
+fx.innerHTML = '<div></div><div></div>';
+K(fx.children[0], 'P(a<X\\le b)=\\int_a^b p(x)\\,\\mathrm dx=F(b)-F(a)');
+K(fx.children[1], 'P(a<X\\le a+\\Delta x)\\approx p(a)\\,\\Delta x');
+const lab = P.labels(document.getElementById('stage'));
+const top = P.view([XR[0], XR[1], 0, .42], { l: 18, r: 18, t: 16, b: 10 }), bot = P.view([XR[0], XR[1], -.04, 1.06], { l: 18, r: 18, t: 28, b: 16 });
+const STARTS = [-1.6, .5, -.9, 1.5];                 // 播放时依次换位置，两个峰都走到
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.8);
+  if (st.playing) { // 区间收窄到很小再放开：面积趋于零，高度不变，面积≈高度×宽度
+    st.ph += dt / 7.5; if (st.ph >= 1) { st.ph -= 1; st.cyc = (st.cyc + 1) % STARTS.length }
+    const ph = st.ph, k = ph < .15 ? 0 : ph < .55 ? P.ease.inOut((ph - .15) / .4) : ph < .72 ? 1 : 1 - P.ease.inOut((ph - .72) / .28);
+    st.a = STARTS[st.cyc]; st.b = st.a + P.lerp(2, MIN + .01, k); anim = true;
+  }
+  const sp = st.drag ? { k: 420, z: .9 } : { k: 60, z: .8 };
+  anim = P.spring(sh, 'a', st.a, dt, sp) | P.spring(sh, 'b', st.b, dt, sp) | anim;
+  anim = P.spring(sh, 'ga', st.hov === 'a' || st.drag?.k === 'a' ? 1.35 : 1, dt, { k: 260, z: .55 }) | P.spring(sh, 'gb', st.hov === 'b' || st.drag?.k === 'b' ? 1.35 : 1, dt, { k: 260, z: .55 }) | anim;
+  const I = st.intro, pC = P.ease.inOut(P.seg(I, 0, .5)), pF = P.ease.inOut(P.seg(I, .2, .7)), pA = P.seg(I, .5, 1);
+  const H1 = Math.round(h * .58); top.w = w; top.h = H1; bot.w = w; bot.h = h - H1;
+  const Yb = y => H1 + bot.Y(y);
+  const a = sh.a, b = sh.b, dx = b - a;
+  anim = P.spring(sh, 'Fa', F(a) * pA, dt, { k: 110, z: .62 }) | P.spring(sh, 'Fb', F(b) * pA, dt, { k: 110, z: .62 }) | anim;
+  // 连接上下两图的端点导引线
+  for (const x of [a, b]) P.path(ctx, [[top.X(x), top.Y(0)], [bot.X(x), Yb(Math.max(sh.Fa, 0))]], { color: C.accent, width: 1, alpha: .16 * pA, dash: [2, 4] });
+  // 上：密度与面积
+  P.axes(ctx, top, { x: true });
+  const area = P.curve(top, p, a, b, Math.max(30, Math.round(top.X(b) - top.X(a))));
+  ctx.save(); ctx.globalAlpha = pA; P.fill(ctx, area, [[top.X(a), top.Y(0)], [top.X(b), top.Y(0)]], P.vgrad(ctx, top.Y(.36), top.Y(0), C.blue, .42, .14)); ctx.restore();
+  // 高度×宽度的小矩形：区间很窄时显出，与面积几乎重合
+  const ra = P.clamp(1 - (dx - .12) / .45, 0, 1) * pA;
+  if (ra > .01) { ctx.save(); ctx.globalAlpha = ra; ctx.fillStyle = P.rgba(C.warm, .14); ctx.strokeStyle = C.warm; ctx.lineWidth = 1.6; ctx.setLineDash([4, 3]);
+    const rx = top.X(a), ry = top.Y(p(a)), rw = top.X(b) - top.X(a), rh = top.Y(0) - ry; ctx.fillRect(rx, ry, rw, rh); ctx.strokeRect(rx, ry, rw, rh); ctx.restore() }
+  P.path(ctx, [[top.X(a), top.Y(0)], [top.X(a), top.Y(p(a))]], { color: C.mute, width: 1.4, dash: [3, 4], alpha: pA });
+  P.path(ctx, [[top.X(b), top.Y(0)], [top.X(b), top.Y(p(b))]], { color: C.accent, width: 1.2, alpha: .55 * pA });
+  P.path(ctx, P.curve(top, p), { color: C.accent, width: 2.4, progress: pC, halo: 2 });
+  P.dot(ctx, top.X(a), top.Y(p(a)), { r: 3.5, color: C.mute, scale: pA });
+  // 端点柄：带浅色光晕，悬停或拖动时放大
+  for (const [x, s] of [[a, sh.ga], [b, sh.gb]]) {
+    ctx.save(); ctx.globalAlpha = .18 * pA * (s - .7); ctx.fillStyle = C.accent; ctx.beginPath(); ctx.arc(top.X(x), top.Y(0), 11 * s, 0, 7); ctx.fill(); ctx.restore();
+    P.dot(ctx, top.X(x), top.Y(0), { r: 5.5, color: C.accent, scale: s * pA });
+  }
+  // 下：分布函数；面积 = F(b)-F(a) 的竖直增量（橙色，弹簧跟随）
+  ctx.save(); ctx.translate(0, H1); P.axes(ctx, bot, { x: true }); ctx.restore();
+  P.path(ctx, [[bot.X(XR[0]), Yb(1)], [bot.X(XR[1]), Yb(1)]], { color: C.rule, width: 1, dash: [3, 5], alpha: pF });
+  P.path(ctx, P.curve(bot, F).map(([x, y]) => [x, y + H1]), { color: C.accent, width: 2.4, progress: pF, halo: 2 });
+  const Fa = sh.Fa, Fb = sh.Fb;
+  ctx.save(); ctx.globalAlpha = pA; ctx.fillStyle = P.vgrad(ctx, Yb(Fb), Yb(Fa), C.warm, .22, .06);
+  ctx.fillRect(bot.X(a), Yb(Fb), bot.X(b) - bot.X(a), Yb(Fa) - Yb(Fb)); ctx.restore();
+  P.path(ctx, [[bot.X(a), Yb(Fa)], [bot.X(b), Yb(Fa)]], { color: C.mute, width: 1.2, dash: [3, 4], alpha: pA });
+  P.path(ctx, [[bot.X(b), Yb(Fa)], [bot.X(b), Yb(Fb)]], { color: C.warm, width: 3.2, alpha: pA });
+  P.dot(ctx, bot.X(a), Yb(Fa), { r: 3.5, color: C.accent, scale: pA }); P.dot(ctx, bot.X(b), Yb(Fb), { r: 3.5, color: C.accent, scale: pA });
+  lab.set('a', 'a', top.X(a), top.Y(0) + 16, { color: C.accent, alpha: pA });
+  lab.set('b', 'b', top.X(b), top.Y(0) + 16, { color: C.accent, alpha: dx > .3 ? pA : 0 });
+  lab.set('p', 'p(x)', top.X(3.3), top.Y(p(3.3)) - 16, { color: C.accent, alpha: pC });
+  lab.set('F', 'F(x)', bot.X(3.4), Yb(F(3.4)) + 16, { color: C.accent, alpha: pF });
+  lab.set('pa', 'p(a)', top.X(a) - 26, top.Y(p(a) * .62), { color: C.mute, size: 13, alpha: pA });
+  lab.end();
+  return anim || st.drag;
+});
+// 拖动端点；拖区间内部整体平移
+const ux = e => { const r = cvEl.getBoundingClientRect(); return { x: XR[0] + (e.clientX - r.left - top.pad.l) / (r.width - top.pad.l - top.pad.r) * (XR[1] - XR[0]), px: e.clientX - r.left } };
+const hit = q => Math.abs(q.px - top.X(st.b)) < 14 ? 'b' : Math.abs(q.px - top.X(st.a)) < 14 ? 'a' : (q.x > st.a && q.x < st.b ? 'm' : null);
+cvEl.addEventListener('pointerdown', e => { const q = ux(e), k = hit(q); if (!k) return; stop(); st.touched = true; st.drag = { k, x: q.x, a: st.a, b: st.b }; cvEl.setPointerCapture(e.pointerId); cvEl.style.cursor = k === 'm' ? 'grabbing' : 'ew-resize'; e.preventDefault(); cv.kick() });
+cvEl.addEventListener('pointermove', e => {
+  const q = ux(e);
+  if (!st.drag) { const k = hit(q); if (k !== st.hov) { st.hov = k; cv.kick() } cvEl.style.cursor = { a: 'ew-resize', b: 'ew-resize', m: 'grab' }[k] || 'default'; return }
+  const d = st.drag, du = q.x - d.x;
+  if (d.k === 'a') st.a = P.clamp(d.a + du, LO, st.b - MIN);
+  else if (d.k === 'b') st.b = P.clamp(d.b + du, st.a + MIN, HI);
+  else { const w = d.b - d.a, a = P.clamp(d.a + du, LO, HI - w); st.a = a; st.b = a + w }
+  cv.kick();
+});
+const up = () => { if (st.drag) { st.drag = null; cvEl.style.cursor = 'grab'; cv.kick() } };
+cvEl.addEventListener('pointerup', up); cvEl.addEventListener('pointercancel', up);
+cvEl.addEventListener('pointerleave', () => { if (!st.drag && st.hov) { st.hov = null; cv.kick() } });
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.playing = true; st.ph = 0; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched) play() }, 1600) } else stop() }, { threshold: .4 }).observe(cvEl);
+addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; stop(); st.touched = true; const d = e.key === 'ArrowRight' ? .12 : -.12, w = st.b - st.a; st.a = P.clamp(st.a + d, LO, HI - w); st.b = st.a + w; cv.kick() });
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

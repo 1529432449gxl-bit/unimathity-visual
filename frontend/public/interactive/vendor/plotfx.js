@@ -145,3 +145,18 @@ export function minimap(ctx, v, { B, paint, alpha = 1, corner = 'tl', frac = .3,
 export function mapCurve(ctx, mx, my, f, x0, x1, { color = C.accent, width = 1.4, n = 90 } = {}) {
   const pts = []; for (let k = 0; k <= n; k++) { const x = x0 + (x1 - x0) * k / n; pts.push([mx(x), my(f(x))]) } path(ctx, pts, { color, width });
 }
+/** 弹簧趋近（略带回弹，比指数趋近更有“手感”）：速度存在 obj[key+'$v']。返回是否仍在运动。 */
+export function spring(obj, key, target, dt, { k = 120, z = .72 } = {}) {
+  const vk = key + '$v'; let x = obj[key] ?? target, v = obj[vk] || 0; const c = 2 * z * Math.sqrt(k);
+  for (let s = 0, n = Math.max(1, Math.ceil(dt / .008)); s < n; s++) { const h = dt / n; v += (-k * (x - target) - c * v) * h; x += v * h }
+  if (Math.abs(x - target) < 1e-5 * (1 + Math.abs(target)) && Math.abs(v) < 1e-4) { x = target; v = 0 }
+  obj[key] = x; obj[vk] = v; return v !== 0 || x !== target;
+}
+/** 竖直渐变填充色：从 y0（不透明度 a0）到 y1（不透明度 a1）。 */
+export function vgrad(ctx, y0, y1, hex, a0, a1) { const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, rgba(hex, a0)); g.addColorStop(1, rgba(hex, a1)); return g }
+/** 拖动柄：圆角小胶囊，hover/drag 时放大。 */
+export function grip(ctx, x, y, { color = C.accent, s = 1, w = 8, h = 22 } = {}) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, w / 2);
+  ctx.fillStyle = C.bg; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = color; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -h / 4); ctx.lineTo(0, h / 4); ctx.lineWidth = 1.2; ctx.stroke(); ctx.restore();
+}
