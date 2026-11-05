@@ -21,8 +21,8 @@ export const VizMarquee: React.FC<VizMarqueeProps> = ({vizList, title, subtitle}
   const metas = vizList.map((id) => vizMeta(id));
   useFontsFor(metas.map((m) => m.title + m.course).join('') + title + subtitle);
 
-  const rows = portrait ? 4 : 3;
-  const cardW = (portrait ? 440 : 470) * u;
+  const rows = portrait ? 6 : 3;
+  const cardW = (portrait ? 400 : 470) * u;
   const cardH = cardW * 0.62;
   const gap = 28 * u;
   const pitch = cardW + gap;

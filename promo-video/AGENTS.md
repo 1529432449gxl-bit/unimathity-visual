@@ -95,8 +95,56 @@ scripts/
 - 数学画面上不放说明小字和数值读数；不编造用户数据或调查百分比。
 - 画面完全由帧号决定，随机数用 `random(seed)`，保证每次渲染一致。
 
-## 模块目录
+## 模块清单
 
-见下方「模块清单」（随模块增减更新）。
+时长为推荐值（小节，1 小节 = 2 秒），每个模块都能放进 1～4 小节。单独预览：`Mod-<id>`。
 
-<!-- MODULE-CATALOG -->
+### 第一段 · 学生痛点（src/modules/pain）
+
+| id | 名称 | 推荐时长 | 主要 props |
+|---|---|---|---|
+| PainHook | 冷开场，逐字砸入 | 1 | lines, highlight |
+| PainPhoto | 痛点卡：照片 + 大标题 + 公式雾 | 1 | photo, index, title, subtitle, layout(left/right), formulas |
+| PainCollage | 照片拼贴墙 + 关键词滚动 | 2 | photos, words, center, highlight |
+| PainQuote | 学生原话卡（默认文案是示意，需换成真实采访） | 2 | photo, shape(circle/portrait), quote, who |
+| PainChecklist | 痛点清单：逐条打勾或划掉 | 2 | title, items, mark(check/cross) |
+| PainTurn | 反转问句，白闪接 drop | 2 | text, highlight |
+| TitleCard | 通用段落标题卡 | 1 | index, title, subtitle, accent |
+
+### 第二段 · 网站介绍（src/modules/intro）
+
+| id | 名称 | 推荐时长 | 主要 props |
+|---|---|---|---|
+| LogoReveal | 字标揭幕 | 2 | name, tagline, highlight |
+| CourseWall | 课程墙（数量可变） | 2 | title, courses[{name, symbol, sub}] |
+| FlowSteps | 学习路径 | 2 | title, steps[{title, sub, icon}] |
+| BrowserDemo | 网站讲义页样机 | 2 | url, course, chapter, toc, formula, viz |
+| FeatureSpotlight | 卖点特写 | 2 | index, title, desc, tags, viz, side |
+| FeatureGrid | 三张卖点卡 | 2 | title, cards[{title, desc, viz}] |
+| KeywordBurst | 关键词快闪 | 2 | words, kicker |
+
+### 第三段 · 成果展示（src/modules/showcase）
+
+| id | 名称 | 推荐时长 | 主要 props |
+|---|---|---|---|
+| VizShowcase | 单个数学画面高光 | 1 | viz, index, total, title, course, formula, layout(full/split) |
+| ShowcaseGrid | 多画面网格 | 2 | vizList, cols, title |
+| VizMarquee | 画面长廊 | 2 | vizList, title, subtitle |
+| BeforeAfter | 课本 vs Unimathity | 2 | leftLabel, rightLabel, tex, text, viz |
+| StatsRow | 数字计数 | 2 | items[{value, suffix, label}], title |
+| Outro | 收尾 | 2 | name, tagline, cta, viz |
+
+### 数学画面（src/viz，`viz` 参数可用的 id）
+
+| id | 课程 · 内容 |
+|---|---|
+| riemann | 微积分 · 定积分的定义 |
+| taylor | 微积分 · 泰勒展开 |
+| fourier | 数学分析 · 傅里叶级数 |
+| linearMap | 线性代数 · 特征值的几何意义 |
+| galton | 概率统计 · 中心极限定理 |
+| complexMap | 复变函数 · 共形映射 |
+| phaseFlow | 常微分方程 · 极限环 |
+| dihedral | 抽象代数 · 二面体群 |
+| newton | 数值分析 · 牛顿迭代 |
+| modCircle | 数论 · 模乘圆 |

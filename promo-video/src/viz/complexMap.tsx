@@ -26,25 +26,28 @@ const ComplexMap: React.FC<VizProps> = ({w, h, t, frame}) => {
   const ccx = lerp(0, -1, s);
   const P = (p: [number, number]): [number, number] => [w / 2 + (p[0] - ccx) * scale, h / 2 - p[1] * scale];
 
-  const vlines: string[] = [];
+  // 每条线拆成两半、都从中点出发，入场时从中心向两端描出
+  const half = (fn: (u: number) => [number, number]) => {
+    const out: string[] = [];
+    for (const sg of [1, -1]) {
+      const pts: [number, number][] = [];
+      for (let j = 0; j <= SAMPLES / 2; j++) {
+        const u = (sg * 2 * j) / SAMPLES; // 0 -> ±1
+        pts.push(P(fn(u)));
+      }
+      out.push(pathOf(pts));
+    }
+    return out;
+  };
+  const vlines: string[][] = [];
   for (let i = 0; i < NV; i++) {
     const x = -1 + (2 * i) / (NV - 1);
-    const pts: [number, number][] = [];
-    for (let j = 0; j <= SAMPLES; j++) {
-      const y = -Math.PI + (2 * Math.PI * j) / SAMPLES;
-      pts.push(P(map(x, y, s)));
-    }
-    vlines.push(pathOf(pts));
+    vlines.push(half((u) => map(x, u * Math.PI, s)));
   }
-  const hlines: string[] = [];
+  const hlines: string[][] = [];
   for (let i = 0; i < NH; i++) {
     const y = -Math.PI + (2 * Math.PI * i) / (NH - 1);
-    const pts: [number, number][] = [];
-    for (let j = 0; j <= SAMPLES; j++) {
-      const x = -1 + (2 * j) / SAMPLES;
-      pts.push(P(map(x, y, s)));
-    }
-    hlines.push(pathOf(pts));
+    hlines.push(half((u) => map(u, y, s)));
   }
 
   // 一个沿横线滑动的探针点，展示格点随映射移动
@@ -59,12 +62,12 @@ const ComplexMap: React.FC<VizProps> = ({w, h, t, frame}) => {
         <Glow id={uid + 'g'} w={w} h={h} r={4 * S} strength={2} />
       </defs>
       <g fill="none" strokeLinecap="round" filter={`url(#${uid}g)`}>
-        {hlines.map((d, i) => (
-          <path key={'h' + i} d={d} pathLength={1} strokeDasharray={`${grow} 1`} stroke={C.orange} strokeWidth={i === (NH - 1) / 2 ? sw * 1.6 : sw} opacity={i === (NH - 1) / 2 ? 1 : 0.8} />
-        ))}
-        {vlines.map((d, i) => (
-          <path key={'v' + i} d={d} pathLength={1} strokeDasharray={`${grow} 1`} stroke={C.sky} strokeWidth={i === (NV - 1) / 2 ? sw * 1.6 : sw} opacity={i === (NV - 1) / 2 ? 1 : 0.85} />
-        ))}
+        {hlines.flatMap((ds, i) => ds.map((d, q) => (
+          <path key={'h' + i + q} d={d} pathLength={1} strokeDasharray={`${grow} 1`} stroke={C.orange} strokeWidth={i === (NH - 1) / 2 ? sw * 1.6 : sw} opacity={i === (NH - 1) / 2 ? 1 : 0.8} />
+        )))}
+        {vlines.flatMap((ds, i) => ds.map((d, q) => (
+          <path key={'v' + i + q} d={d} pathLength={1} strokeDasharray={`${grow} 1`} stroke={C.sky} strokeWidth={i === (NV - 1) / 2 ? sw * 1.6 : sw} opacity={i === (NV - 1) / 2 ? 1 : 0.85} />
+        )))}
         <circle cx={probe[0]} cy={probe[1]} r={(8 + 5 * pulse) * S} fill={C.ink} opacity={grow} />
       </g>
     </svg>
