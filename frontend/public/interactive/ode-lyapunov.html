@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lyapunov stability</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:370px}@media(max-width:520px){canvas#cv{height:330px}}.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="0" aria-pressed="true">Stable</button><button type="button" class="tg" data-m="1" aria-pressed="false">Asymptotically stable</button><button type="button" class="tg" id="vt" aria-pressed="true">Level sets of V</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Trajectories starting in the delta-disk never leave the epsilon-disk; level sets of V are crossed inward"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// V = x² + 2y²。中心：x'=2y, y'=-x，轨线就是 V 的等值线；焦点：再加 -0.32 的阻尼，V 沿轨线严格下降。
+const V = ([x, y]) => x * x + 2 * y * y;
+const F = [([x, y]) => [2 * y, -x], ([x, y]) => [2 * y - .32 * x, -x - .32 * y]];
+const rk = (f, x, h) => { const k1 = f(x), k2 = f([x[0] + h / 2 * k1[0], x[1] + h / 2 * k1[1]]), k3 = f([x[0] + h / 2 * k2[0], x[1] + h / 2 * k2[1]]), k4 = f([x[0] + h * k3[0], x[1] + h * k3[1]]);
+  return [x[0] + h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]), x[1] + h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])] };
+const st = { mode: 0, vOn: true, eps: .82, playing: false, touched: false, intro: 0, t: 0, drag: false, hov: false, fade: 1 };
+const sh = { eps: .82, vOn: 1, g: 1 };
+const LV = 7, Q = .6;                                   // V 的嵌套等值线：c_k = m·Q^k，m 为 ε 圆上 V 的最小值
+const flash = Array(LV).fill(0);
+let trajs = [], TT = 1, H = .01;
+function build() {
+  const d = st.eps / Math.SQRT2, f = F[st.mode], a0 = Math.random() * 2 * Math.PI, n = 4;
+  TT = st.mode ? 10 : 2 * Math.PI / Math.SQRT2 * 1.15;
+  trajs = Array.from({ length: n }, (_, j) => {
+    const a = a0 + 2 * Math.PI * j / n + (Math.random() - .5) * .5, r = d * (.72 + .24 * Math.random());
+    const pts = [[r * Math.cos(a), r * Math.sin(a)]]; for (let k = 0; k < TT / H; k++) pts.push(rk(f, pts[k], H));
+    return { pts, lvl: pts.map(p => Math.floor(Math.log(V(p) / (st.eps * st.eps)) / Math.log(Q))) };
+  });
+  st.t = 0;
+}
+const fx = document.getElementById('fx'); fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+['|\\boldsymbol x(t_0)|<\\delta\\ \\Longrightarrow\\ |\\boldsymbol x(t)|<\\varepsilon\\quad (t\\geqslant t_0)', '\\dot V\\leqslant 0', '\\dot V<0,\\qquad \\boldsymbol x(t)\\to\\boldsymbol 0']
+  .forEach((s, i) => { const d = document.createElement('div'); d.style.gridColumn = '1'; d.style.gridRow = i ? '2' : '1'; K(d, s); fx.appendChild(d) });
+const formula = () => { fx.children[1].style.opacity = st.mode ? 0 : 1; fx.children[2].style.opacity = st.mode ? 1 : 0 };
+const lab = P.labels(document.getElementById('stage'));
+let geo = { cx: 0, cy: 0, s: 1 };
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.6);
+  const I = P.ease.inOut(st.intro);
+  anim = P.spring(sh, 'eps', st.eps, dt, st.drag ? { k: 400, z: .9 } : { k: 90, z: .75 }) | P.spring(sh, 'vOn', st.vOn ? 1 : 0, dt, { k: 40, z: .9 }) | P.spring(sh, 'g', st.hov || st.drag ? 1.3 : 1, dt, { k: 260, z: .55 }) | anim;
+  if (st.playing) { st.t += dt * (st.mode ? .8 : .9); if (st.t > TT + 1.6) { st.fade -= dt / .5; if (st.fade <= 0) { st.fade = 1; build() } } anim = true }
+  for (let k = 0; k < LV; k++) { if (flash[k] > 0) { flash[k] = Math.max(0, flash[k] - dt * 1.4); anim = true } }
+  const s = Math.min(w, h) / 2 / 1.02, cx = w / 2, cy = h / 2; geo = { cx, cy, s };
+  const X = x => cx + x * s, Y = y => cy - y * s, e = sh.eps, d = e / Math.SQRT2, m = e * e;
+  // ε 邻域：浅蓝；δ 邻域：浅橙
+  ctx.save(); ctx.globalAlpha = I;
+  ctx.fillStyle = ctx.createRadialGradient(cx, cy, 0, cx, cy, e * s); ctx.fillStyle.addColorStop(0, P.rgba(C.blue, .04)); ctx.fillStyle.addColorStop(1, P.rgba(C.blue, .16));
+  ctx.beginPath(); ctx.arc(cx, cy, e * s, 0, 7); ctx.fill();
+  ctx.fillStyle = P.rgba(C.warm, .1); ctx.beginPath(); ctx.arc(cx, cy, d * s, 0, 7); ctx.fill(); ctx.restore();
+  P.path(ctx, circ(cx, cy, e * s), { color: C.blue, width: 1.6, alpha: I });
+  P.path(ctx, circ(cx, cy, d * s), { color: C.warm, width: 1.3, alpha: .8 * I, dash: [4, 4] });
+  // V 的等值线：灰色；最大的一条 V = m 深蓝，恰好内切 ε 圆
+  for (let k = 0; k < LV; k++) {
+    const c = m * Math.pow(Q, k), ax = Math.sqrt(c), by = Math.sqrt(c / 2), fl = flash[k];
+    const col = k === 0 ? C.accent : C.mute, al = sh.vOn * I * (k === 0 ? .9 : .5) ;
+    if (al < .01) continue;
+    ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = col; ctx.lineWidth = k === 0 ? 1.8 : 1; ctx.beginPath(); ctx.ellipse(cx, cy, ax * s, by * s, 0, 0, 7); ctx.stroke();
+    if (fl > 0) { ctx.globalAlpha = sh.vOn * I * fl * .9; ctx.strokeStyle = C.hl; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.ellipse(cx, cy, ax * s, by * s, 0, 0, 7); ctx.stroke() }
+    ctx.restore();
+  }
+  // 轨线：深蓝逐段画出，头部橙点；穿过某条等值线时该线闪一下橙色
+  const scl = e / st.eps;
+  const n = Math.min(trajs[0]?.pts.length - 1 || 0, Math.floor(st.t / H));
+  for (const tj of trajs) {
+    // 按年龄淡出：最近约 3 个时间单位最亮，更早的部分逐渐变淡，中心不堆成一团
+    const step = 2, win = Math.round(4 / H), chunk = 30;
+    for (let k0 = 0; k0 < n; k0 += chunk) { const k1 = Math.min(n, k0 + chunk), pts = []; for (let k = k0; k <= k1; k += step) pts.push([X(tj.pts[k][0] * scl), Y(tj.pts[k][1] * scl)]); pts.push([X(tj.pts[k1][0] * scl), Y(tj.pts[k1][1] * scl)]);
+      const age = (n - k1) / win, al = st.mode ? Math.max(.12, 1 - age * .8) : 1; if (pts.length > 1) P.path(ctx, pts, { color: C.accent, width: 2, alpha: .85 * al * st.fade * I }) }
+    const p0 = tj.pts[0]; P.dot(ctx, X(p0[0] * scl), Y(p0[1] * scl), { r: 3, color: C.warm, alpha: st.fade * I });
+    if (n > 0) { const p = tj.pts[n]; P.dot(ctx, X(p[0] * scl), Y(p[1] * scl), { r: 4.4, color: C.warm, alpha: st.fade * I });
+      if (st.playing) { const a = tj.lvl[Math.max(0, n - Math.round(dt / H) - 1)], b = tj.lvl[n]; for (let k = Math.max(a + 1, 0); k <= Math.min(b, LV - 1); k++) flash[k] = 1 } }
+  }
+  P.dot(ctx, cx, cy, { r: 3.6, color: C.accent, scale: I });
+  // ε 半径拖动柄
+  const ga = -.6, gx = cx + e * s * Math.cos(ga), gy = cy - e * s * Math.sin(ga);
+  P.grip(ctx, gx, gy, { color: C.blue, s: sh.g * I, w: 9, h: 9 });
+  lab.set('e', '\\varepsilon', cx + (e * s + 14) * Math.cos(.62), cy - (e * s + 14) * Math.sin(.62), { color: C.blue, alpha: I });
+  lab.set('d', '\\delta', cx + (d * s - 12) * Math.cos(2.4), cy - (d * s - 12) * Math.sin(2.4), { color: C.warm, alpha: I });
+  lab.set('m', 'V=m', cx - Math.sqrt(m) * s * .55, cy - Math.sqrt(m / 2) * s * .835 - 12, { color: C.accent, size: 13, alpha: sh.vOn * I });
+  lab.end();
+  return anim || st.drag;
+});
+function circ(cx, cy, r) { const o = []; for (let k = 0; k <= 120; k++) { const a = 2 * Math.PI * k / 120; o.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]) } return o }
+// 拖动 ε 圆周即可改变半径；δ 与等值线跟着变
+const rr = e => { const r = cvEl.getBoundingClientRect(); return Math.hypot(e.clientX - r.left - geo.cx, e.clientY - r.top - geo.cy) / geo.s };
+const near = e => Math.abs(rr(e) - st.eps) * geo.s < 12;
+cvEl.addEventListener('pointerdown', e => { if (!near(e)) return; stop(); st.touched = true; st.drag = true; cvEl.setPointerCapture(e.pointerId); e.preventDefault(); cv.kick() });
+cvEl.addEventListener('pointermove', e => { if (!st.drag) { const hv = near(e); if (hv !== st.hov) { st.hov = hv; cv.kick() } cvEl.style.cursor = hv ? 'nwse-resize' : 'default'; return } st.eps = P.clamp(rr(e), .45, .96); cv.kick() });
+const up = () => { if (st.drag) { st.drag = false; build(); play() } };
+cvEl.addEventListener('pointerup', up); cvEl.addEventListener('pointercancel', up);
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (st.t > TT) { st.fade = 1; build() } st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+const setMode = m => { st.mode = m; document.querySelectorAll('[data-m]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === m))); formula(); st.fade = 1; build(); if (!st.playing) play(); cv.kick() };
+document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { st.touched = true; setMode(+b.dataset.m) });
+const vt = document.getElementById('vt'); vt.onclick = () => { st.vOn = !st.vOn; vt.setAttribute('aria-pressed', String(st.vOn)); cv.kick() };
+addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; stop(); st.touched = true; st.t = P.clamp(st.t + (e.key === 'ArrowRight' ? .3 : -.3), 0, TT); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1200) } else stop() }, { threshold: .4 }).observe(cvEl);
+const q = new URLSearchParams(location.search);
+if (q.get('v') === '0') { st.vOn = false; sh.vOn = 0; vt.setAttribute('aria-pressed', 'false') }
+if (q.get('mode') === 'asym') { st.mode = 1; document.querySelectorAll('[data-m]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === '1'))) }
+build(); formula();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

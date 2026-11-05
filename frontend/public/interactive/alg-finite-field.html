@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Two coordinates of a finite field</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:330px}@media(max-width:520px){canvas#cv{height:250px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-q="9" aria-pressed="true">GF(9)</button><button type="button" class="tg" data-q="25" aria-pressed="false">GF(25)</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Left: elements a + b alpha on the additive lattice. Right: the same nonzero elements as powers of a generator on a circle"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// GF(p^2) = F_p[α]，α² = NR（模 p 的非平方元）。元素 a+bα 记为 [a,b]。
+// GF(9)：p=3，α²=-1，生成元 g=1+α；GF(25)：p=5，α²=2，生成元 g=1+2α（均已用脚本验证阶为 p²-1）。
+const F = { 9: { p: 3, nr: 2, g: [1, 1], rel: '\\alpha^2=-1' }, 25: { p: 5, nr: 2, g: [1, 2], rel: '\\alpha^2=2' } };
+let cfg, pw, q;
+const mul = (u, v) => [(u[0] * v[0] + cfg.nr * u[1] * v[1]) % cfg.p, (u[0] * v[1] + u[1] * v[0]) % cfg.p];
+const tex = ([a, b]) => { const bt = b ? (b === 1 ? '\\alpha' : b + '\\alpha') : ''; return a && b ? `${a}+${bt}` : a ? `${a}` : bt || '0' };
+const gtex = () => tex(cfg.g);
+function build(Q) { cfg = F[Q]; q = Q; pw = []; let x = [1, 0]; for (let k = 0; k < q - 1; k++) { pw.push(x); x = mul(x, cfg.g) } }
+const fx = document.getElementById('fx');
+function formula(i) {
+  fx.innerHTML = '<div></div><div></div>';
+  K(fx.children[0], `\\mathrm{GF}(${q})=\\{a+b\\alpha\\},\\quad ${cfg.rel},\\quad g=${gtex()}`);
+  K(fx.children[1], i < q - 1 ? `g^{${i}}=${tex(pw[i])}` : `\\mathrm{GF}(${q})^{\\times}=\\langle g\\rangle`);
+}
+const lab = P.labels(document.getElementById('stage'));
+const sh = { lk: 0 }; let hov = -1, geo = null, st;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  const moving = st.tick(dt), i = st.i, p = st.p, N = q - 1, final = i >= N;
+  const small = w < 520, L = Math.min(h - 56, w * (small ? .4 : .32)) * (cfg.p === 3 ? .82 : 1), lx = w * (small ? .06 : .12), ly = (h - L) / 2 + 4;
+  const sp = L / (cfg.p - 1), LP = ([a, b]) => [lx + a * sp, ly + L - b * sp];
+  const R = Math.min(h / 2 - 22, w * (small ? .2 : .19)), ccx = w * (small ? .74 : .72), ccy = h / 2;
+  const CP = k => [ccx + R * Math.cos(-Math.PI / 2 + 2 * Math.PI * k / N), ccy + R * Math.sin(-Math.PI / 2 + 2 * Math.PI * k / N)];
+  geo = { LP, CP };
+  // 左：加法格点（坐标 a、b），零元灰色空心
+  for (let a = 0; a < cfg.p; a++) for (let b = 0; b < cfg.p; b++) if (a || b) P.dot(ctx, ...LP([a, b]), { r: 2.2, color: C.rule, ring: false });
+  ctx.save(); ctx.strokeStyle = C.mute; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(...LP([0, 0]), 4, 0, 7); ctx.stroke(); ctx.restore();
+  P.path(ctx, [LP([0, 0]), LP([1, 0])], { color: C.mute, width: 1, alpha: .5 }); P.path(ctx, [LP([0, 0]), LP([0, 1])], { color: C.mute, width: 1, alpha: .5 });
+  // 右：乘法圆周
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(ccx, ccy, R, 0, 7); ctx.stroke(); ctx.restore();
+  const upto = final ? N - 1 : i;
+  // 圆周上：逐格转动，弧段匀速；格点上：同一串幂次跳来跳去
+  for (let k = 1; k <= upto; k++) {
+    const age = (upto - k) / N, cur = k === upto && !final, pr = cur ? P.ease.inOut(P.seg(p, 0, .6)) : 1, al = final ? .35 : .85 - .6 * age;
+    const arc = []; for (let s = 0; s <= 16; s++) { const t = -Math.PI / 2 + 2 * Math.PI * (k - 1 + s / 16) / N; arc.push([ccx + R * Math.cos(t), ccy + R * Math.sin(t)]) }
+    P.path(ctx, arc, { color: C.accent, width: 2.2, alpha: al, progress: pr });
+    P.path(ctx, [LP(pw[k - 1]), LP(pw[k])], { color: C.warm, width: cur ? 2 : 1.4, alpha: al * (cur ? 1 : .7), progress: pr });
+  }
+  const link = (k, a, col, wd) => { const [x0, y0] = LP(pw[k]), [x1, y1] = CP(k), mx = (x0 + x1) / 2, pts = [];
+    for (let s = 0; s <= 30; s++) { const u = s / 30, A = (1 - u) ** 3, B = 3 * (1 - u) ** 2 * u, E = 3 * (1 - u) * u * u, D = u ** 3; pts.push([A * x0 + B * mx + E * mx + D * x1, A * y0 + B * y0 + E * y1 + D * y1]) }
+    P.path(ctx, pts, { color: col, width: wd, alpha: a, dash: [4, 4], progress: 1 }) };
+  if (final) for (let k = 0; k < N; k++) link(k, .16, C.blue, 1);
+  else link(i, .5 * P.seg(p, .45, .8), C.warm, 1.3);
+  if (hov >= 0) link(hov, .7, C.accent, 1.4);
+  for (let k = 0; k < N; k++) {
+    const vis = final || k <= upto, cur = k === i && !final, hv = k === hov;
+    const sc = cur ? P.ease.back(P.seg(p, .45, .85)) : 1, col = hv ? C.accent : cur ? C.warm : vis ? C.accent : C.rule;
+    const r = hv || cur ? 6 : vis ? 4.2 : 3;
+    P.dot(ctx, ...CP(k), { r, color: col, scale: cur ? Math.max(sc, .01) : 1, alpha: vis || hv ? 1 : .8 });
+    if (vis || hv) P.dot(ctx, ...LP(pw[k]), { r, color: col, scale: cur ? Math.max(sc, .01) : 1 });
+  }
+  // 标签：当前幂次；格点的两个基方向
+  const show = hov >= 0 ? hov : final ? -1 : i, [sx, sy] = show >= 0 ? CP(show) : [0, 0];
+  const out = show >= 0 ? Math.atan2(sy - ccy, sx - ccx) : 0;
+  lab.set('gk', show >= 0 ? `g^{${show}}` : '', sx + Math.cos(out) * 20, sy + Math.sin(out) * 18, { color: hov >= 0 ? C.accent : C.warm, size: 14, alpha: show >= 0 ? 1 : 0 });
+  lab.set('one', '1', ...LP([1, 0]), { dy: 14, color: C.mute, size: 12 });
+  lab.set('al', '\\alpha', ...LP([0, 1]), { dx: -12, color: C.mute, size: 12 });
+  lab.set('zero', '0', ...LP([0, 0]), { dx: -12, dy: 10, color: C.mute, size: 12 });
+  lab.end();
+  return moving;
+});
+let st0 = null;
+function setQ(Q, keep) {
+  build(Q); document.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.q === Q)));
+  st.count = q; st.reset(q); hov = -1;
+  let m = 0; for (let i = 0; i < q; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } fx.style.minHeight = Math.max(parseFloat(fx.style.minHeight) || 0, Math.ceil(m)) + 'px'; formula(0);
+  cv.kick();
+}
+build(9);
+st = P.stepper(document.getElementById('nav'), { count: q, dur: 1.15, hold: .35, kick: cv.kick, onChange: s => formula(s.i) });
+// 预排两个域的全部公式，取最大高度锁定
+{ let m = 0; for (const Q of [25, 9]) { build(Q); for (let i = 0; i < q; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } } fx.style.minHeight = Math.ceil(m) + 'px' }
+setQ(new URLSearchParams(location.search).get('q') === '25' ? 25 : 9);
+let touched = false;
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { touched = true; st.stop(); setQ(+b.dataset.q) });
+document.getElementById('nav').addEventListener('click', e => { if (e.isTrusted) touched = true }, true);
+const hit = e => { const r = cvEl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  for (let k = 0; k < q - 1; k++) { const a = geo.CP(k), b = geo.LP(pw[k]); if (Math.hypot(x - a[0], y - a[1]) < 11 || Math.hypot(x - b[0], y - b[1]) < 11) return k } return -1 };
+cvEl.addEventListener('pointermove', e => { const k = hit(e); if (k !== hov) { hov = k; cvEl.style.cursor = k >= 0 ? 'pointer' : 'default'; if (k >= 0) { touched = true; st.stop() } cv.kick() } });
+cvEl.addEventListener('pointerleave', () => { hov = -1; cv.kick() });
+cvEl.addEventListener('click', e => { const k = hit(e); if (k >= 0) { touched = true; st.stop(); st.go(k, true) } });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) document.querySelector('.play').click() }, 1200) } else if (st.playing) st.stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

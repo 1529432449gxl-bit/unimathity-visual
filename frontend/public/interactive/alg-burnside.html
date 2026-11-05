@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Burnside counting</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:400px}@media(max-width:520px){canvas#cv{height:370px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Fixed pairs (g, x) are counted column by column, then regrouped by orbit; each orbit holds exactly |G| pairs"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav" id="nav"></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 4 颗珠子的二色项链，旋转群 C4 = <r> 作用。r 把第 i 颗珠子移到第 i+1 个位置。
+// 不动点个数 |F_e|=16, |F_r|=2, |F_{r^2}|=4, |F_{r^3}|=2，总和 24 = 6·4，轨道 6 条。
+const rot = (x, k) => { let y = 0; for (let i = 0; i < 4; i++) if (x >> i & 1) y |= 1 << ((i + k) % 4); return y };
+const G = [0, 1, 2, 3], GT = ['e', 'r', 'r^2', 'r^3'];
+const fixed = (k, x) => rot(x, k) === x;
+// 轨道（按出现顺序），轨道内按旋转顺序排列
+const orbits = [], seen = new Set();
+for (const rep of [0, 15, 1, 3, 7, 5]) { const o = []; for (let k = 0; k < 4; k++) { const y = rot(rep, k); if (!seen.has(y)) { seen.add(y); o.push(y) } } orbits.push(o) }
+const orbitOf = x => orbits.findIndex(o => o.includes(x));
+const FG = G.map(k => [...Array(16).keys()].filter(x => fixed(k, x)).length);
+const NC = 4, NB = orbits.length, S_REORDER = NC + 1, S_ORB = S_REORDER + 1, S_END = S_ORB + NB, COUNT = S_END + 1;
+const fx = document.getElementById('fx');
+function formula(i) {
+  let a, b;
+  if (i === 0) { a = 'G=\\langle r\\rangle,\\quad |G|=4'; b = 'F_g=\\{x\\in X : gx=x\\}' }
+  else if (i <= NC) { a = '\\sum_{g\\in G}|F_g|=' + FG.slice(0, i).join('+') + (i < NC ? '+\\cdots' : '=' + FG.reduce((s, v) => s + v, 0)); b = `|F_{${GT[i - 1]}}|=${FG[i - 1]}` }
+  else if (i === S_REORDER) { a = '\\sum_{g\\in G}|F_g|=\\#\\{(g,x): gx=x\\}=\\sum_{x\\in X}|S_x|'; b = '=\\sum_{O}\\ \\sum_{x\\in O}|S_x|' }
+  else if (i < S_END) { const o = orbits[i - S_ORB], s = 4 / o.length; a = '\\sum_{x\\in O}|S_x|=|O|\\cdot|S_x|=|G|'; b = `${o.length}\\cdot ${s}=4` }
+  else { a = 'n=\\dfrac{1}{|G|}\\sum_{g\\in G}|F_g|'; b = '=\\dfrac{24}{4}=6' }
+  fx.innerHTML = '<div></div><div></div>'; K(fx.children[0], a); K(fx.children[1], b);
+}
+const lab = P.labels(document.getElementById('stage'));
+const rows = [...Array(16).keys()].map(x => ({ x, y: null }));
+let st;
+const cv = P.mount(document.getElementById('cv'), (ctx, w, h, dt) => {
+  const moving = st.tick(dt), i = st.i, p = st.p;
+  let anim = false;
+  const small = w < 520, top = 34, gapO = 7, rh = Math.min(19.5, (h - top - 10 - gapO * (NB - 1)) / 16);
+  const colW = small ? 50 : 62, gx = (w - (colW * NC + 70)) / 2 + 30, cx = k => gx + 40 + colW * (k + .5);
+  // 行的目标位置：按轨道分组之前是原始顺序，之后按轨道排列并留间隔
+  const grouped = i >= S_REORDER;
+  const order = grouped ? orbits.flat() : [...Array(16).keys()];
+  order.forEach((x, r) => { const o = orbitOf(x), ty = top + rh * (r + .5) + (grouped ? gapO * o : 0); const row = rows[x]; row.ty = ty; if (row.y === null) row.y = ty });
+  const stg = i === S_REORDER && p < 1 ? { k: 60, z: .8 } : { k: 90, z: .82 };
+  for (const row of rows) anim = P.spring(row, 'y', row.ty, dt, stg) | anim;
+  // 当前列高亮（深蓝框浅蓝灰底）
+  if (i >= 1 && i <= NC) { const k = i - 1; ctx.save(); ctx.fillStyle = C.pane; ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4; ctx.globalAlpha = P.ease.out(P.seg(p, 0, .25));
+    ctx.beginPath(); ctx.roundRect(cx(k) - colW / 2 + 4, top - 30, colW - 8, h - top + 22, 8); ctx.fill(); ctx.stroke(); ctx.restore() }
+  // 轨道块：当前轨道橙框浅橙底；最后一步全部淡淡框出
+  if (i >= S_ORB) for (let o = 0; o < NB; o++) {
+    const ys = orbits[o].map(x => rows[x].y), y0 = Math.min(...ys) - rh / 2 - 2, y1 = Math.max(...ys) + rh / 2 + 2;
+    const cur = i - S_ORB === o, al = cur ? P.ease.out(P.seg(p, 0, .3)) : (i === S_END ? .55 : (o < i - S_ORB ? .35 : 0));
+    if (al <= 0) continue;
+    ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = cur ? C.hlBg : P.rgba(C.hlBg, .5); ctx.strokeStyle = C.hl; ctx.lineWidth = cur ? 1.6 : 1;
+    ctx.beginPath(); ctx.roundRect(gx - 12, y0, cx(NC - 1) + colW / 2 - gx + 8, y1 - y0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  // 列标题
+  G.forEach(k => lab.set('h' + k, GT[k], cx(k), top - 16, { color: C.accent }));
+  lab.set('hx', 'x', gx + 10, top - 16, { color: C.soft });
+  // 每行：项链小图 + 不动点
+  for (const row of rows) {
+    const y = row.y, x = row.x, R = rh * .26;
+    ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(gx + 10, y, R, 0, 7); ctx.stroke(); ctx.restore();
+    for (let b = 0; b < 4; b++) { const ang = -Math.PI / 2 + b * Math.PI / 2, on = x >> b & 1;
+      P.dot(ctx, gx + 10 + Math.cos(ang) * R, y + Math.sin(ang) * R, { r: on ? 2.6 : 1.8, color: on ? C.accent : C.rule, ring: false }) }
+    const hot = i >= S_ORB && i < S_END && orbitOf(x) === i - S_ORB;
+    G.forEach(k => {
+      if (!fixed(k, x)) { P.dot(ctx, cx(k), y, { r: 1.4, color: C.rule, ring: false }); return }
+      let sc = 0;
+      if (i > k + 1 || i > NC) sc = 1;
+      else if (i === k + 1) { const d = .15 + .55 * (rows.indexOf(row) / 16); sc = P.ease.back(P.seg(p, d, d + .3)) }
+      if (sc <= 0) { P.dot(ctx, cx(k), y, { r: 1.4, color: C.rule, ring: false }); return }
+      P.dot(ctx, cx(k), y, { r: (hot ? 5.2 : 4.2) * (small ? .9 : 1), color: C.warm, scale: sc, alpha: i >= S_ORB && i < S_END && !hot ? .45 : 1 });
+    });
+  }
+  lab.end();
+  return moving || anim;
+});
+st = P.stepper(document.getElementById('nav'), { count: COUNT, dur: 1.5, hold: .9, kick: cv.kick, onChange: s => formula(s.i) });
+{ let m = 0; for (let i = 0; i < COUNT; i++) { formula(i); m = Math.max(m, fx.getBoundingClientRect().height) } fx.style.minHeight = Math.ceil(m) + 'px'; formula(0) }
+const playBtn = document.querySelector('.play');
+let touched = false;
+document.getElementById('nav').addEventListener('click', e => { if (e.isTrusted) touched = true }, true);
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!touched && !st.playing) setTimeout(() => { if (!touched && !st.playing) playBtn.click() }, 1200) } else if (st.playing) st.stop() }, { threshold: .4 }).observe(document.getElementById('cv'));
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

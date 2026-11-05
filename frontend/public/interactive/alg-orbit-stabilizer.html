@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orbit and stabilizer</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:330px}@media(max-width:520px){canvas#cv{height:300px}}.fx .katex-display{margin:0}.fx .v{grid-row:var(--r);grid-column:1;transition:opacity .4s}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="orbit" aria-pressed="true">Orbit</button><button type="button" class="tg" data-m="sylow" aria-pressed="false">Sylow</button></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Group elements gather into cosets of the stabilizer; each coset flows to one point of the orbit"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P;
+// ---------- 两个预设 ----------
+// Orbit：二面体群 D4（正方形的 8 个对称）作用在“正方形两个顶点着色”的 6 种方式上。
+//   r^k s 把顶点 i 送到 k-i，r^k 把 i 送到 i+k。相邻两点着色：轨道 4、稳定子 2；对角着色：轨道 2、稳定子 4。
+// Sylow：A4 共轭作用在 4 个西罗 3-子群 P_1..P_4 上；P_i 是固定 i 的 3-循环生成的子群，g P_i g^{-1} = P_{g(i)}，正规化子 N(P_i)=P_i。
+const D4 = [0, 1].flatMap(f => [0, 1, 2, 3].map(k => ({ k, f }))).sort((a, b) => a.f - b.f || a.k - b.k);
+const d4tex = g => (g.k ? (g.k === 1 ? 'r' : `r^${g.k}`) : (g.f ? '' : 'e')) + (g.f ? 's' : '');
+const d4act = (g, i) => g.f ? ((g.k - i) % 4 + 4) % 4 : (i + g.k) % 4;
+const COLS = [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2], [1, 3]];
+const key = s => s.slice().sort().join();
+const perm = (() => { const out = [], rec = (a, r) => { if (!r.length) out.push(a); r.forEach((v, i) => rec([...a, v], r.filter((_, j) => j !== i))) }; rec([], [0, 1, 2, 3]); return out })();
+const even = p => { let c = 0; for (let i = 0; i < 4; i++) for (let j = 0; j < i; j++) if (p[j] > p[i]) c++; return c % 2 === 0 };
+const A4 = perm.filter(even);
+const PRE = {
+  orbit: { G: D4, X: COLS, act: (g, x) => COLS.findIndex(c => key(c) === key(x.map(i => d4act(g, i)))), seq: [0, 4, 2, 5], chip: true },
+  sylow: { G: A4, X: [0, 1, 2, 3], act: (g, i) => g[i], seq: [0, 2, 1, 3], chip: false },
+};
+// ---------- 公式区：每行若干版本叠放，切换时交叉淡入淡出 ----------
+const fx = document.getElementById('fx'); fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+const V = {};
+const addV = (id, row, tex) => { const d = document.createElement('div'); d.className = 'v'; d.style.setProperty('--r', row); katex.render(tex, d, { throwOnError: false, displayMode: true }); fx.appendChild(d); V[id] = d };
+addV('o1', 1, 'gx\\ \\longleftrightarrow\\ gS_x,\\qquad |G|=|O_x|\\,|S_x|');
+addV('oa', 2, '8=4\\cdot 2'); addV('od', 2, '8=2\\cdot 4');
+addV('s1', 1, 'gPg^{-1}\\ \\longleftrightarrow\\ g\\,N(P),\\qquad n_3=[G:N(P)]');
+addV('sa', 2, '4=12/3,\\qquad n_3\\equiv 1 \\pmod 3');
+const showV = on => { for (const k in V) V[k].style.opacity = on.includes(k) ? 1 : 0 };
+// ---------- 状态 ----------
+const st = { mode: 'orbit', sel: 0, t: 0, playing: false, touched: false, clock: 0, si: 0, hov: -1, intro: 0 };
+let chips = [], glyph = [];                 // 显示状态（弹簧）
+function setup() {
+  const pr = PRE[st.mode];
+  chips = pr.G.map((g, i) => ({ g, x: chips[i]?.x, y: chips[i]?.y, a: 0 }));
+  glyph = pr.X.map((x, i) => ({ s: 1, o: 0, sel: 0 }));
+  st.sel = pr.seq[0]; st.si = 0; st.t = 0;
+}
+function structure() {   // 当前选中点的稳定子、陪集与轨道
+  const pr = PRE[st.mode], x0 = pr.X[st.sel];
+  const img = pr.G.map(g => pr.act(g, x0));
+  const orbit = [...new Set(img)].sort((a, b) => a - b);
+  return { img, orbit };
+}
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+let G = { gx: [], gy: [], gr: 12 };
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  const pr = PRE[st.mode];
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.2);
+  st.t += dt; if (st.t < 3) anim = true;
+  if (st.playing) { anim = true; st.clock += dt; if (st.clock > 4.6) { st.clock = 0; st.si = (st.si + 1) % pr.seq.length; select(pr.seq[st.si], true) } }
+  const { img, orbit } = structure(), nx = pr.X.length, small = w < 520;
+  // 右列：集合 X 的元素
+  const gxR = w * (small ? .8 : .74), top = 26, bot = h - 18, gap = (bot - top) / nx;
+  G = { gx: [], gy: [], gr: small ? 12 : 14 };
+  for (let i = 0; i < nx; i++) { G.gx.push(gxR); G.gy.push(top + gap * (i + .5)) }
+  // 左侧：群元素按陪集分组，每组排在它对应的轨道点同一高度
+  const cw = pr.chip ? (small ? 32 : 38) : (small ? 15 : 19), ch = pr.chip ? (small ? 22 : 24) : 15, cg = pr.chip ? 6 : 8;
+  // 每个陪集竖排成一小列，各陪集自上而下按对应轨道点的顺序排列，留出组间距
+  const groups = orbit.map(o => pr.G.map((g, i) => i).filter(i => img[i] === o));
+  const step = ch + (pr.chip ? 5 : 3), ggap = pr.chip ? 12 : 14, tot = pr.G.length * step + (groups.length - 1) * ggap;
+  const colX = w * (small ? .27 : .3);
+  let yy = (h - tot) / 2 + step / 2;
+  groups.forEach((gr, ci) => { gr.forEach((i, j) => {
+    const c = chips[i]; c.tx = colX; c.ty = yy; c.ci = ci; c.j = j; yy += step;
+    if (c.x === undefined) { c.x = c.tx - 30; c.y = c.ty }
+  }); yy += ggap });
+  const sp = { k: 90, z: .78 };
+  for (const c of chips) { anim = P.spring(c, 'x', c.tx, dt, sp) | P.spring(c, 'y', c.ty, dt, sp) | anim; anim = P.spring(c, 'a', 1, dt, { k: 60, z: .9 }) | anim }
+  glyph.forEach((gl, i) => {
+    const inO = orbit.includes(i);
+    anim = P.spring(gl, 's', st.hov === i ? 1.25 : 1, dt, { k: 260, z: .55 }) | anim;
+    anim = P.spring(gl, 'o', inO ? 1 : 0, dt, { k: 40, z: .9 }) | anim;
+    anim = P.spring(gl, 'sel', i === st.sel ? 1 : 0, dt, { k: 120, z: .6 }) | anim;
+  });
+  const I = P.ease.out(st.intro);
+  // 陪集底色：稳定子（含单位元）浅蓝灰，其余浅橙
+  groups.forEach((gr, ci) => {
+    const xs = gr.map(i => chips[i].x), ys = gr.map(i => chips[i].y);
+    const x0 = Math.min(...xs) - cw / 2 - 6, x1 = Math.max(...xs) + cw / 2 + 6, y0 = Math.min(...ys) - ch / 2 - 5, y1 = Math.max(...ys) + ch / 2 + 5;
+    const isS = orbit[ci] === st.sel, pa = P.seg(st.t, .35, .9) * I;
+    ctx.save(); ctx.globalAlpha = pa; ctx.fillStyle = isS ? C.pane : C.hlBg; ctx.strokeStyle = isS ? C.accent : C.hl; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.roundRect(x0, y0, x1 - x0, y1 - y0, 8); ctx.fill(); ctx.stroke(); ctx.restore();
+    lab.set('cl' + ci, isS ? (st.mode === 'orbit' ? 'S_x' : 'N(P)') : (st.mode === 'orbit' ? 'gS_x' : 'gN(P)'), x0 - (st.mode === 'orbit' ? 22 : 30), (y0 + y1) / 2, { color: isS ? C.accent : C.warm, size: 13, alpha: pa * (isS || ci === 1 ? 1 : 0) });
+  });
+  for (let ci = groups.length; ci < 8; ci++) lab.set('cl' + ci, '', 0, 0, { alpha: 0 });
+  // 汇流：每个陪集的元素各引一条曲线，汇到同一个轨道点
+  chips.forEach((c, i) => {
+    const o = img[i], isS = o === st.sel, d = .9 + .12 * c.ci + .05 * c.j, pf = P.ease.inOut(P.seg(st.t, d, d + .7));
+    if (pf <= 0) return;
+    const x0 = c.x + cw / 2 + 2, y0 = c.y, x1 = G.gx[o] - G.gr - 6, y1 = G.gy[o], mx = (x0 + x1) / 2, pts = [];
+    for (let s = 0; s <= 24; s++) { const u = s / 24, a = (1 - u) ** 3, b = 3 * (1 - u) ** 2 * u, e = 3 * (1 - u) * u * u, f = u ** 3; pts.push([a * x0 + b * mx + e * mx + f * x1, a * y0 + b * y0 + e * y1 + f * y1]) }
+    P.path(ctx, pts, { color: isS ? C.accent : C.warm, width: 1.3, alpha: .55 * I, progress: pf });
+  });
+  // 群元素
+  chips.forEach((c, i) => {
+    const isS = img[i] === st.sel;
+    if (pr.chip) {
+      ctx.save(); ctx.globalAlpha = c.a * I; ctx.fillStyle = C.bg; ctx.strokeStyle = isS ? C.accent : C.warm; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.roundRect(c.x - cw / 2, c.y - ch / 2, cw, ch, 6); ctx.fill(); ctx.stroke(); ctx.restore();
+      lab.set('g' + i, d4tex(c.g), c.x, c.y, { color: isS ? C.accent : C.warm, size: small ? 12 : 13, alpha: c.a * I });
+    } else P.dot(ctx, c.x, c.y, { r: small ? 5 : 6, color: isS ? C.accent : C.warm, alpha: c.a * I });
+  });
+  // 集合 X 的元素：轨道内的点亮起，选中点加深蓝外圈
+  glyph.forEach((gl, i) => {
+    const x = G.gx[i], y = G.gy[i], s = gl.s, R = G.gr * s, al = (.28 + .72 * gl.o) * I;
+    ctx.save(); ctx.globalAlpha = al;
+    if (gl.sel > .02) { ctx.beginPath(); ctx.arc(x, y, R + 9, 0, 7); ctx.strokeStyle = C.accent; ctx.lineWidth = 1.8; ctx.globalAlpha = al * gl.sel; ctx.stroke(); ctx.globalAlpha = al }
+    if (st.mode === 'orbit') {
+      const vx = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [x + a * R * .72, y + b * R * .72]);
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 1.2; ctx.beginPath(); vx.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.stroke();
+      vx.forEach((p, k) => P.dot(ctx, p[0], p[1], { r: PRE.orbit.X[i].includes(k) ? 4.4 * s : 2.6 * s, color: PRE.orbit.X[i].includes(k) ? (gl.o > .5 ? C.warm : C.mute) : C.rule }));
+    } else {
+      const vx = [0, 1, 2].map(k => [x + Math.cos(-Math.PI / 2 + k * 2.094) * R * .8, y + Math.sin(-Math.PI / 2 + k * 2.094) * R * .8]);
+      ctx.fillStyle = P.rgba(gl.o > .5 ? C.warm : C.mute, .14); ctx.strokeStyle = gl.o > .5 ? C.warm : C.mute; ctx.lineWidth = 1.3;
+      ctx.beginPath(); vx.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.fill(); ctx.stroke();
+      vx.forEach(p => P.dot(ctx, p[0], p[1], { r: 3 * s, color: gl.o > .5 ? C.warm : C.mute }));
+      lab.set('P' + i, `P_${i + 1}`, x + R + 22, y, { color: gl.o > .5 ? C.warm : C.mute, size: 13, alpha: I });
+    }
+    ctx.restore();
+  });
+  if (st.mode === 'orbit') lab.set('xx', 'x', G.gx[st.sel] + G.gr + 22, G.gy[st.sel], { color: C.accent, alpha: I });
+  else lab.set('xx', '', 0, 0, { alpha: 0 });
+  lab.end();
+  return anim || st.playing;
+});
+function select(i, auto) {
+  st.sel = i; st.t = 0; if (!auto) st.touched = true;
+  const pr = PRE[st.mode], { orbit } = structure();
+  if (st.mode === 'orbit') showV(['o1', orbit.length === 4 ? 'oa' : 'od']); else showV(['s1', 'sa']);
+  cv.kick();
+}
+function setMode(m) { st.mode = m; chips = []; setup(); document.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m))); select(st.sel, true); st.clock = 0 }
+// 预排公式区高度
+{ let m = 0; for (const s of [['o1', 'oa'], ['s1', 'sa']]) { showV(s); for (const k of s) m = Math.max(m, V[k].getBoundingClientRect().height) } fx.style.minHeight = Math.ceil(m * 2 + 8) + 'px' }
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { st.playing = true; st.clock = 0; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { st.touched = true; stop(); setMode(b.dataset.m) });
+const hitG = e => { const r = cvEl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; return G.gx.findIndex((gx, i) => Math.hypot(x - gx, y - G.gy[i]) < G.gr + 12) };
+cvEl.addEventListener('pointermove', e => { const i = hitG(e); if (i !== st.hov) { st.hov = i; cvEl.style.cursor = i >= 0 ? 'pointer' : 'default'; cv.kick() } });
+cvEl.addEventListener('pointerleave', () => { st.hov = -1; cv.kick() });
+cvEl.addEventListener('click', e => { const i = hitG(e); if (i >= 0) { stop(); select(i) } });
+addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; stop(); const n = PRE[st.mode].X.length; select((st.sel + (e.key === 'ArrowRight' ? 1 : n - 1)) % n) });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1400) } else stop() }, { threshold: .4 }).observe(cvEl);
+setMode(new URLSearchParams(location.search).get('mode') === 'sylow' ? 'sylow' : 'orbit');
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

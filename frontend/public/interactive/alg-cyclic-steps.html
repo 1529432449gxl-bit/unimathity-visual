@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cyclic groups and direct products</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:340px}@media(max-width:520px){canvas#cv{height:300px}}
+.controls .pair{display:flex;align-items:center;gap:8px;flex:1;min-width:150px;max-width:300px}.controls .pair .n{min-width:44px;text-align:right}
+.controls .pair input{flex:1;min-width:80px}
+.fx .katex-display{margin:0}.fx>div{transition:opacity .35s}</style></head>
+<body><main>
+<div class="top"><button type="button" class="tg" data-m="0" aria-pressed="true">Cyclic</button><button type="button" class="tg" data-m="1" aria-pressed="false">Direct product</button></div>
+<div class="controls"><span class="pair"><span class="n" id="l1"></span><input id="s1" type="range" step="1" aria-label="first parameter"></span><span class="pair"><span class="n" id="l2"></span><input id="s2" type="range" step="1" aria-label="second parameter"></span></div>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Powers of a generator stepping around a circle; in product mode two circles turn together until both return to the start"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s, d = true) => katex.render(s, el, { throwOnError: false, displayMode: d });
+const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a }, lcm = (a, b) => a / gcd(a, b) * b;
+// 模式 0：循环群 <a>，|a| = n，从 e 出发每步乘 a^k，圆周上连弦；回到 e 时停顿，走到的点即子群 <a^k>。
+// 模式 1：直积，两圈各按生成元走一步，两边第一次同时回到起点即 (a,b) 的阶 = [m, n]。
+const st = { mode: 0, n: 12, k: 5, m: 4, n2: 6, playing: false, touched: false, intro: 0, i: 0, p: 0, ph: 'walk', ht: 0, fade: 1, pulses: [] };
+const sh = { nd: 12, md: 4, n2d: 6, mode: 0 };
+const s1 = document.getElementById('s1'), s2 = document.getElementById('s2'), l1 = document.getElementById('l1'), l2 = document.getElementById('l2');
+const fx = document.getElementById('fx');
+fx.innerHTML = '<div></div><div></div>'; fx.style.display = 'grid'; fx.style.justifyItems = 'center';
+for (const d of fx.children) { d.style.gridRow = '1'; d.style.gridColumn = '1' }
+K(fx.children[0], '\\begin{gathered}\\operatorname{ord}(a^k)=\\dfrac{n}{\\gcd(n,k)}\\\\[2pt]\\langle a^k\\rangle=\\langle a\\rangle\\iff\\gcd(n,k)=1\\end{gathered}');
+K(fx.children[1], '\\operatorname{ord}(a,b)=\\big[\\operatorname{ord}a,\\ \\operatorname{ord}b\\big]');
+const formula = () => { fx.children[0].style.opacity = st.mode ? 0 : 1; fx.children[1].style.opacity = st.mode ? 1 : 0 };
+const L = () => st.mode ? lcm(st.m, st.n2) : st.n / gcd(st.n, st.k);
+const dur = () => P.clamp(6 / L(), .3, .85);
+function setSliders() {
+  if (!st.mode) { s1.min = 5; s1.max = 24; s1.value = st.n; s2.min = 1; s2.max = st.n - 1; s2.value = st.k; K(l1, `n=${st.n}`, false); K(l2, `k=${st.k}`, false) }
+  else { s1.min = 2; s1.max = 9; s1.value = st.m; s2.min = 2; s2.max = 9; s2.value = st.n2; K(l1, `m=${st.m}`, false); K(l2, `n=${st.n2}`, false) }
+}
+function restart() { st.i = 0; st.p = 1; st.ph = 'walk'; st.ht = 0; st.fade = 1; st.pulses = []; st.lastArr = null; cv.kick() }
+const lab = P.labels(document.getElementById('stage'));
+const cvEl = document.getElementById('cv');
+const pulse = (key, col) => st.pulses.push({ key, col, t: 0 });
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.5);
+  const I = st.intro;
+  // 时间线：逐步行走 → 回到起点停顿 → 淡出 → 重来
+  if (st.playing) {
+    anim = true;
+    if (st.ph === 'walk') {
+      st.p += dt / dur();
+      if (st.p >= 1) {
+        if (st.i >= L()) { st.ph = 'hold'; st.ht = 0; st.p = 1 }
+        else { st.i++; st.p = 0 }
+      }
+    } else if (st.ph === 'hold') { st.ht += dt; if (st.ht > 2.2) st.ph = 'fade' }
+    else { st.fade -= dt / .6; if (st.fade <= 0) { st.i = 0; st.p = 1; st.ph = 'walk'; st.fade = 0; st.pulses = []; st.lastArr = null } }
+    if (st.ph === 'walk' && st.fade < 1) st.fade = Math.min(1, st.fade + dt / .4);
+  }
+  // 到达检测：每步进度跨过 0.98 时记录一次
+  const arrived = st.p >= .98, key = st.mode + ':' + st.i;
+  if (arrived && st.lastArr !== key && st.i > 0) {
+    st.lastArr = key;
+    if (st.mode === 0 && (st.i * st.k) % st.n === 0) pulse('c', C.warm);
+    if (st.mode === 1) { const a0 = st.i % st.m === 0, b0 = st.i % st.n2 === 0; if (a0 && b0) { pulse('L', C.warm); pulse('R', C.warm) } else { if (a0) pulse('L', C.mute); if (b0) pulse('R', C.mute) } }
+  }
+  for (const q of st.pulses) q.t += dt; st.pulses = st.pulses.filter(q => q.t < 1.4);
+  anim = P.spring(sh, 'nd', st.n, dt, { k: 60, z: .8 }) | P.spring(sh, 'md', st.m, dt, { k: 60, z: .8 }) | P.spring(sh, 'n2d', st.n2, dt, { k: 60, z: .8 }) | P.spring(sh, 'mode', st.mode, dt, { k: 40, z: .9 }) | anim || st.pulses.length > 0;
+  const fa = st.fade;
+  const drawRing = (cx, cy, R, prog) => { const a0 = -Math.PI / 2; ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, a0, a0 + 2 * Math.PI * prog); ctx.strokeStyle = C.rule; ctx.lineWidth = 1.2; ctx.stroke(); ctx.restore() };
+  const at = (cx, cy, R, ang) => [cx + R * Math.sin(ang), cy - R * Math.cos(ang)];
+  const drawPulses = (k, x, y) => { for (const q of st.pulses) if (q.key === k) { const u = q.t / 1.4; ctx.save(); ctx.globalAlpha = (1 - u) * .8; ctx.strokeStyle = q.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 7 + 26 * P.ease.out(u), 0, 7); ctx.stroke(); ctx.restore() } };
+  const A0 = 1 - sh.mode, A1 = sh.mode;
+  // ---------- 循环群 ----------
+  if (A0 > .01) {
+    ctx.save(); ctx.globalAlpha = A0;
+    const n = st.n, k = st.k, cx = w / 2, cy = h / 2 + 2, R = Math.min(w, h) / 2 - 34;
+    const pt = i => at(cx, cy, R, 2 * Math.PI * i / sh.nd);
+    drawRing(cx, cy, R, P.ease.inOut(P.seg(I, 0, .6)));
+    const seq = j => (j * k) % n, done = st.ph !== 'walk', iEff = st.i;
+    // 已走过的弦：越新越深，按年龄淡出
+    for (let j = 1; j < iEff + (done ? 1 : 0) && j <= L(); j++) {
+      const age = (iEff - j) / Math.max(1, L());
+      P.path(ctx, [pt(seq(j - 1)), pt(seq(j))], { color: C.accent, width: 1.6, alpha: fa * (.85 - .6 * age) });
+    }
+    // 当前弦：橙色逐段画出，端点为行走点
+    if (st.i > 0 && !done) {
+      const a = pt(seq(st.i - 1)), b = pt(seq(st.i)), e = P.ease.inOut(P.clamp(st.p, 0, 1));
+      P.path(ctx, [a, b], { color: C.warm, width: 2.4, progress: e, alpha: fa });
+    }
+    // 子群高亮：停顿时走到的点加浅蓝光晕
+    const hl = st.ph === 'hold' ? P.ease.out(P.clamp(st.ht / .5, 0, 1)) : st.ph === 'fade' ? fa : 0;
+    const visited = new Set(); for (let j = 0; j <= Math.min(iEff, L()); j++) if (j < iEff || st.p > .9 || j === 0) visited.add(seq(j));
+    const NN = Math.ceil(Math.max(sh.nd, n)) + 1;
+    for (let i = 0; i < NN; i++) {
+      const alive = P.clamp(sh.nd - i + 1, 0, 1) * (i < n ? 1 : P.clamp(1 - (i - sh.nd + 1), 0, 1));
+      if (alive <= .01) continue;
+      const pop = P.ease.back(P.seg(I, .3 + .4 * i / NN, .45 + .4 * i / NN)), [x, y] = pt(i);
+      if (hl > .01 && visited.has(i)) { ctx.save(); ctx.globalAlpha = hl * .3 * alive; ctx.fillStyle = C.blue; ctx.beginPath(); ctx.arc(x, y, 11, 0, 7); ctx.fill(); ctx.restore() }
+      if (visited.has(i) && fa > .02) P.dot(ctx, x, y, { r: 4.6, color: i === 0 ? C.accent : C.accent, scale: pop * alive, alpha: P.lerp(.35, 1, fa) });
+      else { ctx.save(); ctx.globalAlpha = alive * pop * (1 - .4 * hl); ctx.strokeStyle = C.mute; ctx.fillStyle = C.bg; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore() }
+    }
+    if (st.i > 0 && st.ph === 'walk') { const a = pt(seq(st.i - 1)), b = pt(seq(st.i)), e = P.ease.inOut(P.clamp(st.p, 0, 1)); P.dot(ctx, P.lerp(a[0], b[0], e), P.lerp(a[1], b[1], e), { r: 5.6, color: C.warm }) }
+    drawPulses('c', ...pt(0));
+    ctx.restore();
+    const out = (i, d) => at(cx, cy, R + d, 2 * Math.PI * i / sh.nd);
+    lab.set('e', 'e', ...out(0, 18), { color: C.accent, alpha: A0 * I });
+    lab.set('ak', 'a^k', ...out(k, 20), { color: C.warm, alpha: A0 * I * (k !== 0 ? 1 : 0), size: 13 });
+  } else { lab.set('e', 'e', 0, 0, { alpha: 0 }); }
+  // ---------- 直积 ----------
+  if (A1 > .01) {
+    ctx.save(); ctx.globalAlpha = A1;
+    const R = Math.min(w * .19, h / 2 - 58), cy = h / 2 - 10, cxs = [w * .28, w * .72], ns = [st.m, st.n2], nds = [sh.md, sh.n2d];
+    for (let s = 0; s < 2; s++) {
+      const cx = cxs[s], nn = ns[s], nd = nds[s];
+      const ang = t => 2 * Math.PI * t / nd;
+      drawRing(cx, cy, R, P.ease.inOut(P.seg(I, 0, .6)));
+      // 轨迹：沿圆弧，最近几步按年龄淡出
+      const tNow = st.i - 1 + (st.ph === 'walk' ? P.ease.inOut(P.clamp(st.p, 0, 1)) : 1);
+      if (st.i > 0 || st.p < 1) {
+        const t0 = Math.max(0, tNow - nn * .9), segs = 26;
+        for (let q = 0; q < segs; q++) {
+          const ta = P.lerp(t0, tNow, q / segs), tb = P.lerp(t0, tNow, (q + 1) / segs);
+          const pa = at(cx, cy, R, ang(ta)), pb = at(cx, cy, R, ang(tb));
+          ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, ang(ta) - Math.PI / 2, ang(tb) - Math.PI / 2); ctx.strokeStyle = C.warm; ctx.globalAlpha = A1 * st.fade * Math.pow((q + 1) / segs, 1.6) * .9; ctx.lineWidth = 3; ctx.lineCap = 'butt'; ctx.stroke(); ctx.restore();
+        }
+      }
+      for (let i = 0; i < Math.ceil(Math.max(nd, nn)) + 1; i++) {
+        const alive = P.clamp(nd - i + 1, 0, 1) * (i < nn ? 1 : P.clamp(1 - (i - nd + 1), 0, 1)); if (alive <= .01) continue;
+        const pop = P.ease.back(P.seg(I, .3 + .4 * i / 10, .45 + .4 * i / 10)), [x, y] = at(cx, cy, R, ang(i));
+        P.dot(ctx, x, y, { r: i === 0 ? 5.2 : 4, color: i === 0 ? C.accent : C.blue, scale: pop * alive, alpha: i === 0 ? 1 : .75 });
+      }
+      const [wx, wy] = at(cx, cy, R, ang(Math.max(0, tNow)));
+      P.dot(ctx, wx, wy, { r: 6, color: C.warm, scale: P.seg(I, .6, 1) });
+      drawPulses(s ? 'R' : 'L', ...at(cx, cy, R, 0));
+      lab.set('e' + s, s ? 'e_2' : 'e_1', cx, cy - R - 18, { color: C.accent, alpha: A1 * I, size: 13 });
+      lab.set('g' + s, s ? '\\langle b\\rangle' : '\\langle a\\rangle', cx, cy + R + 22, { color: C.soft, alpha: A1 * I });
+    }
+    ctx.restore();
+    const hold = st.ph === 'hold' ? P.ease.out(P.clamp(st.ht / .5, 0, 1)) : st.ph === 'fade' ? st.fade : 0;
+    lab.set('ee', '(a,b)^{[m,n]}=(e_1,e_2)', w / 2, cy + R + 50, { color: C.warm, alpha: A1 * hold, size: 14 });
+  } else { for (const s of [0, 1]) { lab.set('e' + s, '', 0, 0, { alpha: 0 }); lab.set('g' + s, '', 0, 0, { alpha: 0 }) } }
+  lab.end();
+  return anim;
+});
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (st.ph !== 'walk' || st.i >= L()) restart(); st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; restart(); play() };
+const onSlide = () => {
+  st.touched = true;
+  if (!st.mode) { st.n = +s1.value; st.k = Math.min(+s2.value, st.n - 1) } else { st.m = +s1.value; st.n2 = +s2.value }
+  setSliders(); restart(); if (!st.playing) play();
+};
+s1.addEventListener('input', onSlide); s2.addEventListener('input', onSlide);
+const setMode = m => { st.mode = m; document.querySelectorAll('.tg').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.m === m))); formula(); setSliders(); restart(); cv.kick() };
+document.querySelectorAll('.tg').forEach(b => b.onclick = () => { st.touched = true; setMode(+b.dataset.m); if (!st.playing) play() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1300) } else stop() }, { threshold: .4 }).observe(cvEl);
+addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); playBtn.click() } });
+if (new URLSearchParams(location.search).get('mode') === '1') { setMode(1); sh.mode = 1 }
+formula(); setSliders(); restart();
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

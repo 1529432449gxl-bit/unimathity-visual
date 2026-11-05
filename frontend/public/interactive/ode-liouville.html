@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liouville formula</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css"><script src="vendor/katex/katex.min.js"></script>
+<style>canvas#cv{height:360px}@media(max-width:560px){canvas#cv{height:500px}}.fx .katex-display{margin:0}</style></head>
+<body><main>
+<div class="stage" id="stage"><canvas id="cv" role="img" aria-label="Two solutions span a parallelogram whose signed area W(t) stretches by the exponential of the integrated trace"></canvas></div>
+<div class="fx" id="fx"></div>
+<div class="nav"><button type="button" id="rst" aria-label="restart">↺</button><button type="button" id="play" class="play" aria-pressed="false">Play</button></div>
+</main>
+<script type="module">
+import * as P from './vendor/plotfx.js';
+P.style();
+const { C } = P, K = (el, s) => katex.render(s, el, { throwOnError: false, displayMode: true });
+// 变系数系统 x' = A(t) x：迹 tr A = 0.6 cos t 的积分在 [0, 4π] 上回到零，面积周期性伸缩而不衰减到看不见
+const A = t => [[-.05 + .42 * Math.cos(t), -1], [.8, .05 + .18 * Math.cos(t)]];
+const tr = t => .6 * Math.cos(t), itr = t => .6 * Math.sin(t);
+const f = (t, x) => { const a = A(t); return [a[0][0] * x[0] + a[0][1] * x[1], a[1][0] * x[0] + a[1][1] * x[1]] };
+const rk = (t, x, h) => { const k1 = f(t, x), k2 = f(t + h / 2, [x[0] + h / 2 * k1[0], x[1] + h / 2 * k1[1]]), k3 = f(t + h / 2, [x[0] + h / 2 * k2[0], x[1] + h / 2 * k2[1]]), k4 = f(t + h, [x[0] + h * k3[0], x[1] + h * k3[1]]);
+  return [x[0] + h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]), x[1] + h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])] };
+const TE = 4 * Math.PI, H = .01, NS = Math.round(TE / H);
+const X1 = [[1, 0]], X2 = [[.35, .85]];
+for (let i = 0; i < NS; i++) { X1.push(rk(i * H, X1[i], H)); X2.push(rk(i * H, X2[i], H)) }
+// 平面视窗：框住全部 0、x1、x2、x1+x2，等比例
+const BB = (() => { let a = [0, 0, 0, 0]; for (let i = 0; i <= NS; i += 5) for (const p of [X1[i], X2[i], [X1[i][0] + X2[i][0], X1[i][1] + X2[i][1]]]) { a[0] = Math.min(a[0], p[0]); a[1] = Math.max(a[1], p[0]); a[2] = Math.min(a[2], p[1]); a[3] = Math.max(a[3], p[1]) } return a })();
+const W0 = X1[0][0] * X2[0][1] - X1[0][1] * X2[0][0];
+const at = (arr, t) => { const u = P.clamp(t / H, 0, NS), i = Math.min(NS - 1, Math.floor(u)), s = u - i; return [P.lerp(arr[i][0], arr[i + 1][0], s), P.lerp(arr[i][1], arr[i + 1][1], s)] };
+const fx = document.getElementById('fx'); fx.innerHTML = '<div></div><div></div>';
+K(fx.children[0], "W'(t)=\\operatorname{tr}A(t)\\,W(t)");
+K(fx.children[1], 'W(t)=W(t_0)\\exp\\!\\Big(\\int_{t_0}^{t}\\operatorname{tr}A(s)\\,\\mathrm ds\\Big)');
+const st = { t: 0, playing: false, touched: false, intro: 0, rewind: 0, drag: false };
+const sh = { t: 0 };
+const lab = P.labels(document.getElementById('stage'));
+const arrow = (ctx, x0, y0, x1, y1, col, wd, al = 1) => {
+  P.path(ctx, [[x0, y0], [x1, y1]], { color: col, width: wd, alpha: al });
+  const a = Math.atan2(y1 - y0, x1 - x0), L = 9; ctx.save(); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x1 - L * Math.cos(a - .38), y1 - L * Math.sin(a - .38)); ctx.lineTo(x1 - L * Math.cos(a + .38), y1 - L * Math.sin(a + .38)); ctx.closePath(); ctx.fill(); ctx.restore() };
+let G = null;
+const cvEl = document.getElementById('cv');
+const cv = P.mount(cvEl, (ctx, w, h, dt) => {
+  let anim = st.intro < 1; st.intro = Math.min(1, st.intro + dt / 1.6);
+  const I = P.ease.inOut(st.intro);
+  if (st.rewind > 0) { st.rewind -= dt; if (st.rewind <= 0) { st.rewind = 0; sh.t = 0; sh['t$v'] = 0 } anim = true }
+  else if (st.playing) { st.t += dt * .95; if (st.t >= TE) { st.t = 0; st.rewind = 1.1 } anim = true }
+  if (st.rewind <= 0) anim = P.spring(sh, 't', st.t, dt, st.playing ? { k: 400, z: 1 } : { k: 90, z: .85 }) | anim;
+  const t = sh.t, fade = st.rewind > 0 ? P.clamp(st.rewind / 1.1, 0, 1) : 1;
+  // 布局：宽屏左右，窄屏上下
+  const wide = w >= 560, ps = wide ? Math.min(h - 16, w * .5) : Math.min(w - 20, h * .56);
+  const pox = wide ? 10 : (w - ps) / 2, poy = wide ? (h - ps) / 2 : 6;
+  const cx = (BB[0] + BB[1]) / 2, cy = (BB[2] + BB[3]) / 2, R = Math.max(BB[1] - BB[0], BB[3] - BB[2]) / 2 * 1.1;
+  const PX = x => pox + ps / 2 + (x - cx) / R * ps / 2, PY = y => poy + ps / 2 - (y - cy) / R * ps / 2;
+  const gx0 = wide ? pox + ps + 34 : 20, gx1 = w - 16, gy0 = wide ? 22 : poy + ps + 22, gy1 = h - 18, gh = (gy1 - gy0 - 26) / 2;
+  const TX = s => gx0 + s / TE * (gx1 - gx0);
+  const Y1 = v => gy0 + gh / 2 - v / .7 * gh / 2, Y2 = v => gy0 + gh + 26 + gh - v / 1.75 * gh;
+  G = { gx0, gx1, TX, gy0, gy1 };
+  // 平面：坐标轴、两条解的端点轨迹（按年龄淡出）、平行四边形
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(PX(cx - R), PY(0)); ctx.lineTo(PX(cx + R), PY(0)); ctx.moveTo(PX(0), PY(cy - R)); ctx.lineTo(PX(0), PY(cy + R)); ctx.stroke(); ctx.restore();
+  const i1 = Math.round(t / H), tail = 260;
+  for (const [arr, col] of [[X1, C.accent], [X2, C.blue]]) for (let k = Math.max(1, i1 - tail); k <= i1; k += 2) {
+    const a = 1 - (i1 - k) / tail; P.path(ctx, [[PX(arr[k - 1][0]), PY(arr[k - 1][1])], [PX(arr[Math.min(k + 1, NS)][0]), PY(arr[Math.min(k + 1, NS)][1])]], { color: col, width: 1.6, alpha: .35 * a * a * fade * I });
+  }
+  const x1 = at(X1, t), x2 = at(X2, t), s = [x1[0] + x2[0], x1[1] + x2[1]];
+  const poly = [[PX(0), PY(0)], [PX(x1[0]), PY(x1[1])], [PX(s[0]), PY(s[1])], [PX(x2[0]), PY(x2[1])]];
+  ctx.save(); ctx.globalAlpha = I; ctx.beginPath(); poly.forEach((p, k) => k ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath();
+  const gr = ctx.createLinearGradient(PX(0), PY(0), PX(s[0]), PY(s[1])); gr.addColorStop(0, P.rgba(C.warm, .34)); gr.addColorStop(1, P.rgba(C.warm, .12)); ctx.fillStyle = gr; ctx.fill(); ctx.restore();
+  P.path(ctx, [poly[1], poly[2], poly[3]], { color: C.warm, width: 1.2, alpha: .7 * I, dash: [4, 4] });
+  arrow(ctx, PX(0), PY(0), PX(x1[0]), PY(x1[1]), C.accent, 2.4, I);
+  arrow(ctx, PX(0), PY(0), PX(x2[0]), PY(x2[1]), C.blue, 2.4, I);
+  P.dot(ctx, PX(0), PY(0), { r: 3, color: C.soft, scale: I });
+  // 右：迹的曲线与累积面积；W(t) 曲线与公式参照
+  ctx.save(); ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(gx0, Y1(0)); ctx.lineTo(gx1, Y1(0)); ctx.moveTo(gx0, Y2(0)); ctx.lineTo(gx1, Y2(0)); ctx.stroke(); ctx.restore();
+  const n = Math.max(60, Math.round(gx1 - gx0)), trP = [], acc = [];
+  for (let k = 0; k <= n; k++) { const s_ = TE * k / n; trP.push([TX(s_), Y1(tr(s_))]); if (s_ <= t) acc.push([TX(s_), Y1(tr(s_))]) }
+  acc.push([TX(t), Y1(tr(t))]);
+  if (acc.length > 1) { ctx.save(); ctx.globalAlpha = fade * I; P.fill(ctx, acc, [[TX(0), Y1(0)], [TX(t), Y1(0)]], P.rgba(C.blue, .22)); ctx.restore() }
+  P.path(ctx, trP, { color: C.mute, width: 1.6, progress: I });
+  const ref = []; for (let k = 0; k <= n; k++) { const s_ = TE * k / n; ref.push([TX(s_), Y2(W0 * Math.exp(itr(s_)))]) }
+  P.path(ctx, ref, { color: C.mute, width: 1.4, dash: [5, 5], alpha: .8 * I });
+  const wp = []; for (let k = 0; k <= Math.round(t / H); k += 3) { const a = X1[k], b = X2[k]; wp.push([TX(k * H), Y2(a[0] * b[1] - a[1] * b[0])]) }
+  const Wt = x1[0] * x2[1] - x1[1] * x2[0]; wp.push([TX(t), Y2(Wt)]);
+  P.path(ctx, wp, { color: C.warm, width: 2.4, alpha: fade });
+  P.path(ctx, [[TX(t), gy0 - 4], [TX(t), gy1]], { color: C.hl, width: 1.2, alpha: .45 * I });
+  P.dot(ctx, TX(t), Y1(tr(t)), { r: 4, color: C.blue, scale: I }); P.dot(ctx, TX(t), Y2(Wt), { r: 4.6, color: C.warm, scale: I });
+  lab.set('x1', 'x_1', PX(x1[0] * 1.12), PY(x1[1] * 1.12) - 2, { color: C.accent, alpha: I });
+  lab.set('x2', 'x_2', PX(x2[0] * 1.12), PY(x2[1] * 1.12) - 2, { color: C.blue, alpha: I });
+  lab.set('W', 'W', PX(s[0] / 2), PY(s[1] / 2), { color: C.warm, alpha: I });
+  lab.set('tr', '\\operatorname{tr}A(t)', gx0 + 40, gy0 - 6, { color: C.mute, size: 13, alpha: I });
+  lab.set('Wl', 'W(t)', gx0 + 24, Y2(1.6), { color: C.warm, size: 13, alpha: I });
+  lab.set('tt', 't', gx1 - 4, Y2(0) + 12, { color: C.mute, size: 13, alpha: I });
+  lab.end();
+  return anim || st.drag;
+});
+// 在右侧时间轴上拖动即可手动定位时刻
+const scrub = e => { const r = cvEl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; return { x, y } };
+cvEl.addEventListener('pointerdown', e => { const q = scrub(e); if (!G || q.x < G.gx0 - 8 || q.y < G.gy0 - 20) return; stop(); st.touched = true; st.rewind = 0; st.drag = true; st.t = P.clamp((q.x - G.gx0) / (G.gx1 - G.gx0) * TE, 0, TE); cvEl.setPointerCapture(e.pointerId); cv.kick() });
+cvEl.addEventListener('pointermove', e => { const q = scrub(e); if (!st.drag) { cvEl.style.cursor = G && q.x >= G.gx0 - 8 && q.y >= G.gy0 - 20 ? 'ew-resize' : 'default'; return } st.t = P.clamp((q.x - G.gx0) / (G.gx1 - G.gx0) * TE, 0, TE); cv.kick() });
+const up = () => { st.drag = false }; cvEl.addEventListener('pointerup', up); cvEl.addEventListener('pointercancel', up);
+const playBtn = document.getElementById('play');
+function stop() { st.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false') }
+function play() { if (st.t >= TE) { st.t = 0; sh.t = 0 } st.playing = true; playBtn.textContent = 'Pause'; playBtn.setAttribute('aria-pressed', 'true'); cv.kick() }
+playBtn.onclick = () => { st.touched = true; st.playing ? stop() : play() };
+document.getElementById('rst').onclick = () => { st.touched = true; st.rewind = 0; st.t = 0; play() };
+addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; stop(); st.touched = true; st.t = P.clamp(st.t + (e.key === 'ArrowRight' ? .4 : -.4), 0, TE); cv.kick() });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop() });
+new IntersectionObserver(es => { if (es[0].isIntersecting) { if (!st.touched && !st.playing) setTimeout(() => { if (!st.touched && !st.playing) play() }, 1400) } else stop() }, { threshold: .4 }).observe(cvEl);
+P.reportHeight(document.querySelector('main'));
+</script></body></html>

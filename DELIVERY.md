@@ -45,6 +45,38 @@
 
 复制回 `D:\MathAPP` 后运行“导入课程内容”和“渲染TikZ图”，并把交互页面同步到 `frontend\dist\interactive`。
 
+## 抽象代数（本会话“ODE,抽代”负责）
+
+新增交互页面（复制到 `D:\MathAPP\frontend\public\interactive\`，并同步到 `frontend\dist\interactive\`）：
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\alg-cyclic-steps.html` | 01+09 循环群生成元跳步与直积周期对齐 | 1.5 循环群（定理 1.5.4 之后）；2.4 群的直积（定理 2.4.2 之后，`?mode=1`） |
+| `D:\MathAPP\frontend\public\interactive\alg-permutation-cycles.html` | 02+03 置换拆成轮换再拆成对换 | 1.6 置换群与对称群（定理 1.6.5 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-dihedral.html` | 04 正多边形对称的复合 | 1.7 置换在对称变换群的应用（定义 1.7.1 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-orbit-stabilizer.html` | 10+12 轨道与稳定子 | 2.5 群在集合上的作用（定理 2.5.4 之后，`?mode=orbit`）；2.6 西罗定理（推论 3 之后，`?mode=sylow`） |
+| `D:\MathAPP\frontend\public\interactive\alg-burnside.html` | 11 伯恩赛德计数 | 2.5 群在集合上的作用（定理 2.5.6 之后） |
+| `D:\MathAPP\frontend\public\interactive\alg-finite-field.html` | 24 有限域的两套坐标 | 5.5 有限域（定理 5.5.3 之后） |
+
+修改的讲义（只插入引导句与模块）：`D:\MathAPP\content\library\knowledge\abstract-algebra\` 下 01-群理论\05、06、07，02-群的进一步讨论\04、05、06，05-域的扩张\05。
+
+需要站长定夺：
+- 置换模块用具体置换 σ=(1 5 8 3)(2 7 4)(6)∈S₈ 演示追踪过程（n 阶一般情形的规则针对矩阵与符号阵列，置换需要具体元素才能追踪）。
+- 二面体模块默认正五边形，可调 3 到 8 边；如需与讲义例 1 一致可改默认为正方形。
+- 轨道、伯恩赛德、有限域三个模块的公式区出现具体数字（如 8=4·2、g⁵=2+2α），用来点出结论；如要求只放符号可以去掉。
+- 有限域 GF(25) 要走 24 步，自动播放一遍约 36 秒；可只保留 GF(9) 或加速。
+
+## 常微分方程（本会话“ODE,抽代”负责）
+
+| 文件 | 模块 | 插入位置 |
+| --- | --- | --- |
+| `D:\MathAPP\frontend\public\interactive\ode-direction-field.html` | 01+04+12 方向场与解曲线 | 1.1.1（定义 2 后）；2.2.1（`?mode=1`）；3.4.1（`?mode=2`） |
+| `D:\MathAPP\frontend\public\interactive\ode-picard-steps.html` | 08 皮卡逐步逼近 | 3.1.2 |
+| `D:\MathAPP\frontend\public\interactive\ode-existence-extend.html` | 10+11 存在矩形与延拓 | 3.2.2（定理 1 后）；3.3.2 |
+| `D:\MathAPP\frontend\public\interactive\ode-liouville.html` | 19 刘维尔公式 | 5.3.1 |
+| `D:\MathAPP\frontend\public\interactive\ode-phase-portrait.html` | 22+24 相图与线性化 | 5.6.2；6.1.3（线性化模式） |
+| `D:\MathAPP\frontend\public\interactive\ode-lyapunov.html` | 23+25 稳定性与 V 函数 | 6.1.1；6.2.2 |
+
 ## 本批：概率统计、复变函数、实变函数按认可清单完成（Claude 云端会话）
 
 以 review/ 下三份 -gpt.md（站长认可的筛选结果）为准。交互模块 34 个（概率统计 17 个、复变 11 个、实变 6 个，另外富比尼与实变卷积复用概率页面），TikZ 推导图 18 张，全部插入讲义，旧的 `@interactive function` 模块已按清单重写或下线。
