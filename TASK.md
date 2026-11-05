@@ -1,4 +1,4 @@
-# 云端任务：概率统计、复变函数、实变函数的可视化
+# 云端任务：概率统计、复变函数、实变函数、常微分方程、抽象代数的可视化
 
 本仓库（1529432449gxl-bit/unimathity-visual）只放这次任务需要的材料，是网站项目 Unimathity（本地 D:\MathAPP）的一个子集，路径与本地一一对应。你只写代码、改讲义，做完推回本仓库的 main 分支；站长在本地拉取、编译、运行。
 
@@ -13,26 +13,26 @@
 
 ## 材料位置
 
-- 讲义：content/library/knowledge/probability、complex-analysis、real-analysis，每章若干 .math.md。概率统计已有 9 处 @interactive，复变、实变尚无。
+- 讲义：content/library/knowledge/probability、complex-analysis、real-analysis、ode、abstract-algebra，每章若干 .math.md。概率统计已有 9 处 @interactive（GPT 清单统计为 10 处），常微分方程有 7 处，其余尚无。
+- 交接说明：docs/16-云端会话-交接说明.md，先读，里面有站长的硬性要求与三门课已定的筛选结果。
+- GPT 选题清单：review/ 下五份“-可交互建议-gpt.md”。
 - 写法与规范：docs/05（讲义模板写法）、docs/06（排版规范）、docs/07（可视化调优提示词，含视觉规格与验收标准）、docs/08（制作要求表）、docs/11（分工方案，含 n 阶一般情形的硬性规则）。
 - 选题样板：docs/13（上一轮线性代数的选题提示词）、review/线性代数-可交互建议-gpt.md（上一轮筛选后的清单）。
 - 交互页面与共用件：frontend/public/interactive/。共用件在 vendor/：plotfx.js（曲线、动效、逐步播放器）、view3d.js（空间投影）、lasteps.js（矩阵类逐步演示）、la2d.js（平面几何）、la3d.js（空间几何）、steady.js、morph.js、mathviz-kit.js，katex 也在其中。认可的样板：matrix-steps.html、eigen-geometry.html、jacobi-steps.html、newton-method.html，以及线性代数的 la-*.html；首页与数值分析的场景在 frontend/src/utils/heroScenes.js、showcaseScenes.js，微积分定积分样板在 frontend/src/components/interactive/RiemannSum.vue。
 - 讲义解析与嵌入：frontend/src/utils/templateParser.js、frontend/src/components/interactive/InteractiveEmbed.vue（iframe 通过 postMessage 的 runge-height 回报高度）。
 - TikZ：scripts/tikz/（README 与 render.mjs，依赖用 npm install 装 node-tikzjax）。
 
-## 第一步 选题
+## 第一步 选题（已改为基于 GPT 清单筛选）
 
-通读三门课的讲义，跳过 @problem 与 @solution，按下面三类给出清单：
+不再从头通读选题。GPT 已为五门课出好清单，放在 review/。
 
-1. 动画或交互：内容本身是过程，或需要拖动参数才看得出规律，动起来才讲得清。
-2. TikZ 推导图：步骤多、容易绕晕的符号推导，用一张配色加箭头的静态图把思路简单直观地画出来，参照 review 清单中的推导图条目。
-3. 不做：正文讲得清、偏冷门、过于抽象、或与入选条目重复。
-
-每章 2 到 4 处，少而精。概率统计已有的 9 处交互逐个评价保留或重做。清单写成 review/概率统计-可交互建议-claude.md 等三份，然后用一次选择题请站长确认（选项如“按清单开工（推荐）”“先看清单再说”），确认后进入第二步。
+1. 概率统计、复变函数、实变函数：站长已认可 docs/16 “当前任务一”中的筛选结果，直接写入对应的三份 gpt 文件，原稿先另存为“筛选前备份”，格式参照 review/线性代数-可交互建议-gpt.md（筛选后版本）。
+2. 常微分方程、抽象代数：按 docs/16 的筛选标准分成“做 / TikZ / 取消”三类，相同画面合并成一个模块，跨课程能共用的标出。结论讲给站长，只讲原因与预期效果，用一次选择题确认（选项如“按筛选开工（推荐）”“先看清单再说”），确认后写入文件。
+3. 等待确认期间先开始第二步，从概率统计 01+04（条件概率与独立性）、07（密度高度与面积）、22+24（重复抽样形成统计量分布）做起。
 
 ## 第二步 制作
 
-1. 页面放 frontend/public/interactive/，文件名带课程前缀：prob-、cplx-、real-。优先复用 vendor 里的共用件，不另造副本。
+1. 页面放 frontend/public/interactive/，文件名带课程前缀：prob-、cplx-、real-、ode-、alg-。优先复用 vendor 里的共用件，不另造副本。
 2. 讲义中插入的格式：
 
 ```text

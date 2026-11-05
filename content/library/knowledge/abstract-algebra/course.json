@@ -1,0 +1,13 @@
+{
+  "library": "knowledge",
+  "course_code": "abstract-algebra",
+  "slug_prefix": "abstract-algebra",
+  "title": "抽象代数",
+  "subtitle": "群、环与域的扩张",
+  "audience": "数学专业 / 课程学习 / 复习提高",
+  "description": "群、环与域的扩张，配套定义、定理与例题讲解。",
+  "chapter_slugs": {
+    "1": "abstract-algebra-knowledge-ch01-groups"
+  },
+  "order": 60
+}
